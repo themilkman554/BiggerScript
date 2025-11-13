@@ -55,7 +55,8 @@ if not spawning then print("Failed to load spawning.lua"); return end
 local robot = load_from_github("BiggerScript/lib/robot.lua")
 if not robot then print("Failed to load robot.lua"); return end
 require("BiggerScript/natives/natives")
-
+GUI.AddToast("BiggerScript", "BiggerScriptV4 Changelog
+test", 5000, 0)
 local menuRootPath = FileMgr.GetMenuRootPath()
 local biggerScriptRootPath = menuRootPath .. "\\Lua\\BiggerScript"
 local xmlVehiclesFolder = biggerScriptRootPath .. "\\XML Vehicles"
@@ -684,3 +685,4 @@ robot.init({
     legAnimationJob = legAnimationJob,
     robot_objects = robot_objects
 })
+
