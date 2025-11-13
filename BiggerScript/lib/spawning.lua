@@ -53,7 +53,8 @@ function M.init(context)
         get_xml_element_content = M.get_xml_element_content,
         spawnedProps = spawnedProps,
         spawnMapFromXML = M.spawnMapFromXML
-    })    
+    })
+    
     M.spawnUpsideDownMapV3 = upsidedownmap_module.spawnUpsideDownMapV3
 end
 
@@ -2188,7 +2189,7 @@ function M.spawnMapV1Networked(filePath, placements)
                     0,
                     spawnCoords.x, spawnCoords.y, spawnCoords.z,
                     rotX, rotY, rotZ,
-                    false, false, spawnerSettings.disableCollision, false, 2, true
+                    false, false, true, false, 2, true
                 )
                 M.debug_print("[Spawn Debug] Attached entity", tostring(entityHandle), "to base vehicle", tostring(carattach))
             end)
@@ -2642,10 +2643,4 @@ function M.deleteAllSpawnedProps()
     end)
 end
 
-
-
 return M
-
-
-
-
