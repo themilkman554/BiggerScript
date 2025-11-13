@@ -2164,7 +2164,7 @@ function M.spawnMapV1Networked(filePath, placements)
                         placement.Attachment.BoneIndex or 0,
                         placement.Attachment.X or 0.0, placement.Attachment.Y or 0.0, placement.Attachment.Z or 0.0,
                         placement.Attachment.Pitch or 0.0, placement.Attachment.Roll or 0.0, placement.Attachment.Yaw or 0.0,
-                        false, false, spawnerSettings.disableCollision, false, 2, true
+                        false, false, true, false, 2, true
                     )
                     M.debug_print("[Spawn Debug] Attached entity", tostring(entityHandle), "to parent object", tostring(parentHandle))
                 end)
@@ -2645,6 +2645,7 @@ end
 
 
 return M
+
 
 
 
