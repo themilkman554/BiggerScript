@@ -655,8 +655,8 @@ M.debug_print("[Spawn Debug] Attachment", i, "XML IsCollisionProof value:", tost
         if att.OpacityLevel ~= nil then
             local opacityLevel = M.safe_tonumber(att.OpacityLevel, nil)
             if opacityLevel ~= nil and opacityLevel == 0 then
-                pcall(function() ENTITY.SET_ENTITY_VISIBLE(h, false, false) end)
-                M.debug_print("[Spawn Debug] Attachment", i, "set invisible due to opacity level 0.")
+                pcall(function() ENTITY.SET_ENTITY_ALPHA(h, 0, false) end)
+                M.debug_print("[Spawn Debug] Attachment", i, "set alpha to 0 due to opacity level 0.")
             end
         end
         if att.PedProperties and (tostring(att.Type) == "1") then
@@ -1545,8 +1545,8 @@ function M.spawnVehicleFromINI(filePath, isPreview)
         --this is so it networks and because setting it normally makes lights see through for some reason
         local opacityLevel = M.safe_tonumber(mainVehicleSection.OpacityLevel, nil)
         if opacityLevel ~= nil and opacityLevel == 0 then
-            M.try_call(ENTITY, "SET_ENTITY_VISIBLE", vehicleHandle, false, false)
-            M.debug_print("[Spawn Debug] Vehicle set invisible due to opacity level 0.")
+            M.try_call(ENTITY, "SET_ENTITY_ALPHA", vehicleHandle, 0, false)
+            M.debug_print("[Spawn Debug] Vehicle set alpha to 0 due to opacity level 0.")
         end
         local isVisible = mainVehicleSection.IsVisible
         if isVisible ~= nil then
@@ -1787,8 +1787,8 @@ function M.spawnVehicleFromXML(filePath, isPreview)
         if spawnerSettings.vehicleGodMode then M.try_call(ENTITY, "SET_ENTITY_INVINCIBLE", vehicleHandle, true) end
         local opacityLevel = M.safe_tonumber(M.get_xml_element_content(xmlContent, "OpacityLevel"), nil)
         if opacityLevel ~= nil and opacityLevel == 0 then
-            M.try_call(ENTITY, "SET_ENTITY_VISIBLE", vehicleHandle, false, false)
-            M.debug_print("[Spawn Debug] Vehicle set invisible due to opacity level 0.")
+            M.try_call(ENTITY, "SET_ENTITY_ALPHA", vehicleHandle, 0, false)
+            M.debug_print("[Spawn Debug] Vehicle set alpha to 0 due to opacity level 0.")
         end
         local isVisible = M.get_xml_element_content(xmlContent, "IsVisible")
         if isVisible ~= nil then
@@ -2205,8 +2205,8 @@ function M.spawnMapV1Networked(filePath, placements)
         if placement.OpacityLevel ~= nil then
             local opacity = M.safe_tonumber(placement.OpacityLevel, 255)
             if opacity == 0 then
-                pcall(function() ENTITY.SET_ENTITY_VISIBLE(entityHandle, false, false) end)
-                M.debug_print("[Spawn Debug] Map entity set invisible due to opacity level 0.")
+                pcall(function() ENTITY.SET_ENTITY_ALPHA(entityHandle, 0, false) end)
+                M.debug_print("[Spawn Debug] Map entity set alpha to 0 due to opacity level 0.")
             end
         end
         if placement.HasGravity ~= nil then pcall(function() ENTITY.SET_ENTITY_HAS_GRAVITY(entityHandle, placement.HasGravity) end) end
@@ -2306,8 +2306,8 @@ function M.spawnMapFromXML(filePath)
                 if placement.OpacityLevel ~= nil then
                     local opacity = M.safe_tonumber(placement.OpacityLevel, 255)
                     if opacity == 0 then
-                        pcall(function() ENTITY.SET_ENTITY_VISIBLE(entityHandle, false, false) end)
-                        M.debug_print("[Spawn Debug] Map entity set invisible due to opacity level 0.")
+                        pcall(function() ENTITY.SET_ENTITY_ALPHA(entityHandle, 0, false) end)
+                        M.debug_print("[Spawn Debug] Map entity set alpha to 0 due to opacity level 0.")
                     end
                 end
                 if placement.HasGravity ~= nil then
