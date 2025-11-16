@@ -63,22 +63,6 @@ local iniVehiclesFolder = biggerScriptRootPath .. "\\INI Vehicles"
 local xmlMapsFolder = biggerScriptRootPath .. "\\XML Maps"
 local xmlOutfitsFolder = biggerScriptRootPath .. "\\XML Outfits"
 
-if not FileMgr.DoesFileExist(xmlVehiclesFolder) then
-    FileMgr.CreateDir(xmlVehiclesFolder)
-end
-
-if not FileMgr.DoesFileExist(iniVehiclesFolder) then
-    FileMgr.CreateDir(iniVehiclesFolder)
-end
-
-if not FileMgr.DoesFileExist(xmlMapsFolder) then
-    FileMgr.CreateDir(xmlMapsFolder)
-end
-
-if not FileMgr.DoesFileExist(xmlOutfitsFolder) then
-    FileMgr.CreateDir(xmlOutfitsFolder)
-end
-
 
 local spawnerSettings = {
     inVehicle = true,
