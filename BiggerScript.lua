@@ -54,6 +54,10 @@ if not spawning then print("Failed to load spawning.lua"); return end
 
 local robot = load_from_github("BiggerScript/lib/robot.lua")
 if not robot then print("Failed to load robot.lua"); return end
+
+local constructor_lib = load_from_github("BiggerScript/lib/constructor_lib.lua")
+if not constructor_lib then print("Failed to load constructor_lib.lua"); return end
+
 require("BiggerScript/natives/natives")
 GUI.AddToast("BiggerScriptv4.1", "Added Previews\nAdded Networkv1\nAdded Auto Updater\nOrgainzed Vehicle files\nNow all files go into BiggerScript Folder\nFixes and Improvments\nFixed Invisible Vehicles", 5000, 0)
 local menuRootPath = FileMgr.GetMenuRootPath()
@@ -85,37 +89,6 @@ local spawnerSettings = {
 
 local previewEntities = {}
 local currentPreviewFile = nil
-
-
-
-local constructor_lib = {}
-
-constructor_lib.set_entity_as_networked = function(attachment, timeout)
-    local time <const> = Time.GetEpocheMs() + (timeout or 1500)
-    while time > Time.GetEpocheMs() and not NETWORK.NETWORK_GET_ENTITY_IS_NETWORKED(attachment.handle) do
-        NETWORK.NETWORK_REGISTER_ENTITY_AS_NETWORKED(attachment.handle)
-        Script.Yield(0)
-    end
-    return NETWORK.NETWORK_GET_ENTITY_IS_NETWORKED(attachment.handle)
-end
-
-constructor_lib.constantize_network_id = function(attachment)
-    constructor_lib.set_entity_as_networked(attachment, 25)
-    local net_id <const> = NETWORK.NETWORK_GET_NETWORK_ID_FROM_ENTITY(attachment.handle)
-    -- network.set_network_id_can_migrate(net_id, false) -- Caused players unable to drive vehicles
-    NETWORK.SET_NETWORK_ID_EXISTS_ON_ALL_MACHINES(net_id, true)
-    NETWORK.SET_NETWORK_ID_ALWAYS_EXISTS_FOR_PLAYER(net_id, players.user(), true)
-    return net_id
-end
-
-constructor_lib.make_entity_networked = function(attachment)
-    ENTITY.SET_ENTITY_AS_MISSION_ENTITY(attachment.handle, false, true)
-    ENTITY.SET_ENTITY_SHOULD_FREEZE_WAITING_ON_COLLISION(attachment.handle, false)
-    constructor_lib.constantize_network_id(attachment)
-    NETWORK.SET_NETWORK_ID_CAN_MIGRATE(NETWORK.OBJ_TO_NET(attachment.handle), false)
-end
-
-
 
 local spawnedVehicles = {}
 
@@ -668,8 +641,3 @@ robot.init({
     legAnimationJob = legAnimationJob,
     robot_objects = robot_objects
 })
-
-
-
-
-
