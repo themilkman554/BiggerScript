@@ -2,22 +2,24 @@
 
 package.path = FileMgr.GetMenuRootPath() .. "\\Lua\\?.lua;"
 
+local LoadLocalLibraries = false -- Set to true to load libraries from local files
+
 local GITHUB_RAW_BASE_URL = "https://raw.githubusercontent.com/themilkman554/BiggerScript/main/"
 
 local function curl_get_content(url)
     print("Fetching: " .. url)
     local curlObject = Curl.Easy()
-    -- 10002 is CURLOPT_URL
+
     curlObject:Setopt(10002, url)
     curlObject:Perform()
 
     while not curlObject:GetFinished() do
-        Script.Yield(10) -- Yield a bit to not hog the thread
+        Script.Yield(10)
     end
 
     local code, response = curlObject:GetResponse()
 
-    -- 0 is CURLE_OK
+
     if code == 0 then
         return response
     else
@@ -46,17 +48,26 @@ local function load_from_github(path)
 end
 
 -- Load libraries
-local upsidedownmap = load_from_github("BiggerScript/lib/upsidedownmap.lua")
-if not upsidedownmap then print("Failed to load upsidedownmap.lua"); return end
+local upsidedownmap, spawning, robot, constructor_lib
 
-local spawning = load_from_github("BiggerScript/lib/spawning.lua")
-if not spawning then print("Failed to load spawning.lua"); return end
+if LoadLocalLibraries then
+    upsidedownmap = require("BiggerScript/lib/upsidedownmap")
+    spawning = require("BiggerScript/lib/spawning")
+    robot = require("BiggerScript/lib/robot")
+    constructor_lib = require("BiggerScript/lib/constructor_lib")
+else
+    upsidedownmap = load_from_github("BiggerScript/lib/upsidedownmap.lua")
+    if not upsidedownmap then print("Failed to load upsidedownmap.lua"); return end
 
-local robot = load_from_github("BiggerScript/lib/robot.lua")
-if not robot then print("Failed to load robot.lua"); return end
+    spawning = load_from_github("BiggerScript/lib/spawning.lua")
+    if not spawning then print("Failed to load spawning.lua"); return end
 
-local constructor_lib = load_from_github("BiggerScript/lib/constructor_lib.lua")
-if not constructor_lib then print("Failed to load constructor_lib.lua"); return end
+    robot = load_from_github("BiggerScript/lib/robot.lua")
+    if not robot then print("Failed to load robot.lua"); return end
+
+    constructor_lib = load_from_github("BiggerScript/lib/constructor_lib.lua")
+    if not constructor_lib then print("Failed to load constructor_lib.lua"); return end
+end
 
 require("BiggerScript/natives/natives")
 GUI.AddToast("BiggerScriptv4.1", "Added Previews\nAdded Networkv1\nAdded Auto Updater\nOrgainzed Vehicle files\nNow all files go into BiggerScript Folder\nFixes and Improvments\nFixed Invisible Vehicles", 5000, 0)
@@ -331,8 +342,8 @@ local function renderMenyooTab()
                     spawnerSettings.upgradedVehicle = ImGui.Checkbox("Upgraded Vehicle", spawnerSettings.upgradedVehicle)
                     spawnerSettings.randomColor = ImGui.Checkbox("Random Color", spawnerSettings.randomColor)
                     spawnerSettings.randomLivery = ImGui.Checkbox("Random Livery", spawnerSettings.randomLivery)
-                    spawnerSettings.printToDebug = ImGui.Checkbox("Print Debug to Console", spawnerSettings.printToDebug)
                     spawnerSettings.previewVehicle = ImGui.Checkbox("Preview Vehicle", spawnerSettings.previewVehicle)
+                    spawnerSettings.printToDebug = ImGui.Checkbox("Print Debug to Console", spawnerSettings.printToDebug)
                     ImGui.Spacing()
 
 
@@ -386,8 +397,8 @@ local function renderMenyooTab()
                     spawnerSettings.upgradedVehicle = ImGui.Checkbox("Upgraded Vehicle", spawnerSettings.upgradedVehicle)
                     spawnerSettings.randomColor = ImGui.Checkbox("Random Color", spawnerSettings.randomColor)
                     spawnerSettings.randomLivery = ImGui.Checkbox("Random Livery", spawnerSettings.randomLivery)
-                    spawnerSettings.printToDebug = ImGui.Checkbox("Print Debug to Console", spawnerSettings.printToDebug)
                     spawnerSettings.previewVehicle = ImGui.Checkbox("Preview Vehicle", spawnerSettings.previewVehicle)
+                    spawnerSettings.printToDebug = ImGui.Checkbox("Print Debug to Console", spawnerSettings.printToDebug)
                     ImGui.Spacing()
 
 
@@ -460,6 +471,11 @@ local function renderMenyooTab()
                     end
 
                     ImGui.Spacing()
+
+                    if ImGui.Button("Teleport All to Me") then
+                        FeatureMgr.GetFeatureByName("Teleport All to Me"):TriggerCallback()
+                    end
+
 
                     ClickGUI.EndCustomChildWindow()
                 end
