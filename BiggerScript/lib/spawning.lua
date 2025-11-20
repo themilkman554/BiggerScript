@@ -2367,7 +2367,7 @@ function M.spawnMapFromXML(filePath)
                 ::continue_v2::
             end
         end
-        if refCoords then
+        if refCoords and spawnerSettings.teleportToMap then
             local playerPed = GTA.GetLocalPed()
             if playerPed then
                 pcall(function()

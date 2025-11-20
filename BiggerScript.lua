@@ -70,7 +70,7 @@ else
 end
 
 require("BiggerScript/natives/natives")
-GUI.AddToast("BiggerScriptv4.1", "Added Previews\nAdded Networkv1\nAdded Auto Updater\nOrgainzed Vehicle files\nNow all files go into BiggerScript Folder\nFixes and Improvments\nFixed Invisible Vehicles", 5000, 0)
+GUI.AddToast("BiggerScriptv4.2", "Resource caching with refresh buttons (should improve performance)\nA teleport to map toggle", 5000, 0)
 local menuRootPath = FileMgr.GetMenuRootPath()
 local biggerScriptRootPath = menuRootPath .. "\\Lua\\BiggerScript"
 local xmlVehiclesFolder = biggerScriptRootPath .. "\\XML Vehicles"
@@ -94,7 +94,8 @@ local spawnerSettings = {
     deleteOldMap = false,
     spawnIn000Vehicle = false, 
     previewVehicle = false,
-    previewOutfit = false
+    previewOutfit = false,
+    teleportToMap = true
 }
 
 
@@ -147,28 +148,65 @@ local function buildFolderStructure(files, basePath)
     return structure
 end
 
-local function getXmlFiles()
+local cachedXmlVehicles = nil
+local cachedIniVehicles = nil
+local cachedXmlMaps = nil
+local cachedXmlOutfits = nil
+
+local function refreshXmlVehicles()
     local files = FileMgr.FindFiles(xmlVehiclesFolder, ".xml", true)
-    if not files or #files == 0 then return { folders = {}, files = {} } end
-    return buildFolderStructure(files, xmlVehiclesFolder)
+    if not files or #files == 0 then
+        cachedXmlVehicles = { folders = {}, files = {} }
+    else
+        cachedXmlVehicles = buildFolderStructure(files, xmlVehiclesFolder)
+    end
+end
+
+local function refreshIniVehicles()
+    local files = FileMgr.FindFiles(iniVehiclesFolder, ".ini", true)
+    if not files or #files == 0 then
+        cachedIniVehicles = { folders = {}, files = {} }
+    else
+        cachedIniVehicles = buildFolderStructure(files, iniVehiclesFolder)
+    end
+end
+
+local function refreshXmlMaps()
+    local files = FileMgr.FindFiles(xmlMapsFolder, ".xml", true)
+    if not files or #files == 0 then
+        cachedXmlMaps = { folders = {}, files = {} }
+    else
+        cachedXmlMaps = buildFolderStructure(files, xmlMapsFolder)
+    end
+end
+
+local function refreshXmlOutfits()
+    local files = FileMgr.FindFiles(xmlOutfitsFolder, ".xml", true)
+    if not files or #files == 0 then
+        cachedXmlOutfits = { folders = {}, files = {} }
+    else
+        cachedXmlOutfits = buildFolderStructure(files, xmlOutfitsFolder)
+    end
+end
+
+local function getXmlFiles()
+    if not cachedXmlVehicles then refreshXmlVehicles() end
+    return cachedXmlVehicles
 end
 
 local function getIniVehicles()
-    local files = FileMgr.FindFiles(iniVehiclesFolder, ".ini", true)
-    if not files or #files == 0 then return { folders = {}, files = {} } end
-    return buildFolderStructure(files, iniVehiclesFolder)
+    if not cachedIniVehicles then refreshIniVehicles() end
+    return cachedIniVehicles
 end
 
 local function getXmlMaps()
-    local files = FileMgr.FindFiles(xmlMapsFolder, ".xml", true)
-    if not files or #files == 0 then return { folders = {}, files = {} } end
-    return buildFolderStructure(files, xmlMapsFolder)
+    if not cachedXmlMaps then refreshXmlMaps() end
+    return cachedXmlMaps
 end
 
 local function getXmlOutfits()
-    local files = FileMgr.FindFiles(xmlOutfitsFolder, ".xml", true)
-    if not files or #files == 0 then return { folders = {}, files = {} } end
-    return buildFolderStructure(files, xmlOutfitsFolder)
+    if not cachedXmlOutfits then refreshXmlOutfits() end
+    return cachedXmlOutfits
 end
 
 local function folderContainsMatch(folderData, filterText)
@@ -365,6 +403,10 @@ local function renderMenyooTab()
                 if ClickGUI.BeginCustomChildWindow("XML Vehicles") then
 
                     searchXmlVehicles, _ = ImGui.InputText("##searchXmlVehicles", searchXmlVehicles, 256)
+                    ImGui.SameLine()
+                    if ImGui.Button("Refresh") then
+                        refreshXmlVehicles()
+                    end
                     ImGui.Spacing()
 
                     local xmlStructure = getXmlFiles()
@@ -420,6 +462,10 @@ local function renderMenyooTab()
                 if ClickGUI.BeginCustomChildWindow("INI Vehicles") then
 
                     searchIniVehicles, _ = ImGui.InputText("##searchIniVehicles", searchIniVehicles, 256)
+                    ImGui.SameLine()
+                    if ImGui.Button("Refresh") then
+                        refreshIniVehicles()
+                    end
                     ImGui.Spacing()
 
                     local iniStructure = getIniVehicles()
@@ -446,6 +492,11 @@ local function renderMenyooTab()
                     ImGui.SetWindowFontScale(1.0)
                     ImGui.Spacing()
 
+                    spawnerSettings.teleportToMap = ImGui.Checkbox("Teleport to Map", spawnerSettings.teleportToMap)
+                    if ImGui.IsItemHovered() then
+                        ImGui.SetTooltip("Teleport to the map's reference coordinates when spawning (if available)")
+                    end
+
                     spawnerSettings.networkMapsV2Enabled = ImGui.Checkbox("Network Maps V2", spawnerSettings.networkMapsV2Enabled)
                     if ImGui.IsItemHovered() then
                         ImGui.SetTooltip("Enable networking for spawned map objects (requires constructor_lib functions)")
@@ -454,12 +505,13 @@ local function renderMenyooTab()
                     if ImGui.IsItemHovered() then
                         ImGui.SetTooltip("Enable networking for spawned map objects using the older attachment method (spawns a vehicle at 0,0,0 and attaches everything to it)")
                     end
-                    spawnerSettings.spawnIn000Vehicle = ImGui.Checkbox("[Debug] Spawn in 0 0 0 Vehicle", spawnerSettings.spawnIn000Vehicle)
 
                     spawnerSettings.deleteOldMap = ImGui.Checkbox("Delete Old Map", spawnerSettings.deleteOldMap)
                     if ImGui.IsItemHovered() then
                         ImGui.SetTooltip("Delete the previously spawned map when a new one is spawned")
                     end
+
+                    spawnerSettings.spawnIn000Vehicle = ImGui.Checkbox("[Debug] Spawn in 0 0 0 Vehicle", spawnerSettings.spawnIn000Vehicle)
                     ImGui.Spacing()
 
                     if ImGui.Button("Delete All Spawned Maps") then
@@ -484,6 +536,10 @@ local function renderMenyooTab()
                 if ClickGUI.BeginCustomChildWindow("XML Maps") then
 
                     searchXmlMaps, _ = ImGui.InputText("##searchXmlMaps", searchXmlMaps, 256)
+                    ImGui.SameLine()
+                    if ImGui.Button("Refresh") then
+                        refreshXmlMaps()
+                    end
                     ImGui.Spacing()
 
                     local xmlStructure = getXmlMaps()
@@ -532,6 +588,10 @@ local function renderMenyooTab()
 
 
                     searchXmlOutfits, _ = ImGui.InputText("##searchXmlOutfits", searchXmlOutfits, 256)
+                    ImGui.SameLine()
+                    if ImGui.Button("Refresh") then
+                        refreshXmlOutfits()
+                    end
                     ImGui.Spacing()
 
                     local xmlStructure = getXmlOutfits()
@@ -647,7 +707,7 @@ spawning.init({
     currentSelectedVehicleIni = currentSelectedVehicleIni
 })
 
-spawning.startPreviewUpdater()
+
 
 robot.init({
     spawnerSettings = spawnerSettings,
