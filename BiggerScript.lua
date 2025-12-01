@@ -70,7 +70,7 @@ else
 end
 
 require("BiggerScript/natives/natives")
-GUI.AddToast("BiggerScriptv4.2", "Resource caching with refresh buttons (should improve performance)\nA teleport to map toggle", 5000, 0)
+GUI.AddToast("BiggerScriptv4.3", "Added PTFX support\nAdded Credits", 5000, 0)
 local menuRootPath = FileMgr.GetMenuRootPath()
 local biggerScriptRootPath = menuRootPath .. "\\Lua\\BiggerScript"
 local xmlVehiclesFolder = biggerScriptRootPath .. "\\XML Vehicles"
