@@ -10,6 +10,31 @@ local upsidedownmap_module, spawnerSettings, debug_print, spawnedVehicles, spawn
 local previewRotation = { z = 0.0 }
 -- Preview Feature End
 
+local function parse_attributes(attrString)
+    local attrs = {}
+    if not attrString then return attrs end
+    for key, value in attrString:gmatch('([%w_]+)%s*=%s*"([^"]*)"') do
+        attrs[key] = value
+    end
+    return attrs
+end
+
+local function parse_self_closing_tag(xml, tagName)
+    if not xml or not tagName then return nil end
+    return xml:match("<" .. tagName .. "(.-)/>")
+end
+
+local function parse_vector_from_tag(xml, tagName)
+    local snippet = parse_self_closing_tag(xml, tagName)
+    if not snippet then return nil end
+    local attrs = parse_attributes(snippet)
+    return {
+        x = M.safe_tonumber(attrs.X or attrs.x, 0.0),
+        y = M.safe_tonumber(attrs.Y or attrs.y, 0.0),
+        z = M.safe_tonumber(attrs.Z or attrs.z, 0.0)
+    }
+end
+
 -- Functions to be initialized from the main script
 function M.init(context)
     upsidedownmap_module = context.upsidedownmap_module
@@ -174,6 +199,393 @@ function M.parse_outfit_ped_data(xmlContent)
         end
     end
     return outfitData
+end
+
+function M.parse_task_sequence(taskSequenceXml, autoStartFlag)
+    if not taskSequenceXml then return nil end
+    local sequence = { tasks = {}, autoStart = autoStartFlag }
+    for taskInner in taskSequenceXml:gmatch("<Task>(.-)</Task>") do
+        local task = {}
+        task.Type = M.safe_tonumber(M.get_xml_element_content(taskInner, "Type"), nil)
+        if task.Type then
+            task.Duration = M.safe_tonumber(M.get_xml_element_content(taskInner, "Duration"), 0)
+            task.KeepTaskRunningAfterTime = M.safe_tonumber(M.get_xml_element_content(taskInner, "KeepTaskRunningAfterTime"), nil)
+            task.IsLoopedTask = M.to_boolean(M.get_xml_element_content(taskInner, "IsLoopedTask"))
+            task.Delay = M.safe_tonumber(M.get_xml_element_content(taskInner, "Delay"), 0)
+            task.AssetName = M.get_xml_element_content(taskInner, "AssetName")
+            task.EffectName = M.get_xml_element_content(taskInner, "EffectName")
+            task.Scale = M.safe_tonumber(M.get_xml_element_content(taskInner, "Scale"), 1.0)
+            local colourSnippet = parse_self_closing_tag(taskInner, "Colour")
+            if colourSnippet then
+                local colourAttrs = parse_attributes(colourSnippet)
+                task.Colour = {
+                    r = M.safe_tonumber(colourAttrs.R or colourAttrs.r, 255),
+                    g = M.safe_tonumber(colourAttrs.G or colourAttrs.g, 255),
+                    b = M.safe_tonumber(colourAttrs.B or colourAttrs.b, 255),
+                    a = M.safe_tonumber(colourAttrs.A or colourAttrs.a, 255)
+                }
+            end
+            task.RelativePosition = parse_vector_from_tag(taskInner, "RelativePosition")
+            task.RelativeRotation = parse_vector_from_tag(taskInner, "RelativeRotation")
+            table.insert(sequence.tasks, task)
+        end
+    end
+    if #sequence.tasks == 0 then return nil end
+    if sequence.autoStart == nil then sequence.autoStart = true end
+    return sequence
+end
+
+local function normalize_colour_component(value, default)
+    local component = M.safe_tonumber(value, default or 255) or (default or 255)
+    if component < 0 then component = 0 end
+    if component > 255 then component = 255 end
+    return component / 255.0
+end
+
+local function ensure_ptfx_asset_loaded(assetName)
+    if not assetName or assetName == "" then return false end
+    if not STREAMING or not STREAMING.REQUEST_NAMED_PTFX_ASSET or not STREAMING.HAS_NAMED_PTFX_ASSET_LOADED then
+        return false
+    end
+    STREAMING.REQUEST_NAMED_PTFX_ASSET(assetName)
+    local waited = 0
+    local maxWait = 2000
+    while waited < maxWait do
+        if STREAMING.HAS_NAMED_PTFX_ASSET_LOADED(assetName) then
+            return true
+        end
+        Script.Yield(50)
+        waited = waited + 50
+    end
+    return STREAMING.HAS_NAMED_PTFX_ASSET_LOADED(assetName)
+end
+
+function M.apply_task_sequence_to_entity(entityHandle, sequence)
+    if not sequence or not entityHandle or entityHandle == 0 then return end
+    if sequence.autoStart == false then
+        M.debug_print("TaskSequence Auto-start disabled, skipping for entity:", tostring(entityHandle))
+        return
+    end
+    if not sequence.tasks or #sequence.tasks == 0 then return end
+    for _, task in ipairs(sequence.tasks) do
+        M.execute_task_sequence_item(entityHandle, task)
+    end
+end
+
+function M.execute_task_sequence_item(entityHandle, task)
+    if not task or not task.Type then return end
+    if task.Type == 39 then
+        M.run_ptfx_task(entityHandle, task)
+    else
+        M.debug_print("TaskSequence Unsupported task type:", tostring(task.Type))
+    end
+end
+
+function M.run_ptfx_task(entityHandle, task)
+    if not task or not (task.EffectName and task.AssetName) then
+        M.debug_print("TaskSequence Missing asset or effect, skipping task.")
+        return
+    end
+    if not GRAPHICS then
+        M.debug_print("TaskSequence GRAPHICS natives unavailable, skipping task.")
+        return
+    end
+    
+    Script.QueueJob(function()
+        if task.Delay and task.Delay > 0 then Script.Yield(task.Delay) end
+        
+
+        if not ENTITY or not ENTITY.DOES_ENTITY_EXIST or not ENTITY.DOES_ENTITY_EXIST(entityHandle) then
+            M.debug_print("TaskSequence Entity does not exist, skipping PTFX")
+            return
+        end
+        
+ 
+        if not ensure_ptfx_asset_loaded(task.AssetName) then
+            M.debug_print("TaskSequence Failed to load PTFX asset:", tostring(task.AssetName))
+            return
+        end
+        
+        local pos = task.RelativePosition or { x = 0.0, y = 0.0, z = 0.0 }
+        local rot = task.RelativeRotation or { x = 0.0, y = 0.0, z = 0.0 }
+        local scale = task.Scale or 1.0
+        
+        if task.IsLoopedTask then
+            M.debug_print("TaskSequence Starting looped PTFX:", task.EffectName)
+            
+            local handle = nil
+            local ok, err = pcall(function()
+
+                if GRAPHICS.USE_PARTICLE_FX_ASSET then
+                    GRAPHICS.USE_PARTICLE_FX_ASSET(task.AssetName)
+                end
+
+                local r, g, b, a = 1.0, 1.0, 1.0, 1.0
+                if task.Colour then
+                    r = normalize_colour_component(task.Colour.r, 255)
+                    g = normalize_colour_component(task.Colour.g, 255)
+                    b = normalize_colour_component(task.Colour.b, 255)
+                    a = normalize_colour_component(task.Colour.a, 255)
+                end
+
+                if GRAPHICS.START_NETWORKED_PARTICLE_FX_LOOPED_ON_ENTITY_BONE then
+                    M.debug_print("TaskSequence Using networked looped PTFX (Bone)")
+                    handle = GRAPHICS.START_NETWORKED_PARTICLE_FX_LOOPED_ON_ENTITY_BONE(
+                        task.EffectName,
+                        entityHandle,
+                        pos.x or 0.0, pos.y or 0.0, pos.z or 0.0,
+                        rot.x or 0.0, rot.y or 0.0, rot.z or 0.0,
+                        0,
+                        scale,
+                        false, false, false,
+                        r, g, b, a
+                    )
+                elseif GRAPHICS.START_PARTICLE_FX_LOOPED_ON_ENTITY_BONE then
+                    M.debug_print("TaskSequence Using local looped PTFX (Bone)")
+                    handle = GRAPHICS.START_PARTICLE_FX_LOOPED_ON_ENTITY_BONE(
+                        task.EffectName,
+                        entityHandle,
+                        pos.x or 0.0, pos.y or 0.0, pos.z or 0.0,
+                        rot.x or 0.0, rot.y or 0.0, rot.z or 0.0,
+                        0,
+                        scale,
+                        false, false, false
+                    )
+                elseif GRAPHICS.START_NETWORKED_PARTICLE_FX_LOOPED_ON_ENTITY then
+                    M.debug_print("TaskSequence Using networked looped PTFX (Entity)")
+                    handle = GRAPHICS.START_NETWORKED_PARTICLE_FX_LOOPED_ON_ENTITY(
+                        task.EffectName,
+                        entityHandle,
+                        pos.x or 0.0, pos.y or 0.0, pos.z or 0.0,
+                        rot.x or 0.0, rot.y or 0.0, rot.z or 0.0,
+                        scale,
+                        false, false, false,
+                        r, g, b, a
+                    )
+                elseif GRAPHICS.START_PARTICLE_FX_LOOPED_ON_ENTITY then
+                    M.debug_print("TaskSequence Using local looped PTFX (Entity)")
+                    handle = GRAPHICS.START_PARTICLE_FX_LOOPED_ON_ENTITY(
+                        task.EffectName,
+                        entityHandle,
+                        pos.x or 0.0, pos.y or 0.0, pos.z or 0.0,
+                        rot.x or 0.0, rot.y or 0.0, rot.z or 0.0,
+                        scale,
+                        false, false, false
+                    )
+                else
+                    M.debug_print("TaskSequence Looped particle native unavailable.")
+                end
+            end)
+
+            if not ok then
+                M.debug_print("TaskSequence Error starting looped PTFX:", tostring(err))
+                return
+            end
+            
+            if handle and handle ~= 0 then
+                M.debug_print("TaskSequence Looped PTFX started with handle:", tostring(handle))
+                
+
+                if task.Colour then
+                    local r = normalize_colour_component(task.Colour.r, 255)
+                    local g = normalize_colour_component(task.Colour.g, 255)
+                    local b = normalize_colour_component(task.Colour.b, 255)
+                    local a = normalize_colour_component(task.Colour.a, 255)
+                    
+                    if GRAPHICS.SET_PARTICLE_FX_LOOPED_COLOUR then
+                        pcall(function()
+                            GRAPHICS.SET_PARTICLE_FX_LOOPED_COLOUR(handle, r, g, b, false)
+                        end)
+                    end
+                    if GRAPHICS.SET_PARTICLE_FX_LOOPED_ALPHA then
+                        pcall(function()
+                            GRAPHICS.SET_PARTICLE_FX_LOOPED_ALPHA(handle, a)
+                        end)
+                    end
+                end
+                
+                if GRAPHICS.SET_PARTICLE_FX_LOOPED_SCALE then
+                    pcall(function()
+                        GRAPHICS.SET_PARTICLE_FX_LOOPED_SCALE(handle, scale)
+                    end)
+                end
+                
+                if task.KeepTaskRunningAfterTime and task.KeepTaskRunningAfterTime < 0 then
+                    local refreshInterval = 150
+                    M.debug_print("TaskSequence PTFX will loop indefinitely, restarting every:", refreshInterval, "ms")
+                    
+                    Script.QueueJob(function()
+                        while ENTITY and ENTITY.DOES_ENTITY_EXIST and ENTITY.DOES_ENTITY_EXIST(entityHandle) do
+                            Script.Yield(refreshInterval)
+                            
+
+                            if not ENTITY.DOES_ENTITY_EXIST(entityHandle) then
+                                break
+                            end
+                            
+
+                            if GRAPHICS.STOP_PARTICLE_FX_LOOPED then
+                                pcall(function() 
+                                    GRAPHICS.STOP_PARTICLE_FX_LOOPED(handle, false) 
+                                end)
+                            end
+                            
+
+                            if not ensure_ptfx_asset_loaded(task.AssetName) then
+                                M.debug_print("TaskSequence Failed to reload PTFX asset, stopping loop")
+                                break
+                            end
+                            
+ 
+                            local newHandle = nil
+                            pcall(function()
+                                if GRAPHICS.USE_PARTICLE_FX_ASSET then
+                                    GRAPHICS.USE_PARTICLE_FX_ASSET(task.AssetName)
+                                end
+                                
+                                local r, g, b, a = 1.0, 1.0, 1.0, 1.0
+                                if task.Colour then
+                                    r = normalize_colour_component(task.Colour.r, 255)
+                                    g = normalize_colour_component(task.Colour.g, 255)
+                                    b = normalize_colour_component(task.Colour.b, 255)
+                                    a = normalize_colour_component(task.Colour.a, 255)
+                                end
+                                
+                                if GRAPHICS.START_NETWORKED_PARTICLE_FX_LOOPED_ON_ENTITY_BONE then
+                                    newHandle = GRAPHICS.START_NETWORKED_PARTICLE_FX_LOOPED_ON_ENTITY_BONE(
+                                        task.EffectName,
+                                        entityHandle,
+                                        pos.x or 0.0, pos.y or 0.0, pos.z or 0.0,
+                                        rot.x or 0.0, rot.y or 0.0, rot.z or 0.0,
+                                        0,
+                                        scale,
+                                        false, false, false,
+                                        r, g, b, a
+                                    )
+                                elseif GRAPHICS.START_PARTICLE_FX_LOOPED_ON_ENTITY_BONE then
+                                    newHandle = GRAPHICS.START_PARTICLE_FX_LOOPED_ON_ENTITY_BONE(
+                                        task.EffectName,
+                                        entityHandle,
+                                        pos.x or 0.0, pos.y or 0.0, pos.z or 0.0,
+                                        rot.x or 0.0, rot.y or 0.0, rot.z or 0.0,
+                                        0,
+                                        scale,
+                                        false, false, false
+                                    )
+                                elseif GRAPHICS.START_NETWORKED_PARTICLE_FX_LOOPED_ON_ENTITY then
+                                    newHandle = GRAPHICS.START_NETWORKED_PARTICLE_FX_LOOPED_ON_ENTITY(
+                                        task.EffectName,
+                                        entityHandle,
+                                        pos.x or 0.0, pos.y or 0.0, pos.z or 0.0,
+                                        rot.x or 0.0, rot.y or 0.0, rot.z or 0.0,
+                                        scale,
+                                        false, false, false,
+                                        r, g, b, a
+                                    )
+                                elseif GRAPHICS.START_PARTICLE_FX_LOOPED_ON_ENTITY then
+                                    newHandle = GRAPHICS.START_PARTICLE_FX_LOOPED_ON_ENTITY(
+                                        task.EffectName,
+                                        entityHandle,
+                                        pos.x or 0.0, pos.y or 0.0, pos.z or 0.0,
+                                        rot.x or 0.0, rot.y or 0.0, rot.z or 0.0,
+                                        scale,
+                                        false, false, false
+                                    )
+                                end
+                            end)
+                            
+                            if newHandle and newHandle ~= 0 then
+                                handle = newHandle
+                                M.debug_print("TaskSequence PTFX restarted with new handle:", tostring(handle))
+                                
+
+                                if task.Colour then
+                                    local r = normalize_colour_component(task.Colour.r, 255)
+                                    local g = normalize_colour_component(task.Colour.g, 255)
+                                    local b = normalize_colour_component(task.Colour.b, 255)
+                                    local a = normalize_colour_component(task.Colour.a, 255)
+                                    
+                                    if GRAPHICS.SET_PARTICLE_FX_LOOPED_COLOUR then
+                                        pcall(function()
+                                            GRAPHICS.SET_PARTICLE_FX_LOOPED_COLOUR(handle, r, g, b, false)
+                                        end)
+                                    end
+                                    if GRAPHICS.SET_PARTICLE_FX_LOOPED_ALPHA then
+                                        pcall(function()
+                                            GRAPHICS.SET_PARTICLE_FX_LOOPED_ALPHA(handle, a)
+                                        end)
+                                    end
+                                end
+                                
+                                if GRAPHICS.SET_PARTICLE_FX_LOOPED_SCALE then
+                                    pcall(function()
+                                        GRAPHICS.SET_PARTICLE_FX_LOOPED_SCALE(handle, scale)
+                                    end)
+                                end
+                            else
+                                M.debug_print("TaskSequence PTFX restart failed, stopping loop")
+                                break
+                            end
+                        end
+                        
+
+                        if GRAPHICS.STOP_PARTICLE_FX_LOOPED and handle then
+                            pcall(function() 
+                                GRAPHICS.STOP_PARTICLE_FX_LOOPED(handle, false) 
+                                M.debug_print("TaskSequence Stopped PTFX (loop ended):", tostring(handle))
+                            end)
+                        end
+                    end)
+                elseif task.Duration and task.Duration > 0 then
+                    M.debug_print("TaskSequence PTFX will run for duration:", task.Duration)
+                    Script.QueueJob(function()
+                        Script.Yield(task.Duration)
+                        if GRAPHICS.STOP_PARTICLE_FX_LOOPED then
+                            pcall(function() 
+                                GRAPHICS.STOP_PARTICLE_FX_LOOPED(handle, false) 
+                                M.debug_print("TaskSequence Stopped PTFX after duration:", tostring(handle))
+                            end)
+                        end
+                    end)
+                else
+                    M.debug_print("TaskSequence PTFX will run indefinitely (no duration specified)")
+                end
+            else
+                M.debug_print("TaskSequence Looped PTFX failed to start (handle is 0/nil)")
+            end
+        else
+            M.debug_print("TaskSequence Starting non-looped PTFX:", task.EffectName)
+            if task.Colour and GRAPHICS.SET_PARTICLE_FX_NON_LOOPED_COLOUR then
+                pcall(function()
+                    GRAPHICS.SET_PARTICLE_FX_NON_LOOPED_COLOUR(
+                        normalize_colour_component(task.Colour.r, 255),
+                        normalize_colour_component(task.Colour.g, 255),
+                        normalize_colour_component(task.Colour.b, 255)
+                    )
+                end)
+            end
+            
+            local startNonLooped = GRAPHICS.START_NETWORKED_PARTICLE_FX_NON_LOOPED_ON_ENTITY or GRAPHICS.START_PARTICLE_FX_NON_LOOPED_ON_ENTITY
+            
+            if startNonLooped then
+                pcall(function()
+                    if GRAPHICS.USE_PARTICLE_FX_ASSET then
+                        GRAPHICS.USE_PARTICLE_FX_ASSET(task.AssetName)
+                    end
+                    startNonLooped(
+                        task.EffectName,
+                        entityHandle,
+                        pos.x or 0.0, pos.y or 0.0, pos.z or 0.0,
+                        rot.x or 0.0, rot.y or 0.0, rot.z or 0.0,
+                        scale,
+                        false, false, false
+                    )
+                end)
+            else
+                M.debug_print("TaskSequence Non-looped particle native unavailable.")
+            end
+        end
+    end)
 end
 
 function M.parse_ini_file(filePath)
@@ -350,6 +762,14 @@ end
 
 function M.parse_spooner_attachments(xml)
     local out = {}
+    local defaultTaskAutoStart = nil
+    local spoonerAttributes = xml:match("<SpoonerAttachments([^>]*)>")
+    if spoonerAttributes then
+        local attrs = parse_attributes(spoonerAttributes)
+        if attrs and attrs.StartTaskSequencesOnLoad ~= nil then
+            defaultTaskAutoStart = M.to_boolean(attrs.StartTaskSequencesOnLoad)
+        end
+    end
     local s = M.get_xml_element(xml, "SpoonerAttachments")
     if not s then return out end
     local searchPos = 1
@@ -488,6 +908,11 @@ end
 
 -- Debug to verify
 M.debug_print("[Parse Attach Debug] IsCollisionProof tag read as:", tostring(e.IsCollisionProof))
+
+                local taskSequenceXml = M.get_xml_element(attInner, "TaskSequence")
+                if taskSequenceXml then
+                    e.TaskSequence = M.parse_task_sequence(taskSequenceXml, defaultTaskAutoStart)
+                end
 
                 if e.ModelHash then
                     local mh = M.safe_tonumber(e.ModelHash, nil)
@@ -662,6 +1087,10 @@ M.debug_print("[Spawn Debug] Attachment", i, "XML IsCollisionProof value:", tost
         if att.PedProperties and (tostring(att.Type) == "1") then
             M.apply_ped_properties(h, att.PedProperties)
             M.debug_print("[Spawn Debug] Applied ped properties for attachment", i)
+        end
+        if att.TaskSequence then
+            M.apply_task_sequence_to_entity(h, att.TaskSequence)
+            M.debug_print("[Spawn Debug] TaskSequence detected and applied for attachment", i)
         end
         local meta = {
             created = h,
@@ -1030,6 +1459,14 @@ end
 
 function M.parse_outfit_attachments(xmlContent)
     local attachments = {}
+    local defaultTaskAutoStart = nil
+    local attrSnippet = xmlContent:match("<SpoonerAttachments([^>]*)>")
+    if attrSnippet then
+        local attrs = parse_attributes(attrSnippet)
+        if attrs and attrs.StartTaskSequencesOnLoad ~= nil then
+            defaultTaskAutoStart = M.to_boolean(attrs.StartTaskSequencesOnLoad)
+        end
+    end
     local spoonerAttachmentsElement = M.get_xml_element(xmlContent, "SpoonerAttachments")
     if not spoonerAttachmentsElement then
         return attachments
@@ -1075,6 +1512,10 @@ function M.parse_outfit_attachments(xmlContent)
             attachment.Attachment.Pitch = M.safe_tonumber(M.get_xml_element_content(attachmentDataElement, "Pitch"), 0.0)
             attachment.Attachment.Roll = M.safe_tonumber(M.get_xml_element_content(attachmentDataElement, "Roll"), 0.0)
             attachment.Attachment.Yaw = M.safe_tonumber(M.get_xml_element_content(attachmentDataElement, "Yaw"), 0.0)
+        end
+        local taskSequenceElement = M.get_xml_element(attachmentElement, "TaskSequence")
+        if taskSequenceElement then
+            attachment.TaskSequence = M.parse_task_sequence(taskSequenceElement, defaultTaskAutoStart)
         end
         table.insert(attachments, attachment)
     end

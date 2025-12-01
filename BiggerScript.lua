@@ -606,23 +606,40 @@ local function renderMenyooTab()
         end
 
         if ImGui.BeginTabItem("Special") then
-            if ClickGUI.BeginCustomChildWindow("Special Stuff") then
-                ImGui.SetWindowFontScale(1.0)
+            local columns = 2
+            if ImGui.BeginTable("SpecialTable", columns, ImGuiTableFlags.SizingStretchSame) then
+                ImGui.TableNextRow()
+                ImGui.TableSetColumnIndex(0)
+                if ClickGUI.BeginCustomChildWindow("Special Stuff") then
+                    ImGui.SetWindowFontScale(1.0)
+                    
+                    if ImGui.Button("Spawn Robot") then
+                        robot.spawnRobot()
+                    end
+
+                    if ImGui.Button("Self Destruction") then
+                        robot.selfDestructRobot()
+                    end
+
+                    ImGui.Spacing()
+                    if ImGui.Button("Upside Down Map v3") then
+                        spawning.spawnUpsideDownMapV3()
+                    end
+
+                    ClickGUI.EndCustomChildWindow()
+                end
+
+                ImGui.TableSetColumnIndex(1)
+                if ClickGUI.BeginCustomChildWindow("Credits") then
+                    ImGui.Text("Menyoo")
+                    ImGui.Text("Constructor by hexarobi")
+                    ImGui.Text("Lance Spooner")
+                    ImGui.Text("Kek's Lua")
+                    ImGui.Text("2take1script")
+                    ClickGUI.EndCustomChildWindow()
+                end
                 
-                if ImGui.Button("Spawn Robot") then
-                    robot.spawnRobot()
-                end
-
-                if ImGui.Button("Self Destruction") then
-                    robot.selfDestructRobot()
-                end
-
-                ImGui.Spacing()
-                if ImGui.Button("Upside Down Map v3") then
-                    spawning.spawnUpsideDownMapV3()
-                end
-
-                ClickGUI.EndCustomChildWindow()
+                ImGui.EndTable()
             end
             ImGui.EndTabItem()
         end
