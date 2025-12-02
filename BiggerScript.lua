@@ -1,5 +1,5 @@
 ---bigger script
-
+GUI.AddToast("BiggerScriptv4.4", "Added Custom Colors support/loading", 5000, 0)
 package.path = FileMgr.GetMenuRootPath() .. "\\Lua\\?.lua;"
 
 local LoadLocalLibraries = false -- Set to true to load libraries from local files
@@ -70,7 +70,7 @@ else
 end
 
 require("BiggerScript/natives/natives")
-GUI.AddToast("BiggerScriptv4.3", "Added PTFX support\nAdded Credits", 5000, 0)
+
 local menuRootPath = FileMgr.GetMenuRootPath()
 local biggerScriptRootPath = menuRootPath .. "\\Lua\\BiggerScript"
 local xmlVehiclesFolder = biggerScriptRootPath .. "\\XML Vehicles"
@@ -636,6 +636,8 @@ local function renderMenyooTab()
                     ImGui.Text("Lance Spooner")
                     ImGui.Text("Kek's Lua")
                     ImGui.Text("2take1script")
+                    ImGui.Text("Everyone who made and shared their creations")
+                    ImGui.Text("Ai Free Usage")
                     ClickGUI.EndCustomChildWindow()
                 end
                 

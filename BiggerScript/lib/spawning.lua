@@ -846,6 +846,32 @@ function M.parse_spooner_attachments(xml)
                         end
                     end
                 end
+                
+                -- Parse VehicleProperties for attachments
+                local vehProps = M.get_xml_element(attInner, "VehicleProperties")
+                if vehProps then
+                    e.VehicleProperties = {}
+                    -- Parse colors using the helper
+                    e.VehicleProperties.Colours = M.parse_vehicle_colors(attInner)
+                    -- Parse mods using the helper
+                    e.VehicleProperties.Mods = M.parse_vehicle_mods(attInner)
+                    -- Parse other vehicle properties as needed (e.g. Livery, Plate)
+                    e.VehicleProperties.Livery = M.safe_tonumber(M.get_xml_element_content(vehProps, "Livery"), nil)
+                    e.VehicleProperties.NumberPlateText = M.get_xml_element_content(vehProps, "NumberPlateText")
+                    e.VehicleProperties.NumberPlateIndex = M.safe_tonumber(M.get_xml_element_content(vehProps, "NumberPlateIndex"), nil)
+                    e.VehicleProperties.WheelType = M.safe_tonumber(M.get_xml_element_content(vehProps, "WheelType"), nil)
+                    e.VehicleProperties.WindowTint = M.safe_tonumber(M.get_xml_element_content(vehProps, "WindowTint"), nil)
+                    e.VehicleProperties.DirtLevel = M.safe_tonumber(M.get_xml_element_content(vehProps, "DirtLevel"), nil)
+                    e.VehicleProperties.EngineOn = M.to_boolean(M.get_xml_element_content(vehProps, "EngineOn"))
+                    
+                    local bulletProofTyres = M.get_xml_element_content(vehProps, "BulletProofTyres")
+                    if bulletProofTyres ~= nil then
+                        e.VehicleProperties.BulletProofTyres = M.to_boolean(bulletProofTyres)
+                    end
+                    
+                    -- Neons
+                    e.VehicleProperties.Neons = M.parse_vehicle_neons(attInner)
+                end
                 local posRot = M.get_xml_element(attInner, "PositionRotation")
                 if posRot then
                     e.PositionRotation = {}
@@ -1087,6 +1113,64 @@ M.debug_print("[Spawn Debug] Attachment", i, "XML IsCollisionProof value:", tost
         if att.PedProperties and (tostring(att.Type) == "1") then
             M.apply_ped_properties(h, att.PedProperties)
             M.debug_print("[Spawn Debug] Applied ped properties for attachment", i)
+        end
+        if att.VehicleProperties and (tostring(att.Type) == "2") then
+            local vp = att.VehicleProperties
+            local colors = vp.Colours
+            if colors then
+                if colors.Primary ~= nil or colors.Secondary ~= nil then
+                    M.try_call(VEHICLE, "SET_VEHICLE_COLOURS", h, colors.Primary or 0, colors.Secondary or 0)
+                end
+                
+                if colors.IsPrimaryColourCustom then
+                    M.try_call(VEHICLE, "SET_VEHICLE_CUSTOM_PRIMARY_COLOUR", h, colors.Cust1_R, colors.Cust1_G, colors.Cust1_B)
+                end
+
+                if colors.IsSecondaryColourCustom then
+                    M.try_call(VEHICLE, "SET_VEHICLE_CUSTOM_SECONDARY_COLOUR", h, colors.Cust2_R, colors.Cust2_G, colors.Cust2_B)
+                end
+
+                if colors.Pearl ~= nil or colors.Rim ~= nil then
+                    M.try_call(VEHICLE, "SET_VEHICLE_EXTRA_COLOURS", h, colors.Pearl or 0, colors.Rim or 0)
+                end
+                if colors.tyreSmoke_R and colors.tyreSmoke_G and colors.tyreSmoke_B then
+                    M.try_call(VEHICLE, "SET_VEHICLE_TYRE_SMOKE_COLOR", h, colors.tyreSmoke_R, colors.tyreSmoke_G, colors.tyreSmoke_B)
+                end
+                if colors.LrInterior and colors.LrInterior > 0 then M.try_call(VEHICLE, "_SET_VEHICLE_INTERIOR_COLOR", h, colors.LrInterior) end
+                if colors.LrDashboard and colors.LrDashboard > 0 then M.try_call(VEHICLE, "_SET_VEHICLE_DASHBOARD_COLOR", h, colors.LrDashboard) end
+            end
+            
+            if vp.Mods then
+                M.try_call(VEHICLE, "SET_VEHICLE_MOD_KIT", h, 0)
+                for modId, modData in pairs(vp.Mods) do
+                    if modData and modData.mod and modData.mod >= 0 then M.try_call(VEHICLE, "SET_VEHICLE_MOD", h, modId, modData.mod, false) end
+                end
+            end
+            
+            if vp.Livery and vp.Livery >= 0 then M.try_call(VEHICLE, "SET_VEHICLE_LIVERY", h, vp.Livery) end
+            if vp.NumberPlateText then M.try_call(VEHICLE, "SET_VEHICLE_NUMBER_PLATE_TEXT", h, vp.NumberPlateText) end
+            if vp.NumberPlateIndex then M.try_call(VEHICLE, "SET_VEHICLE_NUMBER_PLATE_TEXT_INDEX", h, vp.NumberPlateIndex) end
+            if vp.WheelType then M.try_call(VEHICLE, "SET_VEHICLE_WHEEL_TYPE", h, vp.WheelType) end
+            if vp.WindowTint and vp.WindowTint >= 0 then M.try_call(VEHICLE, "SET_VEHICLE_WINDOW_TINT", h, vp.WindowTint) end
+            if vp.DirtLevel then M.try_call(VEHICLE, "SET_VEHICLE_DIRT_LEVEL", h, vp.DirtLevel) end
+            if vp.BulletProofTyres ~= nil then M.try_call(VEHICLE, "SET_VEHICLE_TYRES_CAN_BURST", h, not vp.BulletProofTyres) end
+            if vp.EngineOn ~= nil and spawnerSettings.vehicleEngineOn and vp.EngineOn then M.try_call(VEHICLE, "SET_VEHICLE_ENGINE_ON", h, true, true, false) end
+            
+            if vp.Neons then
+                M.try_call(VEHICLE, "_SET_VEHICLE_NEON_LIGHT_ENABLED", h, 0, vp.Neons.Left or false)
+                M.try_call(VEHICLE, "_SET_VEHICLE_NEON_LIGHT_ENABLED", h, 1, vp.Neons.Right or false)
+                M.try_call(VEHICLE, "_SET_VEHICLE_NEON_LIGHT_ENABLED", h, 2, vp.Neons.Front or false)
+                M.try_call(VEHICLE, "_SET_VEHICLE_NEON_LIGHT_ENABLED", h, 3, vp.Neons.Back or false)
+                M.try_call(VEHICLE, "SET_VEHICLE_NEON_LIGHT_ENABLED", h, 0, vp.Neons.Left or false)
+                M.try_call(VEHICLE, "SET_VEHICLE_NEON_LIGHT_ENABLED", h, 1, vp.Neons.Right or false)
+                M.try_call(VEHICLE, "SET_VEHICLE_NEON_LIGHT_ENABLED", h, 2, vp.Neons.Front or false)
+                M.try_call(VEHICLE, "SET_VEHICLE_NEON_LIGHT_ENABLED", h, 3, vp.Neons.Back or false)
+                if vp.Neons.R and vp.Neons.G and vp.Neons.B then
+                    M.try_call(VEHICLE, "SET_VEHICLE_NEON_LIGHTS_COLOUR", h, vp.Neons.R, vp.Neons.G, vp.Neons.B)
+                end
+            end
+            
+            M.debug_print("[Spawn Debug] Applied vehicle properties for attachment", i)
         end
         if att.TaskSequence then
             M.apply_task_sequence_to_entity(h, att.TaskSequence)
@@ -1370,6 +1454,18 @@ function M.parse_vehicle_colors(xml)
     colors.tyreSmoke_B = M.safe_tonumber(M.get_xml_element_content(colorsSection, "tyreSmoke_B"), nil)
     colors.LrInterior = M.safe_tonumber(M.get_xml_element_content(colorsSection, "LrInterior"), nil)
     colors.LrDashboard = M.safe_tonumber(M.get_xml_element_content(colorsSection, "LrDashboard"), nil)
+
+    -- Custom Colors
+    colors.IsPrimaryColourCustom = M.to_boolean(M.get_xml_element_content(colorsSection, "IsPrimaryColourCustom"))
+    colors.Cust1_R = M.safe_tonumber(M.get_xml_element_content(colorsSection, "Cust1_R"), 0)
+    colors.Cust1_G = M.safe_tonumber(M.get_xml_element_content(colorsSection, "Cust1_G"), 0)
+    colors.Cust1_B = M.safe_tonumber(M.get_xml_element_content(colorsSection, "Cust1_B"), 0)
+
+    colors.IsSecondaryColourCustom = M.to_boolean(M.get_xml_element_content(colorsSection, "IsSecondaryColourCustom"))
+    colors.Cust2_R = M.safe_tonumber(M.get_xml_element_content(colorsSection, "Cust2_R"), 0)
+    colors.Cust2_G = M.safe_tonumber(M.get_xml_element_content(colorsSection, "Cust2_G"), 0)
+    colors.Cust2_B = M.safe_tonumber(M.get_xml_element_content(colorsSection, "Cust2_B"), 0)
+
     return colors
 end
 
@@ -2162,6 +2258,15 @@ function M.spawnVehicleFromXML(filePath, isPreview)
                 if colors.Primary ~= nil or colors.Secondary ~= nil then
                     M.try_call(VEHICLE, "SET_VEHICLE_COLOURS", vehicleHandle, colors.Primary or 0, colors.Secondary or 0)
                 end
+
+                if colors.IsPrimaryColourCustom then
+                    M.try_call(VEHICLE, "SET_VEHICLE_CUSTOM_PRIMARY_COLOUR", vehicleHandle, colors.Cust1_R, colors.Cust1_G, colors.Cust1_B)
+                end
+
+                if colors.IsSecondaryColourCustom then
+                    M.try_call(VEHICLE, "SET_VEHICLE_CUSTOM_SECONDARY_COLOUR", vehicleHandle, colors.Cust2_R, colors.Cust2_G, colors.Cust2_B)
+                end
+
                 if colors.Pearl ~= nil or colors.Rim ~= nil then
                     M.try_call(VEHICLE, "SET_VEHICLE_EXTRA_COLOURS", vehicleHandle, colors.Pearl or 0, colors.Rim or 0)
                 end
