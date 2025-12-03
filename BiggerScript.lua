@@ -385,13 +385,9 @@ local function renderMenyooTab()
                     ImGui.Spacing()
 
 
-                    ImGui.PushStyleColor(ImGuiCol.Button, 0.36, 0.016, 0.157, 1.0) 
-                    ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.46, 0.06, 0.22, 1.0)
-                    ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.26, 0.01, 0.10, 1.0)
                     if ImGui.Button("Delete All Spawned Vehicles") then
                         spawning.deleteAllSpawnedVehicles()
                     end
-                    ImGui.PopStyleColor(3)
 
                     if ImGui.IsItemHovered() then
                         ImGui.SetTooltip("Delete all previously spawned vehicles and their attachments")
@@ -448,13 +444,9 @@ local function renderMenyooTab()
                     ImGui.Spacing()
 
 
-                    ImGui.PushStyleColor(ImGuiCol.Button, 0.36, 0.016, 0.157, 1.0)
-                    ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.46, 0.06, 0.22, 1.0)
-                    ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.26, 0.01, 0.10, 1.0)
                     if ImGui.Button("Delete All Spawned Vehicles") then
                         spawning.deleteAllSpawnedVehicles()
                     end
-                    ImGui.PopStyleColor(3)
 
                     if ImGui.IsItemHovered() then
                         ImGui.SetTooltip("Delete all previously spawned vehicles and their attachments")
@@ -507,7 +499,7 @@ local function renderMenyooTab()
 
                     spawnerSettings.networkMapsV2Enabled = ImGui.Checkbox("Network Maps V2", spawnerSettings.networkMapsV2Enabled)
                     if ImGui.IsItemHovered() then
-                        ImGui.SetTooltip("Enable networking for spawned map objects")
+                        ImGui.SetTooltip("Enable networking for spawned map objects (requires constructor_lib functions)")
                     end
                     spawnerSettings.networkMapsV1Enabled = ImGui.Checkbox("Network Maps V1", spawnerSettings.networkMapsV1Enabled)
                     if ImGui.IsItemHovered() then
@@ -522,13 +514,9 @@ local function renderMenyooTab()
                     spawnerSettings.spawnIn000Vehicle = ImGui.Checkbox("[Debug] Spawn in 0 0 0 Vehicle", spawnerSettings.spawnIn000Vehicle)
                     ImGui.Spacing()
 
-                    ImGui.PushStyleColor(ImGuiCol.Button, 0.36, 0.016, 0.157, 1.0)
-                    ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.46, 0.06, 0.22, 1.0)
-                    ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.26, 0.01, 0.10, 1.0)
                     if ImGui.Button("Delete All Spawned Maps") then
                         spawning.deleteAllSpawnedMaps()
                     end
-                    ImGui.PopStyleColor(3)
 
                     if ImGui.IsItemHovered() then
                         ImGui.SetTooltip("Delete all previously spawned map objects")
@@ -536,27 +524,8 @@ local function renderMenyooTab()
 
                     ImGui.Spacing()
 
-                    ImGui.PushStyleColor(ImGuiCol.Button, 0.016, 0.36, 0.157, 1.0)
-                    ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.06, 0.46, 0.22, 1.0)
-                    ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.01, 0.26, 0.10, 1.0)
-                    if ImGui.Button("Teleport All Players To Me") then
-                        FeatureMgr.GetFeatureByName("Teleport All To Me"):TriggerCallback()
-                    end
-                    ImGui.PopStyleColor(3)
-
-                    ImGui.Spacing()
-
-                    ImGui.PushStyleColor(ImGuiCol.Button, 0.016, 0.157, 0.36, 1.0)
-                    ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.06, 0.22, 0.46, 1.0)
-                    ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.01, 0.10, 0.26, 1.0)
-                    if ImGui.Button("Clear Area") then
-                        FeatureMgr.GetFeatureByName("Clear Distance"):SetIntValue(1000)
-                        FeatureMgr.GetFeatureByName("Clear Area"):TriggerCallback()
-                    end
-                    ImGui.PopStyleColor(3)
-
-                    if ImGui.IsItemHovered() then
-                        ImGui.SetTooltip("Useful before Spawning maps to have more possible networkable map props")
+                    if ImGui.Button("Teleport All to Me") then
+                        FeatureMgr.GetFeatureByName("Teleport All to Me"):TriggerCallback()
                     end
 
 
@@ -597,13 +566,9 @@ local function renderMenyooTab()
                     spawnerSettings.previewOutfit = ImGui.Checkbox("Preview Outfit", spawnerSettings.previewOutfit)
                     ImGui.Spacing()
 
-                    ImGui.PushStyleColor(ImGuiCol.Button, 0.36, 0.016, 0.157, 1.0)
-                    ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.46, 0.06, 0.22, 1.0)
-                    ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.26, 0.01, 0.10, 1.0)
                     if ImGui.Button("Delete All Spawned Outfits") then
                         spawning.deleteAllSpawnedOutfits()
                     end
-                    ImGui.PopStyleColor(3)
 
                     if ImGui.IsItemHovered() then
                         ImGui.SetTooltip("Delete all previously spawned outfit attachments")
@@ -612,7 +577,10 @@ local function renderMenyooTab()
                     ImGui.Spacing()
 
                     ClickGUI.EndCustomChildWindow()
-                    ImGui.Text("Cherax limits the attachments you can have on your character")
+                                        ImGui.Text("I think Cherax does something that limits the attachments")
+                                        ImGui.Text("the attachments that your character I can spawn them")
+                                        ImGui.Text("and have them on but if I switch to them")
+                                        ImGui.Text("or just attach them to myself they detach")
                 end
 
                 ImGui.TableSetColumnIndex(1)
