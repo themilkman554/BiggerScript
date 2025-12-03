@@ -1550,7 +1550,58 @@ function M.parse_map_placements(xml)
         table.insert(placements, placement)
         searchPos = closePos + #"</Placement>"
     end
-    return placements
+
+    local markers = {}
+    searchPos = 1
+    while true do
+        local openStart = xml:find("<Marker[^>]*>", searchPos)
+        if not openStart then break end
+        local closePos = xml:find("</Marker>", openStart)
+        if not closePos then break end
+        local markerInner = xml:sub(openStart, closePos + #"</Marker>" - 1)
+        
+        local marker = {}
+        marker.Type = M.safe_tonumber(M.get_xml_element_content(markerInner, "Type"), 0)
+        marker.X = 0.0
+        marker.Y = 0.0
+        marker.Z = 0.0
+        
+        -- Parse Position
+        local posBlock = M.get_xml_element(markerInner, "Position")
+        if posBlock then
+            local innerPos = parse_vector_from_tag(posBlock, "Position")
+            if innerPos then
+                marker.X = innerPos.x
+                marker.Y = innerPos.y
+                marker.Z = innerPos.z
+            end
+            local innerRot = parse_vector_from_tag(posBlock, "Rotation")
+            if innerRot then
+                marker.RotX = innerRot.x
+                marker.RotY = innerRot.y
+                marker.RotZ = innerRot.z
+            end
+        end
+        
+        marker.Scale = M.safe_tonumber(M.get_xml_element_content(markerInner, "Scale"), 1.0)
+        marker.RotateContinuously = M.to_boolean(M.get_xml_element_content(markerInner, "RotateContinuously"))
+        
+        local colourSnippet = parse_self_closing_tag(markerInner, "Colour")
+        if colourSnippet then
+            local colourAttrs = parse_attributes(colourSnippet)
+            marker.Colour = {
+                r = M.safe_tonumber(colourAttrs.R or colourAttrs.r, 255),
+                g = M.safe_tonumber(colourAttrs.G or colourAttrs.g, 255),
+                b = M.safe_tonumber(colourAttrs.B or colourAttrs.b, 255),
+                a = M.safe_tonumber(colourAttrs.A or colourAttrs.a, 255)
+            }
+        end
+        
+        table.insert(markers, marker)
+        searchPos = closePos + 1
+    end
+
+    return placements, markers
 end
 
 function M.parse_outfit_attachments(xmlContent)
@@ -1761,7 +1812,7 @@ function M.deleteAllSpawnedVehicles()
                 end)
             end
         end
-        spawnedVehicles = {}
+        for k in pairs(spawnedVehicles) do spawnedVehicles[k] = nil end
         M.debug_print("[Delete Debug] All spawned vehicles cleared.")
     end)
 end
@@ -1802,7 +1853,7 @@ function M.deleteAllSpawnedMaps()
                 end
             end
         end
-        spawnedMaps = {}
+        for k in pairs(spawnedMaps) do spawnedMaps[k] = nil end
         M.debug_print("[Delete Debug] All spawned maps cleared.")
     end)
 end
@@ -1865,7 +1916,7 @@ function M.deleteAllSpawnedOutfits()
                 end
             end
         end
-        spawnedOutfits = {}
+        for k in pairs(spawnedOutfits) do spawnedOutfits[k] = nil end
         M.debug_print("[Delete Debug] All spawned outfits cleared.")
     end)
 end
@@ -2789,9 +2840,9 @@ function M.spawnMapFromXML(filePath)
             M.debug_print("[Spawn Debug] Error: Failed to read XML map file or content is empty:", filePath)
             return
         end
-        local placements = M.parse_map_placements(xmlContent)
-        if not placements or #placements == 0 then
-            M.debug_print("[Spawn Debug] Warning: No placements found in XML map file:", filePath)
+        local placements, markers = M.parse_map_placements(xmlContent)
+        if (not placements or #placements == 0) and (not markers or #markers == 0) then
+            M.debug_print("[Spawn Debug] Warning: No placements or markers found in XML map file:", filePath)
             return
         end
         if spawnerSettings.deleteOldMap then
@@ -2925,19 +2976,57 @@ function M.spawnMapFromXML(filePath)
                 end)
             end
         end
-        if spawnCount > 0 then
+        if markers and #markers > 0 then
+            M.debug_print("[Spawn Debug] Found", #markers, "markers. Starting marker draw loop.")
+            Script.QueueJob(function()
+                while true do
+                    local isMapActive = false
+                    for _, map in ipairs(spawnedMaps) do
+                        if map.entities == createdEntities then
+                            isMapActive = true
+                            break
+                        end
+                    end
+                    
+                    if not isMapActive then
+                        break
+                    end
+                    
+                    for _, marker in ipairs(markers) do
+                         local r = marker.Colour and marker.Colour.r or 255
+                         local g = marker.Colour and marker.Colour.g or 255
+                         local b = marker.Colour and marker.Colour.b or 255
+                         local a = marker.Colour and marker.Colour.a or 255
+                         
+                         GRAPHICS.DRAW_MARKER(
+                             marker.Type,
+                             marker.X or 0.0, marker.Y or 0.0, marker.Z or 0.0,
+                             0.0, 0.0, 0.0,
+                             marker.RotX or 0.0, marker.RotY or 0.0, marker.RotZ or 0.0,
+                             marker.Scale, marker.Scale, marker.Scale,
+                             r, g, b, a,
+                             false, false, 2, marker.RotateContinuously, nil, nil, false
+                         )
+                    end
+                    Script.Yield(0)
+                end
+            end)
+        end
+
+        if spawnCount > 0 or (markers and #markers > 0) then
             local mapData = {
                 entities = createdEntities,
+                markers = markers,
                 filePath = filePath
             }
             table.insert(spawnedMaps, mapData)
-            M.debug_print("[Spawn Debug] Map spawned successfully. Total objects:", spawnCount)
+            M.debug_print("[Spawn Debug] Map spawned successfully. Total objects:", spawnCount, "Total markers:", markers and #markers or 0)
             local filename = M.get_filename_from_path(filePath)
             pcall(function()
-                GUI.AddToast("Map Spawned", "Spawned " .. filename .. " with " .. spawnCount .. " object" .. (spawnCount == 1 and "" or "s"), 5000, 0)
+                GUI.AddToast("Map Spawned", "Spawned " .. filename .. " with " .. spawnCount .. " object" .. (spawnCount == 1 and "" or "s") .. " and " .. (markers and #markers or 0) .. " markers", 5000, 0)
             end)
         else
-            M.debug_print("[Spawn Debug] No objects spawned for map:", filePath)
+            M.debug_print("[Spawn Debug] No objects or markers spawned for map:", filePath)
         end
         if spawnerSettings.networkMapsV1Enabled and spawnerSettings.spawnIn000Vehicle then
             local playerPed = PLAYER.PLAYER_PED_ID()

@@ -562,6 +562,14 @@ local function renderMenyooTab()
 
 
         if ImGui.BeginTabItem("XML Maps") then
+            local hasMarkers = false
+            for _, map in ipairs(spawnedMaps) do
+                if map.markers and #map.markers > 0 then
+                    hasMarkers = true
+                    break
+                end
+            end
+
             local columns = 2
             if ImGui.BeginTable("XML Maps", columns, ImGuiTableFlags.SizingStretchSame) then
                 ImGui.TableNextRow()
@@ -630,6 +638,31 @@ local function renderMenyooTab()
                         ImGui.SetTooltip("Useful before Spawning maps to have more possible networkable map props")
                     end
 
+                    if hasMarkers then
+                        ImGui.Spacing()
+                        ImGui.Separator()
+                        ImGui.Text("Map Markers")
+                        ImGui.Spacing()
+                        for i, map in ipairs(spawnedMaps) do
+                            if map.markers and #map.markers > 0 then
+                                local mapName = spawning.get_filename_from_path(map.filePath)
+                                ImGui.SetNextItemOpen(true, ImGuiCond.Once)
+                                if ImGui.TreeNode(mapName .. " Markers##" .. i) then
+                                    for j, marker in ipairs(map.markers) do
+                                        if ImGui.Button("Marker " .. j .. "##" .. i .. "_" .. j) then
+                                            local playerPed = PLAYER.PLAYER_PED_ID()
+                                            if playerPed and playerPed ~= 0 then
+                                                ENTITY.SET_ENTITY_COORDS(playerPed, marker.X, marker.Y, marker.Z, false, false, false, true)
+                                            end
+                                        end
+                                        ImGui.SameLine()
+                                        ImGui.Text("Pos: " .. string.format("%.1f, %.1f, %.1f", marker.X, marker.Y, marker.Z))
+                                    end
+                                    ImGui.TreePop()
+                                end
+                            end
+                        end
+                    end
 
                     ClickGUI.EndCustomChildWindow()
                 end
