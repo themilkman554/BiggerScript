@@ -683,11 +683,11 @@ local function renderMenyooTab()
     spawning.managePreview(hoveredFileThisFrame)
 end
 
-ClickGUI.AddTab("Bigger Script", renderMenyooTab)
+ClickGUI.AddTab("bigger script", renderMenyooTab)
 
 
 ClickGUI.AddPlayerTab("Bigger Script", function()
-    if ClickGUI.BeginCustomChildWindow("Attacker Vehicles") then
+    if ClickGUI.BeginCustomChildWindow("Bigger Script Player Features") then
 
         ClickGUI.RenderFeature(Utils.Joaat("DeleteMenyooAttackerVehicle"), Utils.GetSelectedPlayer())
         ImGui.Spacing()
