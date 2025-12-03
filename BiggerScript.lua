@@ -2,17 +2,7 @@
 GUI.AddToast("BiggerScriptv4.4", "Added Custom Colors support/loading", 5000, 0)
 package.path = FileMgr.GetMenuRootPath() .. "\\Lua\\?.lua;"
 
-local PreferLocalLibraries = true
-if debug and debug.getinfo then
-    local source = debug.getinfo(1, "S").source
-    PreferLocalLibraries = source:find("\\") ~= nil
-end
-
-if PreferLocalLibraries then
-    print("BiggerScript: Running locally. Preferring local libraries.")
-else
-    print("BiggerScript: Running via loader/remote. Forcing GitHub libraries.")
-end
+local LoadLocalLibraries = false -- Set to true to load libraries from local files
 
 local GITHUB_RAW_BASE_URL = "https://raw.githubusercontent.com/themilkman554/BiggerScript/main/"
 
@@ -60,34 +50,24 @@ end
 -- Load libraries
 local upsidedownmap, spawning, robot, constructor_lib
 
-local function load_library(local_path, github_path)
-    if PreferLocalLibraries then
-        if package.loaded[local_path] then
-            package.loaded[local_path] = nil
-        end
+if LoadLocalLibraries then
+    upsidedownmap = require("BiggerScript/lib/upsidedownmap")
+    spawning = require("BiggerScript/lib/spawning")
+    robot = require("BiggerScript/lib/robot")
+    constructor_lib = require("BiggerScript/lib/constructor_lib")
+else
+    upsidedownmap = load_from_github("BiggerScript/lib/upsidedownmap.lua")
+    if not upsidedownmap then print("Failed to load upsidedownmap.lua"); return end
 
-        local success, result = pcall(require, local_path)
-        if success then
-            print("Loaded " .. local_path .. " locally.")
-            return result
-        end
-        print("Local load failed for " .. local_path .. ". Falling back to GitHub.")
-    end
+    spawning = load_from_github("BiggerScript/lib/spawning.lua")
+    if not spawning then print("Failed to load spawning.lua"); return end
 
-    return load_from_github(github_path)
+    robot = load_from_github("BiggerScript/lib/robot.lua")
+    if not robot then print("Failed to load robot.lua"); return end
+
+    constructor_lib = load_from_github("BiggerScript/lib/constructor_lib.lua")
+    if not constructor_lib then print("Failed to load constructor_lib.lua"); return end
 end
-
-upsidedownmap = load_library("BiggerScript/lib/upsidedownmap", "BiggerScript/lib/upsidedownmap.lua")
-if not upsidedownmap then print("Failed to load upsidedownmap"); return end
-
-spawning = load_library("BiggerScript/lib/spawning", "BiggerScript/lib/spawning.lua")
-if not spawning then print("Failed to load spawning"); return end
-
-robot = load_library("BiggerScript/lib/robot", "BiggerScript/lib/robot.lua")
-if not robot then print("Failed to load robot"); return end
-
-constructor_lib = load_library("BiggerScript/lib/constructor_lib", "BiggerScript/lib/constructor_lib.lua")
-if not constructor_lib then print("Failed to load constructor_lib"); return end
 
 require("BiggerScript/natives/natives")
 
