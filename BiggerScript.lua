@@ -2,7 +2,28 @@
 GUI.AddToast("BiggerScriptv4.4", "Added Custom Colors support/loading", 5000, 0)
 package.path = FileMgr.GetMenuRootPath() .. "\\Lua\\?.lua;"
 
-local LoadLocalLibraries = false -- Set to true to load libraries from local files
+local function IsLoadedFromFile()
+    if debug and debug.getinfo then
+        local info = debug.getinfo(1, "S")
+        if info and info.source then
+            local source = info.source
+            if string.sub(source, 1, 1) == "@" then
+                source = string.sub(source, 2)
+            end
+            if string.find(source, "\\") or string.find(source, "/") then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+local LoadLocalLibraries = IsLoadedFromFile()
+if LoadLocalLibraries then
+    print("BiggerScript: Detected local execution, using local libraries.")
+else
+    print("BiggerScript: Detected remote execution, using GitHub libraries.")
+end
 
 local GITHUB_RAW_BASE_URL = "https://raw.githubusercontent.com/themilkman554/BiggerScript/main/"
 
@@ -50,24 +71,7 @@ end
 -- Load libraries
 local upsidedownmap, spawning, robot, constructor_lib
 
-if LoadLocalLibraries then
-    upsidedownmap = require("BiggerScript/lib/upsidedownmap")
-    spawning = require("BiggerScript/lib/spawning")
-    robot = require("BiggerScript/lib/robot")
-    constructor_lib = require("BiggerScript/lib/constructor_lib")
-else
-    upsidedownmap = load_from_github("BiggerScript/lib/upsidedownmap.lua")
-    if not upsidedownmap then print("Failed to load upsidedownmap.lua"); return end
 
-    spawning = load_from_github("BiggerScript/lib/spawning.lua")
-    if not spawning then print("Failed to load spawning.lua"); return end
-
-    robot = load_from_github("BiggerScript/lib/robot.lua")
-    if not robot then print("Failed to load robot.lua"); return end
-
-    constructor_lib = load_from_github("BiggerScript/lib/constructor_lib.lua")
-    if not constructor_lib then print("Failed to load constructor_lib.lua"); return end
-end
 
 require("BiggerScript/natives/natives")
 
@@ -414,7 +418,6 @@ local function Initialize()
     })
 
     initialized = true
-    GUI.AddToast("BiggerScript", "Libraries loaded successfully", 3000, 0)
 end
 
 Script.QueueJob(Initialize)
