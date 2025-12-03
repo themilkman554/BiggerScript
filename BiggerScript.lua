@@ -2,31 +2,7 @@
 GUI.AddToast("BiggerScriptv4.4", "Added Custom Colors support/loading", 5000, 0)
 package.path = FileMgr.GetMenuRootPath() .. "\\Lua\\?.lua;"
 
-local function IsLoadedFromFile()
-    if debug and debug.getinfo then
-        local info = debug.getinfo(1, "S")
-        if info and info.source then
-            print("BiggerScript Source: " .. tostring(info.source))
-            local source = info.source
-            -- Remove '@' prefix if present
-            if string.sub(source, 1, 1) == "@" then
-                source = string.sub(source, 2)
-            end
-            -- If the path contains directory separators, it's likely a full path (Local execution)
-            if string.find(source, "\\") or string.find(source, "/") then
-                return true
-            end
-        end
-    end
-    return false
-end
-
-local LoadLocalLibraries = IsLoadedFromFile()
-if LoadLocalLibraries then
-    print("BiggerScript: Detected local execution, using local libraries.")
-else
-    print("BiggerScript: Detected remote execution, using GitHub libraries.")
-end
+local LoadLocalLibraries = false -- Set to true to load libraries from local files
 
 local GITHUB_RAW_BASE_URL = "https://raw.githubusercontent.com/themilkman554/BiggerScript/main/"
 
@@ -74,7 +50,24 @@ end
 -- Load libraries
 local upsidedownmap, spawning, robot, constructor_lib
 
+if LoadLocalLibraries then
+    upsidedownmap = require("BiggerScript/lib/upsidedownmap")
+    spawning = require("BiggerScript/lib/spawning")
+    robot = require("BiggerScript/lib/robot")
+    constructor_lib = require("BiggerScript/lib/constructor_lib")
+else
+    upsidedownmap = load_from_github("BiggerScript/lib/upsidedownmap.lua")
+    if not upsidedownmap then print("Failed to load upsidedownmap.lua"); return end
 
+    spawning = load_from_github("BiggerScript/lib/spawning.lua")
+    if not spawning then print("Failed to load spawning.lua"); return end
+
+    robot = load_from_github("BiggerScript/lib/robot.lua")
+    if not robot then print("Failed to load robot.lua"); return end
+
+    constructor_lib = load_from_github("BiggerScript/lib/constructor_lib.lua")
+    if not constructor_lib then print("Failed to load constructor_lib.lua"); return end
+end
 
 require("BiggerScript/natives/natives")
 
@@ -758,15 +751,11 @@ local function renderMenyooTab()
     spawning.managePreview(hoveredFileThisFrame)
 end
 
-ClickGUI.AddTab("bigger script", renderMenyooTab)
+ClickGUI.AddTab("Bigger Script", renderMenyooTab)
 
 
 ClickGUI.AddPlayerTab("Bigger Script", function()
-    if not initialized then
-        ImGui.Text("Loading libraries... Please wait.")
-        return
-    end
-    if ClickGUI.BeginCustomChildWindow("Bigger Script Player Features") then
+    if ClickGUI.BeginCustomChildWindow("Attacker Vehicles") then
 
         ClickGUI.RenderFeature(Utils.Joaat("DeleteMenyooAttackerVehicle"), Utils.GetSelectedPlayer())
         ImGui.Spacing()
