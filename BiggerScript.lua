@@ -69,7 +69,7 @@ local function load_from_github(path)
 end
 
 -- Load libraries
-local upsidedownmap, spawning, robot, constructor_lib
+local upsidedownmap, spawning, robot, constructor_lib, vehicle_fly
 
 
 
@@ -99,7 +99,8 @@ local spawnerSettings = {
     spawnIn000Vehicle = false, 
     previewVehicle = false,
     previewOutfit = false,
-    teleportToMap = true
+    teleportToMap = true,
+    vehicleFly = false
 }
 
 
@@ -367,6 +368,7 @@ local function Initialize()
         spawning = require("BiggerScript/lib/spawning")
         robot = require("BiggerScript/lib/robot")
         constructor_lib = require("BiggerScript/lib/constructor_lib")
+        vehicle_fly = require("BiggerScript/lib/vehicle_fly")
     else
         upsidedownmap = load_from_github("BiggerScript/lib/upsidedownmap.lua")
         if not upsidedownmap then print("Failed to load upsidedownmap.lua"); return end
@@ -379,6 +381,9 @@ local function Initialize()
 
         constructor_lib = load_from_github("BiggerScript/lib/constructor_lib.lua")
         if not constructor_lib then print("Failed to load constructor_lib.lua"); return end
+
+        vehicle_fly = load_from_github("BiggerScript/lib/vehicle_fly.lua")
+        if not vehicle_fly then print("Failed to load vehicle_fly.lua"); return end
     end
 
     spawning.init({
@@ -417,6 +422,10 @@ local function Initialize()
         robot_objects = robot_objects
     })
 
+    vehicle_fly.init({
+        spawnerSettings = spawnerSettings
+    })
+
     initialized = true
 end
 
@@ -453,6 +462,13 @@ local function renderMenyooTab()
                     spawnerSettings.randomLivery = ImGui.Checkbox("Random Livery", spawnerSettings.randomLivery)
                     spawnerSettings.previewVehicle = ImGui.Checkbox("Preview Vehicle", spawnerSettings.previewVehicle)
                     spawnerSettings.printToDebug = ImGui.Checkbox("Print Debug to Console", spawnerSettings.printToDebug)
+                    
+                    local oldFly = spawnerSettings.vehicleFly
+                    spawnerSettings.vehicleFly = ImGui.Checkbox("Vehicle Fly", spawnerSettings.vehicleFly)
+                    if spawnerSettings.vehicleFly ~= oldFly then
+                        vehicle_fly.toggle_vehicle_fly(spawnerSettings.vehicleFly)
+                    end
+
                     ImGui.Spacing()
 
 
