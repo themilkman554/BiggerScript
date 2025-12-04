@@ -2187,6 +2187,7 @@ function M.spawnVehicleFromINI(filePath, isPreview)
             local attachmentCount = #vehicleData.attachments
             pcall(function()
                 GUI.AddToast("Vehicle Spawned", "Spawned " .. filename .. " with " .. attachmentCount .. " attachment" .. (attachmentCount == 1 and "" or "s"), 5000, 0)
+                print("Vehicle Spawned", "Spawned " .. filename .. " with " .. attachmentCount .. " attachment" .. (attachmentCount == 1 and "" or "s"))
             end)
         end
         if spawnerSettings.inVehicle and not isPreview then
@@ -2453,6 +2454,7 @@ function M.spawnVehicleFromXML(filePath, isPreview)
             local attachmentCount = #vehicleData.attachments
             pcall(function()
                 GUI.AddToast("Vehicle Spawned", "Spawned " .. filename .. " with " .. attachmentCount .. " attachment" .. (attachmentCount == 1 and "" or "s"), 5000, 0)
+                print("Vehicle Spawned", "Spawned " .. filename .. " with " .. attachmentCount .. " attachment" .. (attachmentCount == 1 and "" or "s"))
             end)
         else
             M.debug_print("[Spawn Debug] No vehicle or attachments spawned for XML file:", filePath)
@@ -3024,6 +3026,7 @@ function M.spawnMapFromXML(filePath)
             local filename = M.get_filename_from_path(filePath)
             pcall(function()
                 GUI.AddToast("Map Spawned", "Spawned " .. filename .. " with " .. spawnCount .. " object" .. (spawnCount == 1 and "" or "s") .. " and " .. (markers and #markers or 0) .. " markers", 5000, 0)
+                print("Map Spawned", "Spawned " .. filename .. " with " .. spawnCount .. " object" .. (spawnCount == 1 and "" or "s") .. " and " .. (markers and #markers or 0) .. " markers")
             end)
         else
             M.debug_print("[Spawn Debug] No objects or markers spawned for map:", filePath)
