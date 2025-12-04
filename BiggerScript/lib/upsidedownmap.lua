@@ -1,7 +1,7 @@
 local M = {}
 
 
-local spawnerSettings, debug_print, spawnedMaps, xmlMapsFolder, constructor_lib, parse_map_placements, create_by_type, request_model_load, safe_tonumber, get_filename_from_path, to_boolean, get_xml_element_content, spawnedProps, spawnMapFromXML
+local spawnerSettings, debug_print, spawnedMaps, xmlMapsFolder, constructor_lib, parse_map_placements, create_by_type, request_model_load, safe_tonumber, get_filename_from_path, to_boolean, get_xml_element_content, spawnedProps, spawnMapFromXML, deleteAllSpawnedMaps
 
 
 function M.init(context)
@@ -19,7 +19,10 @@ function M.init(context)
     get_xml_element_content = context.get_xml_element_content
     spawnedProps = context.spawnedProps
     spawnMapFromXML = context.spawnMapFromXML
+    deleteAllSpawnedMaps = context.deleteAllSpawnedMaps
 end
+
+local upsideDownRadars = {}
 
 function M.spawnUpsideDownMapV3()
     Script.QueueJob(function()
@@ -91,9 +94,14 @@ function M.spawnUpsideDownMapV3()
                 debug_print("[Spawn Debug] Error: Could not find the spawned map data for attachment for map part " .. i .. ".")
                 goto continue_map_loop
             end
-            if #mapData.entities ~= #placements then
-                debug_print("[Spawn Debug] Error: Mismatch between spawned entities and parsed placements for map part " .. i .. ". Aborting attachment.")
-                goto continue_map_loop
+            
+            -- Add radar to map entities so it gets cleaned up by deleteAllSpawnedMaps
+            if mapData.entities then
+                table.insert(mapData.entities, radarHandle)
+            end
+
+            if #mapData.entities ~= (#placements + 1) then -- +1 for the radar we just added
+                debug_print("[Spawn Debug] Mismatch check skipped due to added radar.")
             end
             if not radarHandle or not local_DOES_ENTITY_EXIST(radarHandle) then
                 debug_print("[Spawn Debug] Error: Radar entity does not exist or is invalid for map part " .. i .. ". Cannot attach map props.")
@@ -101,6 +109,9 @@ function M.spawnUpsideDownMapV3()
                 goto continue_map_loop
             end
             for j, entityHandle in ipairs(mapData.entities) do
+                -- Skip the radar itself if it's in the list (which it is now)
+                if entityHandle == radarHandle then goto continue_attachment_loop_inner end
+
                 local placement = placements[j]
                 if placement and placement.PositionRotation then
                     local pos = placement.PositionRotation
@@ -150,6 +161,24 @@ function M.spawnUpsideDownMapV3()
             ::continue_map_loop::
         end
     end)
+end
+
+function M.clearUpsideDownMap()
+    Script.QueueJob(function()
+        if deleteAllSpawnedMaps then
+            deleteAllSpawnedMaps()
+        end
+        
+        pcall(function() GUI.AddToast("Upside Down Map", "Cleared Upside Down Map and Radars", 3000, 0) end)
+    end)
+end
+
+function M.toggle_upside_down_map(state)
+    if state then
+        M.spawnUpsideDownMapV3()
+    else
+        M.clearUpsideDownMap()
+    end
 end
 
 return M

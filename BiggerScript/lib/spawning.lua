@@ -77,7 +77,8 @@ function M.init(context)
         to_boolean = M.to_boolean,
         get_xml_element_content = M.get_xml_element_content,
         spawnedProps = spawnedProps,
-        spawnMapFromXML = M.spawnMapFromXML
+        spawnMapFromXML = M.spawnMapFromXML,
+        deleteAllSpawnedMaps = M.deleteAllSpawnedMaps
     })
     
     M.spawnUpsideDownMapV3 = upsidedownmap_module.spawnUpsideDownMapV3

@@ -104,7 +104,8 @@ local spawnerSettings = {
     previewVehicle = false,
     previewOutfit = false,
     teleportToMap = true,
-    vehicleFly = false
+    vehicleFly = false,
+    upsideDownMap = false
 }
 
 
@@ -781,8 +782,10 @@ local function renderMenyooTab()
                     end
 
                     ImGui.Spacing()
-                    if ImGui.Button("Upside Down Map v3") then
-                        spawning.spawnUpsideDownMapV3()
+                    local oldUpsideDown = spawnerSettings.upsideDownMap
+                    spawnerSettings.upsideDownMap = ImGui.Checkbox("Upside Down Map v3", spawnerSettings.upsideDownMap)
+                    if spawnerSettings.upsideDownMap ~= oldUpsideDown then
+                        upsidedownmap.toggle_upside_down_map(spawnerSettings.upsideDownMap)
                     end
 
                     ClickGUI.EndCustomChildWindow()
