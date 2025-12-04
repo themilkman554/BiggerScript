@@ -1,5 +1,5 @@
 ---bigger script
-GUI.AddToast("BiggerScriptv4.4", "Added Custom Colors support/loading", 5000, 0)
+GUI.AddToast("BiggerScriptv4.5", "Added Vehicle Fly and Marker Support for Maps", 5000, 0)
 package.path = FileMgr.GetMenuRootPath() .. "\\Lua\\?.lua;"
 
 local function IsLoadedFromFile()
@@ -461,7 +461,6 @@ local function renderMenyooTab()
                     spawnerSettings.randomColor = ImGui.Checkbox("Random Color", spawnerSettings.randomColor)
                     spawnerSettings.randomLivery = ImGui.Checkbox("Random Livery", spawnerSettings.randomLivery)
                     spawnerSettings.previewVehicle = ImGui.Checkbox("Preview Vehicle", spawnerSettings.previewVehicle)
-                    spawnerSettings.printToDebug = ImGui.Checkbox("Print Debug to Console", spawnerSettings.printToDebug)
                     
                     local oldFly = spawnerSettings.vehicleFly
                     spawnerSettings.vehicleFly = ImGui.Checkbox("Vehicle Fly", spawnerSettings.vehicleFly)
@@ -531,7 +530,12 @@ local function renderMenyooTab()
                     spawnerSettings.randomColor = ImGui.Checkbox("Random Color", spawnerSettings.randomColor)
                     spawnerSettings.randomLivery = ImGui.Checkbox("Random Livery", spawnerSettings.randomLivery)
                     spawnerSettings.previewVehicle = ImGui.Checkbox("Preview Vehicle", spawnerSettings.previewVehicle)
-                    spawnerSettings.printToDebug = ImGui.Checkbox("Print Debug to Console", spawnerSettings.printToDebug)
+                    
+                    local oldFly = spawnerSettings.vehicleFly
+                    spawnerSettings.vehicleFly = ImGui.Checkbox("Vehicle Fly", spawnerSettings.vehicleFly)
+                    if spawnerSettings.vehicleFly ~= oldFly then
+                        vehicle_fly.toggle_vehicle_fly(spawnerSettings.vehicleFly)
+                    end
                     ImGui.Spacing()
 
 
@@ -614,7 +618,6 @@ local function renderMenyooTab()
                         ImGui.SetTooltip("Delete the previously spawned map when a new one is spawned")
                     end
 
-                    spawnerSettings.spawnIn000Vehicle = ImGui.Checkbox("[Debug] Spawn in 0 0 0 Vehicle", spawnerSettings.spawnIn000Vehicle)
                     ImGui.Spacing()
 
                     ImGui.PushStyleColor(ImGuiCol.Button, 0.36, 0.016, 0.157, 1.0)
@@ -778,6 +781,12 @@ local function renderMenyooTab()
                         spawning.spawnUpsideDownMapV3()
                     end
 
+                    ClickGUI.EndCustomChildWindow()
+                end
+
+                if ClickGUI.BeginCustomChildWindow("Debug") then
+                    spawnerSettings.printToDebug = ImGui.Checkbox("Print Debug to Console", spawnerSettings.printToDebug)
+                    spawnerSettings.spawnIn000Vehicle = ImGui.Checkbox("Spawn in 0 0 0 Vehicle", spawnerSettings.spawnIn000Vehicle)
                     ClickGUI.EndCustomChildWindow()
                 end
 

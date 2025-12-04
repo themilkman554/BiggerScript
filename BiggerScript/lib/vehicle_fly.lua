@@ -20,7 +20,6 @@ local function do_vehicle_fly()
     end
     
     local veh = PED.GET_VEHICLE_PED_IS_IN(PLAYER.PLAYER_PED_ID(), false)
-    print("Vehicle Fly: In vehicle " .. tostring(veh))
 
     if VEHICLE.GET_PED_IN_VEHICLE_SEAT(veh, -1) ~= PLAYER.PLAYER_PED_ID() then
         return
@@ -119,7 +118,6 @@ function M.toggle_vehicle_fly(enable)
         
         local veh = PED.GET_VEHICLE_PED_IS_IN(PLAYER.PLAYER_PED_ID(), false)
         if veh == 0 then
-            GUI.AddToast("Vehicle Fly", "Disabled Sport mode. Not in vehicle", 5000, 0)
             if spawnerSettings then
                 spawnerSettings.vehicleFly = false
             end
@@ -127,20 +125,18 @@ function M.toggle_vehicle_fly(enable)
         end
 
         is_flying = true
-        GUI.AddToast("Vehicle Fly", "Space for speed Boost\n Shift/ctrl to go up and down", 5000, 0)
+        GUI.AddToast("Vehicle Fly", "Space for speed Boost\n Shift/ctrl to go up and down", 8000, 0)
         
         Script.QueueJob(function()
             local last_veh = 0
             while is_flying do
                 local current_veh = PED.GET_VEHICLE_PED_IS_IN(PLAYER.PLAYER_PED_ID(), false)
-                print("Vehicle Fly Loop: current_veh " .. tostring(current_veh))
                 
                 if current_veh == 0 then
                     is_flying = false
                     if spawnerSettings then
                         spawnerSettings.vehicleFly = false
                     end
-                    GUI.AddToast("Vehicle Fly", "Disabled Sport mode. Not in vehicle", 5000, 0)
                 else
                     last_veh = current_veh
                     if VEHICLE.GET_PED_IN_VEHICLE_SEAT(current_veh, -1) == PLAYER.PLAYER_PED_ID() then
