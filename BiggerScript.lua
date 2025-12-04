@@ -1,5 +1,5 @@
 ---bigger script
-GUI.AddToast("BiggerScriptv4.5", "Added Vehicle Fly and Marker Support for Maps", 10000, 0)
+GUI.AddToast("BiggerScriptv4.6", "Added Delete Attacker Button\n Fixed Map Props being frozen when shouldn't\n Made upside down map v3 a toggle\n Moved Debug to Special tab\n Added Radio off toggle ", 10000, 0)
 
 if Cherax.GetEdition() == "LE" then
     GUI.AddToast("BiggerScript", "Legacy Version of Cherax breaks vehicles with too many attachments", 10000, 0)
@@ -105,7 +105,8 @@ local spawnerSettings = {
     previewOutfit = false,
     teleportToMap = true,
     vehicleFly = false,
-    upsideDownMap = false
+    upsideDownMap = false,
+    radioOff = false
 }
 
 
@@ -464,6 +465,7 @@ local function renderMenyooTab()
                     spawnerSettings.deleteOldVehicle = ImGui.Checkbox("Delete Old Vehicle", spawnerSettings.deleteOldVehicle)
                     spawnerSettings.vehicleGodMode = ImGui.Checkbox("Vehicle God Mode", spawnerSettings.vehicleGodMode)
                     spawnerSettings.vehicleEngineOn = ImGui.Checkbox("Vehicle Engine On", spawnerSettings.vehicleEngineOn)
+                    spawnerSettings.radioOff = ImGui.Checkbox("Radio Off", spawnerSettings.radioOff)
                     spawnerSettings.upgradedVehicle = ImGui.Checkbox("Upgraded Vehicle", spawnerSettings.upgradedVehicle)
                     spawnerSettings.randomColor = ImGui.Checkbox("Random Color", spawnerSettings.randomColor)
                     spawnerSettings.randomLivery = ImGui.Checkbox("Random Livery", spawnerSettings.randomLivery)
@@ -533,6 +535,7 @@ local function renderMenyooTab()
                     spawnerSettings.deleteOldVehicle = ImGui.Checkbox("Delete Old Vehicle", spawnerSettings.deleteOldVehicle)
                     spawnerSettings.vehicleGodMode = ImGui.Checkbox("Vehicle God Mode", spawnerSettings.vehicleGodMode)
                     spawnerSettings.vehicleEngineOn = ImGui.Checkbox("Vehicle Engine On", spawnerSettings.vehicleEngineOn)
+                    spawnerSettings.radioOff = ImGui.Checkbox("Radio Off", spawnerSettings.radioOff)
                     spawnerSettings.upgradedVehicle = ImGui.Checkbox("Upgraded Vehicle", spawnerSettings.upgradedVehicle)
                     spawnerSettings.randomColor = ImGui.Checkbox("Random Color", spawnerSettings.randomColor)
                     spawnerSettings.randomLivery = ImGui.Checkbox("Random Livery", spawnerSettings.randomLivery)

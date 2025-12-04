@@ -2072,6 +2072,7 @@ function M.spawnVehicleFromINI(filePath, isPreview)
             if dirtLevel ~= nil then M.try_call(VEHICLE, "SET_VEHICLE_DIRT_LEVEL", vehicleHandle, dirtLevel) end
             local engineOn = M.to_boolean(mainVehicleSection.EngineOn)
             if spawnerSettings.vehicleEngineOn and engineOn then M.try_call(VEHICLE, "SET_VEHICLE_ENGINE_ON", vehicleHandle, true, true, false) end
+            if spawnerSettings.radioOff then M.try_call(AUDIO, "SET_VEHICLE_RADIO_ENABLED", vehicleHandle, false) end
             local paintFade = M.safe_tonumber(mainVehicleSection.PaintFade, nil)
             if paintFade ~= nil then M.try_call(VEHICLE, "SET_VEHICLE_DIRT_LEVEL", vehicleHandle, paintFade) end
             local radioStation = M.safe_tonumber(mainVehicleSection.Radio, nil)
@@ -2382,6 +2383,7 @@ function M.spawnVehicleFromXML(filePath, isPreview)
             if dirtLevel ~= nil then M.try_call(VEHICLE, "SET_VEHICLE_DIRT_LEVEL", vehicleHandle, dirtLevel) end
             local engineOn = M.get_xml_element_content(vehicleProperties, "EngineOn")
             if engineOn ~= nil then engineOn = M.to_boolean(engineOn) if spawnerSettings.vehicleEngineOn and engineOn then M.try_call(VEHICLE, "SET_VEHICLE_ENGINE_ON", vehicleHandle, true, true, false) end end
+            if spawnerSettings.radioOff then M.try_call(AUDIO, "SET_VEHICLE_RADIO_ENABLED", vehicleHandle, false) end
         end
         if spawnerSettings.vehicleGodMode then M.try_call(ENTITY, "SET_ENTITY_INVINCIBLE", vehicleHandle, true) end
         local opacityLevel = M.safe_tonumber(M.get_xml_element_content(xmlContent, "OpacityLevel"), nil)
