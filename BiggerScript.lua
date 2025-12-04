@@ -1,5 +1,9 @@
 ---bigger script
-GUI.AddToast("BiggerScriptv4.5", "Added Vehicle Fly and Marker Support for Maps", 5000, 0)
+GUI.AddToast("BiggerScriptv4.5", "Added Vehicle Fly and Marker Support for Maps", 10000, 0)
+
+if Cherax.GetEdition() == "LE" then
+    GUI.AddToast("BiggerScript", "Legacy Version of Cherax breaks vehicles with too many attachments", 10000, 0)
+end
 package.path = FileMgr.GetMenuRootPath() .. "\\Lua\\?.lua;"
 
 local function IsLoadedFromFile()
