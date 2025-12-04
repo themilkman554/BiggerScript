@@ -11,6 +11,8 @@ function M.init(context)
     moveableLegs = context.moveableLegs
     legAnimationJob = context.legAnimationJob
     robot_objects = context.robot_objects
+    M.request_model_load = context.request_model_load
+    M.safe_tonumber = context.safe_tonumber
 end
 
 function M.v3(x, y, z)
@@ -138,7 +140,6 @@ function M.spawnRobotAttacker(targetPlayerIndex)
             pcall(function() targetPed = PLAYER.GET_PLAYER_PED_SCRIPT_INDEX(targetPlayerIndex) end)
         end
         if not targetPed or targetPed == 0 then
-            M.debug_print("[Spawn Debug] Error: No target ped available for robot attacker spawn.")
             return
         end
         local spawnCoords = { x = 0.0, y = 0.0, z = 0.0 }
@@ -149,7 +150,6 @@ function M.spawnRobotAttacker(targetPlayerIndex)
             spawnCoords.z = off.z or off[3] or 0.0
             local foundGround, gz = GTA.GetGroundZ(spawnCoords.x, spawnCoords.y)
             if foundGround then spawnCoords.z = gz end
-            M.debug_print("[Spawn Debug] Robot Attacker spawn coordinates:", spawnCoords.x, spawnCoords.y, spawnCoords.z)
         end)
         local current_robot_objects = {}
         local tampa_hash = 3084515313
@@ -208,10 +208,8 @@ function M.spawnRobotAttacker(targetPlayerIndex)
             if ok and h and h ~= 0 then attacker = h end
         end
         if not attacker or attacker == 0 then
-            M.debug_print("[Spawn Debug] Error: Failed to spawn attacker ped for robot.")
             return
         end
-        M.debug_print("[Spawn Debug] Spawned robot attacker ped handle:", tostring(attacker))
         pcall(function()
             PED.SET_PED_INTO_VEHICLE(attacker, current_robot_objects['tampa'], -1)
             ENTITY.SET_ENTITY_AS_MISSION_ENTITY(attacker, true, true)
@@ -225,7 +223,6 @@ function M.spawnRobotAttacker(targetPlayerIndex)
             local relHash = PED.GET_PED_RELATIONSHIP_GROUP_HASH(targetPed)
             PED.SET_PED_RELATIONSHIP_GROUP_HASH(attacker, relHash)
             TASK.TASK_VEHICLE_MISSION_PED_TARGET(attacker, current_robot_objects['tampa'], targetPed, 6, 500.0, 786988, 0.0, 0.0, true)
-            M.debug_print("[Spawn Debug] Robot attacker ped configured and tasked.")
         end)
         local vehicleData = {
             vehicle = current_robot_objects['tampa'],

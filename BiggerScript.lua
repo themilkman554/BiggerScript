@@ -424,7 +424,9 @@ local function Initialize()
         spawnedVehicles = spawnedVehicles,
         moveableLegs = moveableLegs,
         legAnimationJob = legAnimationJob,
-        robot_objects = robot_objects
+        robot_objects = robot_objects,
+        request_model_load = spawning.request_model_load,
+        safe_tonumber = spawning.safe_tonumber
     })
 
     vehicle_fly.init({
@@ -826,6 +828,15 @@ ClickGUI.AddPlayerTab("Bigger Script", function()
     if ClickGUI.BeginCustomChildWindow("Attacker Vehicles") then
 
         ClickGUI.RenderFeature(Utils.Joaat("DeleteMenyooAttackerVehicle"), Utils.GetSelectedPlayer())
+        ImGui.Spacing()
+
+        ImGui.PushStyleColor(ImGuiCol.Button, 0.36, 0.016, 0.157, 1.0)
+        ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.46, 0.06, 0.22, 1.0)
+        ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.26, 0.01, 0.10, 1.0)
+        if ImGui.Button("Delete All Attackers") then
+            spawning.deleteAllSpawnedVehicles()
+        end
+        ImGui.PopStyleColor(3)
         ImGui.Spacing()
 
         if ImGui.BeginTabBar("AttackerTypeTabs") then
