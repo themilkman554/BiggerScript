@@ -8,6 +8,9 @@ local OWNER = "themilkman554"
 local REPO = "BiggerScriptAssests"
 local BRANCH = "main"
 
+--------------------------------------------------------------------------------
+-- Simple JSON Parser (Pure Lua) to avoid external dependencies
+--------------------------------------------------------------------------------
 local function json_decode(text)
     local pos = 1
     local function skip_whitespace()
@@ -71,6 +74,9 @@ local function json_decode(text)
     return parse_value()
 end
 
+--------------------------------------------------------------------------------
+-- Helper Functions
+--------------------------------------------------------------------------------
 local function read_file(path)
     local f = io.open(path, "r")
     if not f then return nil end
@@ -108,6 +114,9 @@ local function curl_get(url)
     return nil
 end
 
+--------------------------------------------------------------------------------
+-- Main Logic
+--------------------------------------------------------------------------------
 Script.QueueJob(function()
     -- 1. Fetch latest commit info from GitHub API
     local api_url = string.format("https://api.github.com/repos/%s/%s/commits/%s", OWNER, REPO, BRANCH)
@@ -120,7 +129,7 @@ Script.QueueJob(function()
     -- 2. Determine Update Strategy
     if not FileMgr.DoesFileExist(targetPath) or not last_commit then
         -- A. Full Install (Missing folder or no version history)
-        GUI.AddToast("BiggerScript", "Installing BiggerScript Assets (game will be frozen)", 5000, 0)
+        GUI.AddToast("BiggerScript", "Installing BiggerScript Assets...", 5000, 0)
         local ZIP_URL = "https://codeload.github.com/themilkman554/BiggerScriptAssests/zip/refs/heads/main"
         local tempZipPath = menuRootPath .. "\\Lua\\BiggerScriptTemp.zip"
         
@@ -147,12 +156,20 @@ Script.QueueJob(function()
         end
 
     elseif latest_commit and latest_commit ~= last_commit then
-        -- B. Incremental Update (Only changed files)
+        -- B. Incremental Update (All commits since last)
         GUI.AddToast("BiggerScript", "Updating Assets...", 5000, 0)
         
-        if commit_data and commit_data.files then
+        -- Use GitHub compare API to get all commits between last and latest
+        local compare_url = string.format("https://api.github.com/repos/%s/%s/compare/%s...%s", 
+            OWNER, REPO, last_commit, latest_commit)
+        local compare_body = curl_get(compare_url)
+        local compare_data = json_decode(compare_body)
+        
+        if compare_data and compare_data.files then
             local count = 0
-            for _, file in ipairs(commit_data.files) do
+            local added_files = {}
+            
+            for _, file in ipairs(compare_data.files) do
                 local filename = file.filename
                 local status = file.status
                 local raw_url = file.raw_url
@@ -162,17 +179,28 @@ Script.QueueJob(function()
                     if FileMgr.DoesFileExist(local_path) then
                         FileMgr.DeleteFile(local_path)
                     end
-                else
+                elseif status == "added" or status == "modified" then
                     local content = curl_get(raw_url)
                     if content then
                         ensure_dir(local_path)
                         write_file(local_path, content, "wb") -- binary safe
                         count = count + 1
+                        table.insert(added_files, filename)
                     end
                 end
             end
+            
             write_file(lastCommitPath, latest_commit)
-            GUI.AddToast("BiggerScript", "Updated " .. count .. " files.", 5000, 0)
+            
+            -- Build toast message with all added files
+            local toast_msg = "Updated " .. count .. " files."
+            if #added_files > 0 then
+                toast_msg = toast_msg .. "\n"
+                for i, filename in ipairs(added_files) do
+                    toast_msg = toast_msg .. "\n" .. filename
+                end
+            end
+            GUI.AddToast("BiggerScript", toast_msg, 5000, 0)
         else
             GUI.AddToast("BiggerScript", "Failed to parse update data.", 5000, 0)
         end
@@ -193,5 +221,4 @@ Script.QueueJob(function()
     else
         GUI.AddToast("BiggerScript", "Failed to load main script!", 5000, 0)
     end
-
 end)
