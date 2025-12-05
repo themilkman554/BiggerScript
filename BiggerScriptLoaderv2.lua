@@ -120,7 +120,7 @@ Script.QueueJob(function()
     -- 2. Determine Update Strategy
     if not FileMgr.DoesFileExist(targetPath) or not last_commit then
         -- A. Full Install (Missing folder or no version history)
-        GUI.AddToast("BiggerScript", "Installing BiggerScript Assets...", 5000, 0)
+        GUI.AddToast("BiggerScript", "Installing BiggerScript Assets (game will be frozen)", 5000, 0)
         local ZIP_URL = "https://codeload.github.com/themilkman554/BiggerScriptAssests/zip/refs/heads/main"
         local tempZipPath = menuRootPath .. "\\Lua\\BiggerScriptTemp.zip"
         
@@ -193,4 +193,5 @@ Script.QueueJob(function()
     else
         GUI.AddToast("BiggerScript", "Failed to load main script!", 5000, 0)
     end
+
 end)
