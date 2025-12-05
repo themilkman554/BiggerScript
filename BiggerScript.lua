@@ -1,5 +1,5 @@
 ---bigger script
-GUI.AddToast("BiggerScriptv4.6", "Added Delete Attacker Button\n Fixed Map Props being frozen when shouldn't\n Made upside down map v3 a toggle\n Moved Debug to Special tab\n Added Radio off toggle ", 10000, 0)
+GUI.AddToast("BiggerScriptv5", "Added Json Support\n Improved UI", 10000, 0)
 
 if Cherax.GetEdition() == "LE" then
     GUI.AddToast("BiggerScript", "Legacy Version of Cherax breaks vehicles with too many attachments", 10000, 0)
