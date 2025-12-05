@@ -53,6 +53,38 @@ local function curl_get_content(url)
     end
 end
 
+if not LoadLocalLibraries then
+    Script.QueueJob(function()
+        local menuRoot = FileMgr.GetMenuRootPath()
+        local oldLoaderPath = menuRoot .. "\\Lua\\BiggerScriptLoader.lua"
+        if FileMgr.DoesFileExist(oldLoaderPath) then
+            GUI.AddToast("BiggerScript", "Downloading New Loader please restart Script/refrest files for loaderv2", 10000, 0)
+            FileMgr.DeleteFile(oldLoaderPath)
+            
+            local newLoaderUrl = "https://raw.githubusercontent.com/themilkman554/BiggerScript/refs/heads/main/BiggerScriptLoaderv2.lua"
+            local content = curl_get_content(newLoaderUrl)
+            
+            if content then
+                local newLoaderPath = menuRoot .. "\\Lua\\BiggerScriptLoaderv2.lua"
+                local file = io.open(newLoaderPath, "w")
+                if file then
+                    file:write(content)
+                    file:close()
+
+                    if Script.SetShouldUnload then
+                        Script.SetShouldUnload(true)
+                    end
+                    return
+                else
+                    print("BiggerScript: Failed to save new loader to " .. newLoaderPath)
+                end
+            else
+                print("BiggerScript: Failed to download new loader from " .. newLoaderUrl)
+            end
+        end
+    end)
+end
+
 local function load_from_github(path)
     local url = GITHUB_RAW_BASE_URL .. path
     local content = curl_get_content(url)
@@ -83,8 +115,11 @@ local menuRootPath = FileMgr.GetMenuRootPath()
 local biggerScriptRootPath = menuRootPath .. "\\Lua\\BiggerScript"
 local xmlVehiclesFolder = biggerScriptRootPath .. "\\XML Vehicles"
 local iniVehiclesFolder = biggerScriptRootPath .. "\\INI Vehicles"
+local jsonVehiclesFolder = biggerScriptRootPath .. "\\JSON Vehicles"
 local xmlMapsFolder = biggerScriptRootPath .. "\\XML Maps"
+local jsonMapsFolder = biggerScriptRootPath .. "\\JSON Maps"
 local xmlOutfitsFolder = biggerScriptRootPath .. "\\XML Outfits"
+local jsonOutfitsFolder = biggerScriptRootPath .. "\\JSON Outfits"
 
 
 local spawnerSettings = {
@@ -161,8 +196,11 @@ end
 
 local cachedXmlVehicles = nil
 local cachedIniVehicles = nil
+local cachedJsonVehicles = nil
 local cachedXmlMaps = nil
+local cachedJsonMaps = nil
 local cachedXmlOutfits = nil
+local cachedJsonOutfits = nil
 
 local function refreshXmlVehicles()
     local files = FileMgr.FindFiles(xmlVehiclesFolder, ".xml", true)
@@ -210,14 +248,56 @@ local function getIniVehicles()
     return cachedIniVehicles
 end
 
+local function refreshJsonVehicles()
+    local files = FileMgr.FindFiles(jsonVehiclesFolder, ".json", true)
+    if not files or #files == 0 then
+        cachedJsonVehicles = { folders = {}, files = {} }
+    else
+        cachedJsonVehicles = buildFolderStructure(files, jsonVehiclesFolder)
+    end
+end
+
+local function getJsonVehicles()
+    if not cachedJsonVehicles then refreshJsonVehicles() end
+    return cachedJsonVehicles
+end
+
 local function getXmlMaps()
     if not cachedXmlMaps then refreshXmlMaps() end
     return cachedXmlMaps
 end
 
+local function refreshJsonMaps()
+    local files = FileMgr.FindFiles(jsonMapsFolder, ".json", true)
+    if not files or #files == 0 then
+        cachedJsonMaps = { folders = {}, files = {} }
+    else
+        cachedJsonMaps = buildFolderStructure(files, jsonMapsFolder)
+   end
+end
+
+local function getJsonMaps()
+    if not cachedJsonMaps then refreshJsonMaps() end
+    return cachedJsonMaps
+end
+
 local function getXmlOutfits()
     if not cachedXmlOutfits then refreshXmlOutfits() end
     return cachedXmlOutfits
+end
+
+local function refreshJsonOutfits()
+    local files = FileMgr.FindFiles(jsonOutfitsFolder, ".json", true)
+    if not files or #files == 0 then
+        cachedJsonOutfits = { folders = {}, files = {} }
+    else
+        cachedJsonOutfits = buildFolderStructure(files, jsonOutfitsFolder)
+    end
+end
+
+local function getJsonOutfits()
+    if not cachedJsonOutfits then refreshJsonOutfits() end
+    return cachedJsonOutfits
 end
 
 local function folderContainsMatch(folderData, filterText)
@@ -337,7 +417,7 @@ local function renderFolderContents(folderData, spawnFunction, filterText, searc
         if not filterText or string.find(fileData.name:lower(), filterText:lower()) then
             if ImGui.Selectable(fileData.name) then
                 local selectedPath = fileData.fullPath
-                spawning.debug_print("[UI Debug] Selected XML vehicle:", selectedPath)
+                spawning.debug_print("[UI Debug] Selected " .. (itemType or "item") .. ":", selectedPath)
                 currentSelectedVehicleXml = selectedPath
                 if spawnFunction then
                     Script.QueueJob(function() spawnFunction(selectedPath) end)
@@ -363,8 +443,11 @@ local spawnedProps = {}
 -- Persistent search variables
 local searchXmlVehicles = ""
 local searchIniVehicles = ""
+local searchJsonVehicles = ""
 local searchXmlMaps = ""
+local searchJsonMaps = ""
 local searchXmlOutfits = ""
+local searchJsonOutfits = ""
 
 local initialized = false
 
@@ -412,8 +495,11 @@ local function Initialize()
         request_model_load = spawning.request_model_load,
         xmlVehiclesFolder = xmlVehiclesFolder,
         iniVehiclesFolder = iniVehiclesFolder,
+        jsonVehiclesFolder = jsonVehiclesFolder,
         xmlMapsFolder = xmlMapsFolder,
+        jsonMapsFolder = jsonMapsFolder,
         xmlOutfitsFolder = xmlOutfitsFolder,
+        jsonOutfitsFolder = jsonOutfitsFolder,
         spawnedProps = spawnedProps,
         currentSelectedVehicleXml = currentSelectedVehicleXml,
         currentSelectedVehicleIni = currentSelectedVehicleIni
@@ -439,6 +525,8 @@ end
 
 Script.QueueJob(Initialize)
 
+
+
 local function renderMenyooTab()
     if not initialized then
         ImGui.Text("Loading libraries... Please wait.")
@@ -450,9 +538,10 @@ local function renderMenyooTab()
     end
 
     if ImGui.BeginTabBar("MenyooTabs") then
-        if ImGui.BeginTabItem("XML Vehicles") then
+        -- VEHICLES TAB (combines XML, INI, JSON)
+        if ImGui.BeginTabItem("Vehicles") then
             local columns = 2
-            if ImGui.BeginTable("XML Vehicles", columns, ImGuiTableFlags.SizingStretchSame) then
+            if ImGui.BeginTable("VehiclesTable", columns, ImGuiTableFlags.SizingStretchSame) then
                 ImGui.TableNextRow()
                 ImGui.TableSetColumnIndex(0)
                 if ClickGUI.BeginCustomChildWindow("Spawner Settings") then
@@ -478,7 +567,6 @@ local function renderMenyooTab()
                     end
 
                     ImGui.Spacing()
-
 
                     ImGui.PushStyleColor(ImGuiCol.Button, 0.36, 0.016, 0.157, 1.0) 
                     ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.46, 0.06, 0.22, 1.0)
@@ -494,104 +582,63 @@ local function renderMenyooTab()
 
                     ImGui.Spacing()
 
-
                     ClickGUI.EndCustomChildWindow()
                 end
 
                 ImGui.TableSetColumnIndex(1)
-                if ClickGUI.BeginCustomChildWindow("XML Vehicles") then
+                if ClickGUI.BeginCustomChildWindow("Vehicles") then
+                    if ImGui.BeginTabBar("VehicleTypeTabs") then
+                        if ImGui.BeginTabItem("XML") then
+                            searchXmlVehicles, _ = ImGui.InputText("##searchXmlVehicles", searchXmlVehicles, 256)
+                            ImGui.SameLine()
+                            if ImGui.Button("Refresh##xmlVeh") then
+                                refreshXmlVehicles()
+                            end
+                            ImGui.Spacing()
 
-                    searchXmlVehicles, _ = ImGui.InputText("##searchXmlVehicles", searchXmlVehicles, 256)
-                    ImGui.SameLine()
-                    if ImGui.Button("Refresh") then
-                        refreshXmlVehicles()
+                            local xmlStructure = getXmlFiles()
+                            renderFolderContents(xmlStructure, spawning.spawnVehicleFromXML, searchXmlVehicles, "xmlVehicles", "vehicle", hoverCallback)
+                            ImGui.EndTabItem()
+                        end
+
+                        if ImGui.BeginTabItem("INI") then
+                            searchIniVehicles, _ = ImGui.InputText("##searchIniVehicles", searchIniVehicles, 256)
+                            ImGui.SameLine()
+                            if ImGui.Button("Refresh##iniVeh") then
+                                refreshIniVehicles()
+                            end
+                            ImGui.Spacing()
+
+                            local iniStructure = getIniVehicles()
+                            renderFolderContents(iniStructure, spawning.spawnVehicleFromINI, searchIniVehicles, "iniVehicles", "vehicle", hoverCallback)
+                            ImGui.EndTabItem()
+                        end
+
+                        if ImGui.BeginTabItem("JSON") then
+                            searchJsonVehicles, _ = ImGui.InputText("##searchJsonVehicles", searchJsonVehicles, 256)
+                            ImGui.SameLine()
+                            if ImGui.Button("Refresh##jsonVeh") then
+                                refreshJsonVehicles()
+                            end
+                            ImGui.Spacing()
+
+                            local jsonStructure = getJsonVehicles()
+                            renderFolderContents(jsonStructure, spawning.spawnVehicleFromJSON, searchJsonVehicles, "jsonVehicles", "vehicle", hoverCallback)
+                            ImGui.EndTabItem()
+                        end
+
+                        ImGui.EndTabBar()
                     end
-                    ImGui.Spacing()
-
-                    local xmlStructure = getXmlFiles()
-                    renderFolderContents(xmlStructure, spawning.spawnVehicleFromXML, searchXmlVehicles, "xmlVehicles", "vehicle", hoverCallback)
-
                     ClickGUI.EndCustomChildWindow()
                 end
 
                 ImGui.EndTable()
             end
-
             ImGui.EndTabItem()
         end
 
-        if ImGui.BeginTabItem("INI Vehicles") then
-            local columns = 2
-            if ImGui.BeginTable("INI Vehicles", columns, ImGuiTableFlags.SizingStretchSame) then
-                ImGui.TableNextRow()
-                ImGui.TableSetColumnIndex(0)
-                if ClickGUI.BeginCustomChildWindow("Spawner Settings") then
-                    ImGui.SetWindowFontScale(1.3)
-                    ImGui.SetWindowFontScale(1.0)
-                    ImGui.Spacing()
-
-                    spawnerSettings.inVehicle = ImGui.Checkbox("In Vehicle", spawnerSettings.inVehicle)
-                    spawnerSettings.spawnPlaneInTheAir = ImGui.Checkbox("Spawn Aircraft In The Air", spawnerSettings.spawnPlaneInTheAir)
-                    spawnerSettings.deleteOldVehicle = ImGui.Checkbox("Delete Old Vehicle", spawnerSettings.deleteOldVehicle)
-                    spawnerSettings.vehicleGodMode = ImGui.Checkbox("Vehicle God Mode", spawnerSettings.vehicleGodMode)
-                    spawnerSettings.vehicleEngineOn = ImGui.Checkbox("Vehicle Engine On", spawnerSettings.vehicleEngineOn)
-                    spawnerSettings.radioOff = ImGui.Checkbox("Radio Off", spawnerSettings.radioOff)
-                    spawnerSettings.upgradedVehicle = ImGui.Checkbox("Upgraded Vehicle", spawnerSettings.upgradedVehicle)
-                    spawnerSettings.randomColor = ImGui.Checkbox("Random Color", spawnerSettings.randomColor)
-                    spawnerSettings.randomLivery = ImGui.Checkbox("Random Livery", spawnerSettings.randomLivery)
-                    spawnerSettings.previewVehicle = ImGui.Checkbox("Preview Vehicle", spawnerSettings.previewVehicle)
-                    
-                    local oldFly = spawnerSettings.vehicleFly
-                    spawnerSettings.vehicleFly = ImGui.Checkbox("Vehicle Fly", spawnerSettings.vehicleFly)
-                    if spawnerSettings.vehicleFly ~= oldFly then
-                        vehicle_fly.toggle_vehicle_fly(spawnerSettings.vehicleFly)
-                    end
-                    ImGui.Spacing()
-
-
-                    ImGui.PushStyleColor(ImGuiCol.Button, 0.36, 0.016, 0.157, 1.0)
-                    ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.46, 0.06, 0.22, 1.0)
-                    ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.26, 0.01, 0.10, 1.0)
-                    if ImGui.Button("Delete All Spawned Vehicles") then
-                        spawning.deleteAllSpawnedVehicles()
-                    end
-                    ImGui.PopStyleColor(3)
-
-                    if ImGui.IsItemHovered() then
-                        ImGui.SetTooltip("Delete all previously spawned vehicles and their attachments")
-                    end
-
-                    ImGui.Spacing()
-
-
-                    ClickGUI.EndCustomChildWindow()
-                end
-
-                ImGui.TableSetColumnIndex(1)
-                if ClickGUI.BeginCustomChildWindow("INI Vehicles") then
-
-                    searchIniVehicles, _ = ImGui.InputText("##searchIniVehicles", searchIniVehicles, 256)
-                    ImGui.SameLine()
-                    if ImGui.Button("Refresh") then
-                        refreshIniVehicles()
-                    end
-                    ImGui.Spacing()
-
-                    local iniStructure = getIniVehicles()
-                    renderFolderContents(iniStructure, spawning.spawnVehicleFromINI, searchIniVehicles, "iniVehicles", "vehicle", hoverCallback)
-
-                    ClickGUI.EndCustomChildWindow()
-                end
-
-
-                ImGui.EndTable()
-            end
-
-            ImGui.EndTabItem()
-        end
-
-
-        if ImGui.BeginTabItem("XML Maps") then
+        -- MAPS TAB (combines XML, JSON)
+        if ImGui.BeginTabItem("Maps") then
             local hasMarkers = false
             for _, map in ipairs(spawnedMaps) do
                 if map.markers and #map.markers > 0 then
@@ -601,7 +648,7 @@ local function renderMenyooTab()
             end
 
             local columns = 2
-            if ImGui.BeginTable("XML Maps", columns, ImGuiTableFlags.SizingStretchSame) then
+            if ImGui.BeginTable("MapsTable", columns, ImGuiTableFlags.SizingStretchSame) then
                 ImGui.TableNextRow()
                 ImGui.TableSetColumnIndex(0)
                 if ClickGUI.BeginCustomChildWindow("Map Settings") then
@@ -697,18 +744,36 @@ local function renderMenyooTab()
                 end
 
                 ImGui.TableSetColumnIndex(1)
-                if ClickGUI.BeginCustomChildWindow("XML Maps") then
+                if ClickGUI.BeginCustomChildWindow("Maps") then
+                    if ImGui.BeginTabBar("MapTypeTabs") then
+                        if ImGui.BeginTabItem("XML") then
+                            searchXmlMaps, _ = ImGui.InputText("##searchXmlMaps", searchXmlMaps, 256)
+                            ImGui.SameLine()
+                            if ImGui.Button("Refresh##xmlMaps") then
+                                refreshXmlMaps()
+                            end
+                            ImGui.Spacing()
 
-                    searchXmlMaps, _ = ImGui.InputText("##searchXmlMaps", searchXmlMaps, 256)
-                    ImGui.SameLine()
-                    if ImGui.Button("Refresh") then
-                        refreshXmlMaps()
+                            local xmlStructure = getXmlMaps()
+                            renderFolderContents(xmlStructure, spawning.spawnMapFromXML, searchXmlMaps, "xmlMaps", "map", function() end)
+                            ImGui.EndTabItem()
+                        end
+
+                        if ImGui.BeginTabItem("JSON") then
+                            searchJsonMaps, _ = ImGui.InputText("##searchJsonMaps", searchJsonMaps, 256)
+                            ImGui.SameLine()
+                            if ImGui.Button("Refresh##jsonMaps") then
+                                refreshJsonMaps()
+                            end
+                            ImGui.Spacing()
+
+                            local jsonStructure = getJsonMaps()
+                            renderFolderContents(jsonStructure, spawning.spawnMapFromJSON, searchJsonMaps, "jsonMaps", "map", function() end)
+                            ImGui.EndTabItem()
+                        end
+
+                        ImGui.EndTabBar()
                     end
-                    ImGui.Spacing()
-
-                    local xmlStructure = getXmlMaps()
-                    renderFolderContents(xmlStructure, spawning.spawnMapFromXML, searchXmlMaps, "xmlMaps", "map", function() end)
-
                     ClickGUI.EndCustomChildWindow()
                 end
 
@@ -717,9 +782,10 @@ local function renderMenyooTab()
             ImGui.EndTabItem()
         end
 
-        if ImGui.BeginTabItem("XML Outfits") then
+        -- OUTFITS TAB (combines XML, JSON)
+        if ImGui.BeginTabItem("Outfits") then
             local columns = 2
-            if ImGui.BeginTable("XML Outfits", columns, ImGuiTableFlags.SizingStretchSame) then
+            if ImGui.BeginTable("OutfitsTable", columns, ImGuiTableFlags.SizingStretchSame) then
                 ImGui.TableNextRow()
                 ImGui.TableSetColumnIndex(0)
                 if ClickGUI.BeginCustomChildWindow("Outfit Settings") then
@@ -749,19 +815,36 @@ local function renderMenyooTab()
                 end
 
                 ImGui.TableSetColumnIndex(1)
-                if ClickGUI.BeginCustomChildWindow("XML Outfits") then
+                if ClickGUI.BeginCustomChildWindow("Outfits") then
+                    if ImGui.BeginTabBar("OutfitTypeTabs") then
+                        if ImGui.BeginTabItem("XML") then
+                            searchXmlOutfits, _ = ImGui.InputText("##searchXmlOutfits", searchXmlOutfits, 256)
+                            ImGui.SameLine()
+                            if ImGui.Button("Refresh##xmlOutfits") then
+                                refreshXmlOutfits()
+                            end
+                            ImGui.Spacing()
 
+                            local xmlStructure = getXmlOutfits()
+                            renderFolderContents(xmlStructure, spawning.spawnOutfitFromXML, searchXmlOutfits, "xmlOutfits", "outfit", hoverCallback)
+                            ImGui.EndTabItem()
+                        end
 
-                    searchXmlOutfits, _ = ImGui.InputText("##searchXmlOutfits", searchXmlOutfits, 256)
-                    ImGui.SameLine()
-                    if ImGui.Button("Refresh") then
-                        refreshXmlOutfits()
+                        if ImGui.BeginTabItem("JSON") then
+                            searchJsonOutfits, _ = ImGui.InputText("##searchJsonOutfits", searchJsonOutfits, 256)
+                            ImGui.SameLine()
+                            if ImGui.Button("Refresh##jsonOutfits") then
+                                refreshJsonOutfits()
+                            end
+                            ImGui.Spacing()
+
+                            local jsonStructure = getJsonOutfits()
+                            renderFolderContents(jsonStructure, spawning.spawnOutfitFromJSON, searchJsonOutfits, "jsonOutfits", "outfit", hoverCallback)
+                            ImGui.EndTabItem()
+                        end
+
+                        ImGui.EndTabBar()
                     end
-                    ImGui.Spacing()
-
-                    local xmlStructure = getXmlOutfits()
-                    renderFolderContents(xmlStructure, spawning.spawnOutfitFromXML, searchXmlOutfits, "xmlOutfits", "outfit", hoverCallback)
-
                     ClickGUI.EndCustomChildWindow()
                 end
 
@@ -785,6 +868,8 @@ local function renderMenyooTab()
                     if ImGui.Button("Self Destruction") then
                         robot.selfDestructRobot()
                     end
+
+
 
                     ImGui.Spacing()
                     local oldUpsideDown = spawnerSettings.upsideDownMap
@@ -843,7 +928,7 @@ ClickGUI.AddPlayerTab("Bigger Script", function()
         ImGui.Spacing()
 
         if ImGui.BeginTabBar("AttackerTypeTabs") then
-            if ImGui.BeginTabItem("XML Attackers") then
+            if ImGui.BeginTabItem("XML") then
                 local xmlFiles = getXmlFiles()
                 local targetPlayer = Utils.GetSelectedPlayer()
                 local attackerSpawnFunc = function(filePath)
@@ -855,7 +940,7 @@ ClickGUI.AddPlayerTab("Bigger Script", function()
                 ImGui.EndTabItem()
             end
 
-            if ImGui.BeginTabItem("INI Attackers") then
+            if ImGui.BeginTabItem("INI") then
                 local iniFiles = getIniVehicles()
                 local targetPlayer = Utils.GetSelectedPlayer()
                 local attackerSpawnFunc = function(filePath)
@@ -864,6 +949,18 @@ ClickGUI.AddPlayerTab("Bigger Script", function()
                 local searchIniAttackers = ImGui.InputText("##searchIniAttackers", searchIniAttackers or "", 256)
                 ImGui.Spacing()
                 renderFolderContents(iniFiles, attackerSpawnFunc, searchIniAttackers, "iniAttackers")
+                ImGui.EndTabItem()
+            end
+
+            if ImGui.BeginTabItem("JSON") then
+                local jsonFiles = getJsonVehicles()
+                local targetPlayer = Utils.GetSelectedPlayer()
+                local attackerSpawnFunc = function(filePath)
+                    spawning.spawnMenyooAttackerFromJSON(filePath, targetPlayer)
+                end
+                local searchJsonAttackers = ImGui.InputText("##searchJsonAttackers", searchJsonAttackers or "", 256)
+                ImGui.Spacing()
+                renderFolderContents(jsonFiles, attackerSpawnFunc, searchJsonAttackers, "jsonAttackers")
                 ImGui.EndTabItem()
             end
 

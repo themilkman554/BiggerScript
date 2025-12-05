@@ -1,14 +1,13 @@
 local M = {}
 local previewUpdateJob = nil
-local isPreviewUpdaterRunning = false -- New flag for controlling the preview job
+local isPreviewUpdaterRunning = false
 local lastSpawnedVehiclePath = nil
 
 -- Context variables to be initialized by the main script
-local upsidedownmap_module, spawnerSettings, debug_print, spawnedVehicles, spawnedMaps, spawnedOutfits, previewEntities, currentPreviewFile, constructor_lib, parse_ini_file, get_xml_element_content, get_xml_element, to_boolean, safe_tonumber, trim, split_str, request_model_load, xmlVehiclesFolder, iniVehiclesFolder, xmlMapsFolder, xmlOutfitsFolder, previewRotation, spawnedProps, currentSelectedVehicleXml, currentSelectedVehicleIni
+local upsidedownmap_module, spawnerSettings, debug_print, spawnedVehicles, spawnedMaps, spawnedOutfits, previewEntities, currentPreviewFile, constructor_lib, parse_ini_file, get_xml_element_content, get_xml_element, to_boolean, safe_tonumber, trim, split_str, request_model_load, xmlVehiclesFolder, iniVehiclesFolder, jsonVehiclesFolder, xmlMapsFolder, jsonMapsFolder, xmlOutfitsFolder, jsonOutfitsFolder, previewRotation, spawnedProps, currentSelectedVehicleXml, currentSelectedVehicleIni
 
--- Preview Feature Start (Moved from BiggerScriptv0.3.2.lua)
+-- Preview Feature
 local previewRotation = { z = 0.0 }
--- Preview Feature End
 
 local function parse_attributes(attrString)
     local attrs = {}
@@ -56,8 +55,11 @@ function M.init(context)
     request_model_load = context.request_model_load
     xmlVehiclesFolder = context.xmlVehiclesFolder
     iniVehiclesFolder = context.iniVehiclesFolder
+    jsonVehiclesFolder = context.jsonVehiclesFolder
     xmlMapsFolder = context.xmlMapsFolder
+    jsonMapsFolder = context.jsonMapsFolder
     xmlOutfitsFolder = context.xmlOutfitsFolder
+    jsonOutfitsFolder = context.jsonOutfitsFolder
     -- previewRotation = context.previewRotation -- Removed as it's now local to spawning.lua
     spawnedProps = context.spawnedProps
     currentSelectedVehicleXml = context.currentSelectedVehicleXml
@@ -2710,6 +2712,267 @@ function M.spawnMenyooAttackerFromINI(filePath, targetPlayerIndex)
     end)
 end
 
+function M.spawnMenyooAttackerFromJSON(filePath, targetPlayerIndex)
+    print("[JSON Attacker] Function called with file:", filePath, "target player:", tostring(targetPlayerIndex))
+    local originalInVehicle = spawnerSettings.inVehicle
+    spawnerSettings.inVehicle = false
+    Script.QueueJob(function()
+        print("[JSON Attacker] Inside Script.QueueJob")
+        M.debug_print("[Spawn Debug] Attempting to spawn JSON attacker from:", filePath, "for player index:", tostring(targetPlayerIndex))
+        
+        if not filePath or not FileMgr.DoesFileExist(filePath) then
+            print("[JSON Attacker] Error: File does not exist:", filePath)
+            M.debug_print("[Spawn Debug] Error: JSON file does not exist for attacker:", filePath)
+            spawnerSettings.inVehicle = originalInVehicle
+            return
+        end
+        
+        print("[JSON Attacker] Reading file...")
+        local jsonContent = FileMgr.ReadFileContent(filePath)
+        if not jsonContent or jsonContent == "" then
+            print("[JSON Attacker] Error: Failed to read file or content empty")
+            M.debug_print("[Spawn Debug] Error: Failed to read JSON file or content is empty for attacker:", filePath)
+            spawnerSettings.inVehicle = originalInVehicle
+            return
+        end
+        
+        print("[JSON Attacker] Parsing JSON...")
+        local jsonData
+        local parseSuccess, parseResult = pcall(function()
+            local luaCode = jsonContent
+            luaCode = luaCode:gsub("%[", "{")
+            luaCode = luaCode:gsub("%]", "}")
+            luaCode = luaCode:gsub(":null", ":nil")
+            luaCode = luaCode:gsub(",null", ",nil")
+            luaCode = luaCode:gsub("{null", "{nil")
+            luaCode = luaCode:gsub('"([^"]+)"%s*:%s*', function(key)
+                if key:match("^[%a_][%w_]*$") then
+                    return key .. "="
+                else
+                    return '["' .. key .. '"]='
+                end
+            end)
+            luaCode = "return " .. luaCode
+            local func, err = load(luaCode)
+            if not func then
+                error("Failed to parse JSON: " .. tostring(err))
+            end
+            return func()
+        end)
+        
+        if not parseSuccess or not parseResult then
+            print("[JSON Attacker] Parse failed:", tostring(parseResult))
+            M.debug_print("[Spawn Debug] Error parsing JSON for attacker:", tostring(parseResult))
+            spawnerSettings.inVehicle = originalInVehicle
+            return
+        end
+        
+        jsonData = parseResult
+        print("[JSON Attacker] Parse successful!")
+        
+        -- Check if it's a vehicle
+        if jsonData.type ~= "VEHICLE" then
+            print("[JSON Attacker] Error: Not a VEHICLE type, got:", tostring(jsonData.type))
+            M.debug_print("[Spawn Debug] Error: JSON is not a VEHICLE type for attacker, got:", tostring(jsonData.type))
+            spawnerSettings.inVehicle = originalInVehicle
+            return
+        end
+        
+        local modelHash = jsonData.hash or jsonData.model
+        print("[JSON Attacker] Model hash:", tostring(modelHash))
+        if not modelHash or modelHash == 0 then
+            print("[JSON Attacker] Error: Invalid model hash")
+            M.debug_print("[Spawn Debug] Error: Invalid model hash for JSON attacker")
+            spawnerSettings.inVehicle = originalInVehicle
+            return
+        end
+        
+        -- Get target ped
+        print("[JSON Attacker] Getting target ped...")
+        local targetPed = nil
+        if targetPlayerIndex ~= nil then
+            pcall(function() targetPed = PLAYER.GET_PLAYER_PED_SCRIPT_INDEX(targetPlayerIndex) end)
+        end
+        if not targetPed or targetPed == 0 then
+            M.debug_print("[Spawn Debug] Warning: Target ped not found for attacker. Defaulting to local ped.")
+            targetPed = GTA.GetLocalPed()
+        end
+        if not targetPed or targetPed == 0 then
+            print("[JSON Attacker] Error: No target ped available")
+            M.debug_print("[Spawn Debug] Error: No target ped available for attacker spawn.")
+            spawnerSettings.inVehicle = originalInVehicle
+            return
+        end
+        
+        -- Calculate spawn coordinates (behind target)
+        print("[JSON Attacker] Calculating spawn position...")
+        local spawnCoords = { x = 0.0, y = 0.0, z = 0.0 }
+        pcall(function()
+            local off = ENTITY.GET_OFFSET_FROM_ENTITY_IN_WORLD_COORDS(targetPed, 0, -10.0, 0)
+            spawnCoords.x = off.x or off[1] or 0.0
+            spawnCoords.y = off.y or off[2] or 0.0
+            spawnCoords.z = off.z or off[3] or 0.0
+            local foundGround, gz = GTA.GetGroundZ(spawnCoords.x, spawnCoords.y)
+            if foundGround then spawnCoords.z = gz end
+            M.debug_print("[Spawn Debug] Attacker spawn coordinates:", spawnCoords.x, spawnCoords.y, spawnCoords.z)
+        end)
+        
+        -- Spawn the vehicle
+        print("[JSON Attacker] Spawning vehicle...")
+        M.request_model_load(modelHash)
+        local vehicleHandle = nil
+        if GTA and GTA.SpawnVehicle then
+            local ok, h = pcall(function() return GTA.SpawnVehicle(modelHash, spawnCoords.x, spawnCoords.y, spawnCoords.z, 0, true, true) end)
+            if ok and h and h ~= 0 then vehicleHandle = h end
+        end
+        if not vehicleHandle and entities and entities.create_vehicle then
+            local ok, h = pcall(function() return entities.create_vehicle(modelHash, spawnCoords, 0) end)
+            if ok and h and h ~= 0 then vehicleHandle = h end
+        end
+        if not vehicleHandle or vehicleHandle == 0 then
+            print("[JSON Attacker] Error: Failed to spawn vehicle")
+            M.debug_print("[Spawn Debug] Error: Failed to spawn main attacker vehicle for model hash:", modelHash, "from:", filePath)
+            spawnerSettings.inVehicle = originalInVehicle
+            return
+        end
+        print("[JSON Attacker] Vehicle spawned, handle:", vehicleHandle)
+        M.debug_print("[Spawn Debug] Spawned attacker vehicle handle:", tostring(vehicleHandle))
+        
+        -- Spawn attacker ped
+        print("[JSON Attacker] Spawning attacker ped...")
+        local attackerModel = 71929310  -- Default attacker model
+        M.request_model_load(attackerModel)
+        local attacker = nil
+        if GTA and GTA.CreatePed then
+            local ok, h = pcall(function() return GTA.CreatePed(attackerModel, 26, spawnCoords.x, spawnCoords.y, spawnCoords.z, 0, true, true) end)
+            if ok and h and h ~= 0 then attacker = h end
+        end
+        if not attacker or attacker == 0 then
+            print("[JSON Attacker] Error: Failed to spawn attacker ped")
+            M.debug_print("[Spawn Debug] Error: Failed to spawn attacker ped for model:", tostring(attackerModel))
+            spawnerSettings.inVehicle = originalInVehicle
+            return
+        end
+        print("[JSON Attacker] Attacker ped spawned, handle:", attacker)
+        M.debug_print("[Spawn Debug] Spawned attacker ped handle:", tostring(attacker))
+        
+        -- Configure attacker
+        print("[JSON Attacker] Configuring attacker...")
+        pcall(function()
+            PED.SET_PED_INTO_VEHICLE(attacker, vehicleHandle, -1)
+            ENTITY.SET_ENTITY_AS_MISSION_ENTITY(attacker, true, true)
+            ENTITY.SET_ENTITY_INVINCIBLE(attacker, true)
+            PED.SET_PED_ACCURACY(attacker, 100.0)
+            PED.SET_PED_COMBAT_ABILITY(attacker, 1, true)
+            PED.SET_PED_FLEE_ATTRIBUTES(attacker, 0, false)
+            PED.SET_PED_COMBAT_ATTRIBUTES(attacker, 46, true)
+            PED.SET_PED_COMBAT_ATTRIBUTES(attacker, 5, true)
+            PED.SET_PED_CONFIG_FLAG(attacker, 52, true)
+            local relHash = PED.GET_PED_RELATIONSHIP_GROUP_HASH(targetPed)
+            PED.SET_PED_RELATIONSHIP_GROUP_HASH(attacker, relHash)
+            ENTITY.SET_ENTITY_INVINCIBLE(vehicleHandle, true)
+            TASK.TASK_VEHICLE_MISSION_PED_TARGET(attacker, vehicleHandle, targetPed, 6, 500.0, 786988, 0.0, 0.0, true)
+            M.debug_print("[Spawn Debug] Attacker ped configured and tasked.")
+        end)
+        
+        -- Spawn and attach children objects
+        print("[JSON Attacker] Spawning attachments...")
+        local attachedObjects = {}
+        if jsonData.children and #jsonData.children > 0 then
+            print("[JSON Attacker] Found", #jsonData.children, "children to spawn")
+            M.debug_print("[Spawn Debug] Spawning", #jsonData.children, "attachments for JSON attacker...")
+            
+            for i, child in ipairs(jsonData.children) do
+                local childModel = child.hash or child.model
+                if childModel then
+                    M.request_model_load(childModel)
+                    Script.Yield(100)
+                    
+                    local objectHandle
+                    if child.type == "VEHICLE" then
+                        if GTA and GTA.SpawnVehicle then
+                            local ok2, h2 = pcall(function()
+                                return GTA.SpawnVehicle(childModel, spawnCoords.x, spawnCoords.y, spawnCoords.z, 0, true, true)
+                            end)
+                            if ok2 and h2 and h2 ~= 0 then
+                                objectHandle = h2
+                            end
+                        end
+                    else
+                        if GTA and GTA.CreateObject then
+                            local ok2, h2 = pcall(function()
+                                return GTA.CreateObject(childModel, spawnCoords.x, spawnCoords.y, spawnCoords.z, true, true)
+                            end)
+                            if ok2 and h2 and h2 ~= 0 then
+                                objectHandle = h2
+                            end
+                        end
+                        if not objectHandle or objectHandle == 0 then
+                            local ok2, h2 = pcall(function()
+                                return OBJECT.CREATE_OBJECT(childModel, spawnCoords.x, spawnCoords.y, spawnCoords.z, true, false, false)
+                            end)
+                            if ok2 and h2 and h2 ~= 0 then
+                                objectHandle = h2
+                            end
+                        end
+                    end
+                    
+                    if objectHandle and objectHandle ~= 0 then
+                        print("[JSON Attacker] Attachment", i, "spawned, handle:", objectHandle)
+                        M.debug_print("[Spawn Debug] Attachment", i, "spawned for JSON attacker, handle:", objectHandle)
+                        
+                        -- Apply options
+                        if child.options then
+                            local opts = child.options
+                            if opts.is_visible ~= nil then
+                                pcall(function() ENTITY.SET_ENTITY_VISIBLE(objectHandle, opts.is_visible, false) end)
+                            end
+                            if opts.has_collision ~= nil then
+                                pcall(function() ENTITY.SET_ENTITY_COLLISION(objectHandle, opts.has_collision, false) end)
+                            end
+                            if opts.is_invincible ~= nil then
+                                pcall(function() ENTITY.SET_ENTITY_INVINCIBLE(objectHandle, opts.is_invincible) end)
+                            else
+                                pcall(function() ENTITY.SET_ENTITY_INVINCIBLE(objectHandle, true) end)
+                            end
+                        end
+                        
+                        -- Attach to vehicle
+                        pcall(function()
+                            ENTITY.ATTACH_ENTITY_TO_ENTITY(
+                                objectHandle, vehicleHandle, 0,
+                                child.offset and child.offset.x or 0,
+                                child.offset and child.offset.y or 0,
+                                child.offset and child.offset.z or 0,
+                                child.rotation and child.rotation.x or 0,
+                                child.rotation and child.rotation.y or 0,
+                                child.rotation and child.rotation.z or 0,
+                                false, false, false, false, 2, true
+                            )
+                        end)
+                        print("[JSON Attacker] Attached child", i)
+                        
+                        table.insert(attachedObjects, objectHandle)
+                    end
+                end
+            end
+        end
+        
+        print("[JSON Attacker] Total attachments spawned:", #attachedObjects)
+        M.debug_print("[Spawn Debug] Spawned", #attachedObjects, "attachments for JSON attacker vehicle")
+        
+        -- Track spawned vehicle
+        local attachments = { attacker }
+        for _, h in ipairs(attachedObjects) do
+            table.insert(attachments, h)
+        end
+        table.insert(spawnedVehicles, { vehicle = vehicleHandle, attachments = attachments })
+        print("[JSON Attacker] Spawn complete!")
+        M.debug_print("[Spawn Debug] JSON Attacker vehicle and attachments recorded.")
+        spawnerSettings.inVehicle = originalInVehicle
+    end)
+end
+
 function M.spawnMapV1Networked(filePath, placements)
     M.debug_print("[Spawn Debug] Attempting to spawn XML map with Network Maps V1 from:", filePath)
     local carattach_hash = Utils.Joaat("lazer")
@@ -3281,6 +3544,1451 @@ function M.deleteAllSpawnedProps()
         spawnedProps = {}
         M.debug_print("[Delete Debug] All spawned props cleared.")
         pcall(function() GUI.AddToast("Props Deleted", "All spawned props deleted.", 3000, 0) end)
+    end)
+end
+
+-- JSON Vehicle Spawning Function
+function M.spawnVehicleFromJSON(filePath, isPreview)
+    Script.QueueJob(function()
+        M.debug_print("[JSON Spawn Debug] Starting JSON vehicle spawn for file:", filePath, "Is Preview:", tostring(isPreview))
+        
+        if not FileMgr.DoesFileExist(filePath) then
+            M.debug_print("[JSON Spawn Debug] Error: JSON file does not exist:", filePath)
+            pcall(function() GUI.AddToast("Spawn Error", "JSON file not found", 3000, 0) end)
+            return
+        end
+        
+        local jsonContent = FileMgr.ReadFileContent(filePath)
+        if not jsonContent or jsonContent == "" then
+            M.debug_print("[JSON Spawn Debug] Error: Failed to read JSON file or content is empty:", filePath)
+            pcall(function() GUI.AddToast("Spawn Error", "Failed to read JSON file", 3000, 0) end)
+            return
+        end
+        
+        M.debug_print("[JSON Spawn Debug] JSON content length:", string.len(jsonContent))
+        
+        -- Parse JSON using proper converter
+        local jsonData
+        local parseSuccess, parseResult = pcall(function()
+            -- Convert JSON to Lua table syntax
+            local luaCode = jsonContent
+            
+            -- Replace arrays: [] -> {}
+            luaCode = luaCode:gsub("%[", "{")
+            luaCode = luaCode:gsub("%]", "}")
+            
+            -- Replace null with nil
+            luaCode = luaCode:gsub(":null", ":nil")
+            luaCode = luaCode:gsub(",null", ",nil")
+            luaCode = luaCode:gsub("{null", "{nil")
+            
+            -- Replace quoted keys with unquoted keys and change : to =
+            -- But keep quotes if the key has spaces or special characters
+            luaCode = luaCode:gsub('"([^"]+)"%s*:%s*', function(key)
+                -- Check if key is a valid Lua identifier (letters, numbers, underscore, no spaces)
+                if key:match("^[%a_][%w_]*$") then
+                    -- Valid identifier, remove quotes
+                    return key .. "="
+                else
+                    -- Has spaces or special chars, keep quotes and use bracket notation
+                    return '["' .. key .. '"]='
+                end
+            end)
+            
+            -- Wrap in return statement
+            luaCode = "return " .. luaCode
+            
+            M.debug_print("[JSON Spawn Debug] Attempting to parse JSON as Lua table...")
+            local func, err = load(luaCode)
+            if not func then
+                M.debug_print("[JSON Spawn Debug] Load error:", tostring(err))
+                error("Failed to parse JSON: " .. tostring(err))
+            end
+            return func()
+        end)
+        
+        if not parseSuccess or not parseResult then
+            M.debug_print("[JSON Spawn Debug] Error parsing JSON:", tostring(parseResult))
+            pcall(function() GUI.AddToast("Spawn Error", "Failed to parse JSON: " .. tostring(parseResult), 5000, 0) end)
+            return
+        end
+        
+        jsonData = parseResult
+        M.debug_print("[JSON Spawn Debug] JSON parsed successfully")
+        
+        -- Detect JSON format
+        local isJSTAND = jsonData.base ~= nil or jsonData.version and jsonData.version:match("Jackz Builder")
+        local isConstructor = jsonData.type == "VEHICLE"
+        
+        M.debug_print("[JSON Spawn Debug] Format detection - JSTAND:", isJSTAND, "Constructor:", isConstructor)
+        
+        -- Handle JSTAND format (Jackz Builder)
+        if isJSTAND then
+            M.debug_print("[JSON Spawn Debug] Detected JSTAND (Jackz Builder) format")
+            
+            -- Get the base vehicle model
+            local modelHash = jsonData.base and jsonData.base.model or jsonData.base and jsonData.base.data and jsonData.base.data.model
+            if not modelHash then
+                M.debug_print("[JSON Spawn Debug] Error: No model in JSTAND base")
+                pcall(function() GUI.AddToast("Spawn Error", "No model in JSTAND base", 3000, 0) end)
+                return
+            end
+            
+            -- Convert JSTAND to a format we can use
+            jsonData.hash = modelHash
+            jsonData.type = "VEHICLE"
+            jsonData.children = {}
+            
+            -- Add objects as children
+            if jsonData.objects then
+                for _, obj in ipairs(jsonData.objects) do
+                    table.insert(jsonData.children, {
+                        type = "OBJECT",
+                        hash = obj.model,
+                        model = obj.model,
+                        offset = obj.offset,
+                        rotation = obj.rotation,
+                        options = {
+                            is_visible = obj.visible,
+                            has_collision = obj.collision,
+                            bone_index = obj.boneIndex or 0
+                        }
+                    })
+                end
+            end
+            
+            -- Add vehicles as children
+            if jsonData.vehicles then
+                for _, veh in ipairs(jsonData.vehicles) do
+                    table.insert(jsonData.children, {
+                        type = "VEHICLE",
+                        hash = veh.model,
+                        model = veh.model,
+                        offset = veh.offset,
+                        rotation = veh.rotation,
+                        options = {
+                            is_visible = veh.visible,
+                            is_invincible = veh.godmode,
+                            has_collision = veh.collision,
+                            bone_index = veh.boneIndex or 0
+                        }
+                    })
+                end
+            end
+            
+            M.debug_print("[JSON Spawn Debug] Converted JSTAND to Constructor format, children:", #jsonData.children)
+        end
+        
+        -- Check if it's a vehicle (after potential conversion)
+        if jsonData.type ~= "VEHICLE" then
+            M.debug_print("[JSON Spawn Debug] Error: JSON is not a vehicle type, got:", tostring(jsonData.type))
+            pcall(function() GUI.AddToast("Spawn Error", "This JSON is not a vehicle", 3000, 0) end)
+            return
+        end
+        
+        -- Get player position for spawning
+        local playerPed = PLAYER.PLAYER_PED_ID()
+        local playerCoords = ENTITY.GET_ENTITY_COORDS(playerPed, false)
+        local playerHeading = ENTITY.GET_ENTITY_HEADING(playerPed)
+        
+        M.debug_print("[JSON Spawn Debug] Player coords:", playerCoords.x, playerCoords.y, playerCoords.z)
+        
+        -- Calculate spawn position
+        local spawnCoords = {}
+        if spawnerSettings.inVehicle then
+            spawnCoords.x = playerCoords.x
+            spawnCoords.y = playerCoords.y
+            spawnCoords.z = playerCoords.z
+        else
+            local forwardX = math.sin(math.rad(playerHeading)) * 3.0
+            local forwardY = math.cos(math.rad(playerHeading)) * 3.0
+            spawnCoords.x = playerCoords.x + forwardX
+            spawnCoords.y = playerCoords.y + forwardY
+            spawnCoords.z = playerCoords.z
+        end
+        
+        M.debug_print("[JSON Spawn Debug] Spawn coords:", spawnCoords.x, spawnCoords.y, spawnCoords.z)
+        
+        -- Delete old vehicle if requested
+        if spawnerSettings.deleteOldVehicle and not isPreview then
+            M.deleteAllSpawnedVehicles()
+            Script.Yield(100)
+        end
+        
+        -- Get vehicle model
+        local modelHash = jsonData.hash
+        if not modelHash then
+            M.debug_print("[JSON Spawn Debug] Error: No model hash in JSON")
+            pcall(function() GUI.AddToast("Spawn Error", "No model hash in JSON", 3000, 0) end)
+            return
+        end
+        
+        M.debug_print("[JSON Spawn Debug] Vehicle model hash:", tostring(modelHash))
+        
+        -- Request and load model
+        M.request_model_load(modelHash)
+        Script.Yield(200)
+        
+        -- Spawn the main vehicle
+        local vehicleHandle
+        local spawnSuccess, spawnResult = pcall(function()
+            return GTA.SpawnVehicle(modelHash, spawnCoords.x, spawnCoords.y, spawnCoords.z, playerHeading, true, true)
+        end)
+        
+        if spawnSuccess and spawnResult and spawnResult ~= 0 then
+            vehicleHandle = spawnResult
+        else
+            M.debug_print("[JSON Spawn Debug] GTA.SpawnVehicle failed, trying VEHICLE.CREATE_VEHICLE")
+            local ok, h = pcall(function()
+                return VEHICLE.CREATE_VEHICLE(modelHash, spawnCoords.x, spawnCoords.y, spawnCoords.z, playerHeading, true, true)
+            end)
+            if ok and h and h ~= 0 then
+                vehicleHandle = h
+            end
+        end
+        
+        if not vehicleHandle or vehicleHandle == 0 then
+            M.debug_print("[JSON Spawn Debug] Error: Failed to spawn vehicle")
+            pcall(function() GUI.AddToast("Spawn Error", "Failed to spawn vehicle", 3000, 0) end)
+            return
+        end
+        
+        M.debug_print("[JSON Spawn Debug] Vehicle spawned successfully, handle:", tostring(vehicleHandle))
+        
+        -- Apply vehicle attributes from JSON
+        if jsonData.vehicle_attributes then
+            local attrs = jsonData.vehicle_attributes
+            
+            -- Apply mods
+            if attrs.mods then
+                M.debug_print("[JSON Spawn Debug] Applying mods...")
+                for modKey, modValue in pairs(attrs.mods) do
+                    local modId = tonumber(modKey:match("_(%d+)"))
+                    if modId then
+                        if type(modValue) == "boolean" then
+                            pcall(function() VEHICLE.TOGGLE_VEHICLE_MOD(vehicleHandle, modId, modValue) end)
+                        elseif type(modValue) == "number" then
+                            pcall(function() VEHICLE.SET_VEHICLE_MOD(vehicleHandle, modId, modValue, false) end)
+                        end
+                    end
+                end
+            end
+            
+            -- Apply paint
+            if attrs.paint then
+                M.debug_print("[JSON Spawn Debug] Applying paint...")
+                local paint = attrs.paint
+                
+                -- Primary color
+                if paint.primary then
+                    if paint.primary.is_custom and paint.primary.custom_color then
+                        local c = paint.primary.custom_color
+                        pcall(function() 
+                            VEHICLE.SET_VEHICLE_CUSTOM_PRIMARY_COLOUR(vehicleHandle, c.r or 0, c.g or 0, c.b or 0)
+                        end)
+                    elseif paint.primary.vehicle_standard_color then
+                        pcall(function()
+                            VEHICLE.SET_VEHICLE_COLOURS(vehicleHandle, paint.primary.vehicle_standard_color, paint.secondary and paint.secondary.vehicle_standard_color or 0)
+                        end)
+                    end
+                end
+                
+                -- Secondary color
+                if paint.secondary and paint.secondary.is_custom and paint.secondary.custom_color then
+                    local c = paint.secondary.custom_color
+                    pcall(function()
+                        VEHICLE.SET_VEHICLE_CUSTOM_SECONDARY_COLOUR(vehicleHandle, c.r or 0, c.g or 0, c.b or 0)
+                    end)
+                end
+                
+                -- Pearlescent
+                if paint.extra_colors and paint.extra_colors.pearlescent then
+                    pcall(function()
+                        VEHICLE.SET_VEHICLE_EXTRA_COLOURS(vehicleHandle, paint.extra_colors.pearlescent, paint.extra_colors.wheel or 0)
+                    end)
+                end
+            end
+            
+            -- Apply options
+            if attrs.options then
+                M.debug_print("[JSON Spawn Debug] Applying options...")
+                local opts = attrs.options
+                
+                if opts.license_plate_text then
+                    pcall(function() VEHICLE.SET_VEHICLE_NUMBER_PLATE_TEXT(vehicleHandle, opts.license_plate_text) end)
+                end
+                
+                if opts.window_tint then
+                    pcall(function() VEHICLE.SET_VEHICLE_WINDOW_TINT(vehicleHandle, opts.window_tint) end)
+                end
+            end
+        end
+        
+        -- Apply spawner settings
+        if spawnerSettings.vehicleGodMode and not isPreview then
+            pcall(function()
+                ENTITY.SET_ENTITY_INVINCIBLE(vehicleHandle, true)
+                ENTITY.SET_ENTITY_PROOFS(vehicleHandle, true, true, true, true, true, true, true, true)
+            end)
+            M.debug_print("[JSON Spawn Debug] Applied god mode to vehicle")
+        end
+        
+        if spawnerSettings.vehicleEngineOn and not isPreview then
+            pcall(function()
+                VEHICLE.SET_VEHICLE_ENGINE_ON(vehicleHandle, true, true, false)
+            end)
+            M.debug_print("[JSON Spawn Debug] Turned vehicle engine on")
+        end
+        
+        if spawnerSettings.radioOff and not isPreview then
+            pcall(function()
+                VEHICLE.SET_VEHICLE_RADIO_ENABLED(vehicleHandle, false)
+            end)
+            M.debug_print("[JSON Spawn Debug] Turned vehicle radio off")
+        end
+        
+        -- Recursive function to spawn a child and its nested children
+        local function spawnJSONChild(child, parentHandle, depth, childEntities)
+            depth = depth or 0
+            local indent = string.rep("  ", depth)
+            
+            M.debug_print("[JSON Spawn Debug]" .. indent .. "Processing child type:", child.type)
+            local childModel = child.hash or child.model
+            if not childModel then
+                M.debug_print("[JSON Spawn Debug]" .. indent .. "No model found, skipping")
+                return nil
+            end
+            
+            M.debug_print("[JSON Spawn Debug]" .. indent .. "Child model:", tostring(childModel))
+            M.request_model_load(childModel)
+            Script.Yield(100)
+            
+            local childHandle
+            if child.type == "VEHICLE" then
+                M.debug_print("[JSON Spawn Debug]" .. indent .. "Spawning as VEHICLE")
+                local ok, h = pcall(function()
+                    return VEHICLE.CREATE_VEHICLE(childModel, spawnCoords.x, spawnCoords.y, spawnCoords.z, 0, true, true)
+                end)
+                if ok and h and h ~= 0 then 
+                    childHandle = h 
+                    M.debug_print("[JSON Spawn Debug]" .. indent .. "Child VEHICLE spawned successfully:", h)
+                    
+                    -- Apply vehicle attributes if present
+                    if child.vehicle_attributes then
+                        local attrs = child.vehicle_attributes
+                        
+                        -- Apply mods
+                        if attrs.mods then
+                            for modKey, modValue in pairs(attrs.mods) do
+                                local modId = tonumber(modKey:match("_(%d+)"))
+                                if modId then
+                                    if type(modValue) == "boolean" then
+                                        pcall(function() VEHICLE.TOGGLE_VEHICLE_MOD(h, modId, modValue) end)
+                                    elseif type(modValue) == "number" then
+                                        pcall(function() VEHICLE.SET_VEHICLE_MOD(h, modId, modValue, false) end)
+                                    end
+                                end
+                            end
+                        end
+                        
+                        -- Apply paint
+                        if attrs.paint then
+                            if attrs.paint.primary and attrs.paint.primary.is_custom and attrs.paint.primary.custom_color then
+                                local c = attrs.paint.primary.custom_color
+                                pcall(function() VEHICLE.SET_VEHICLE_CUSTOM_PRIMARY_COLOUR(h, c.r or 0, c.g or 0, c.b or 0) end)
+                            end
+                            if attrs.paint.secondary and attrs.paint.secondary.is_custom and attrs.paint.secondary.custom_color then
+                                local c = attrs.paint.secondary.custom_color
+                                pcall(function() VEHICLE.SET_VEHICLE_CUSTOM_SECONDARY_COLOUR(h, c.r or 0, c.g or 0, c.b or 0) end)
+                            end
+                        end
+                        
+                        -- Apply options
+                        if attrs.options then
+                            if attrs.options.engine_running then
+                                pcall(function() VEHICLE.SET_VEHICLE_ENGINE_ON(h, true, true, false) end)
+                            end
+                        end
+                    end
+                else
+                    M.debug_print("[JSON Spawn Debug]" .. indent .. "Failed to spawn child VEHICLE, ok:", ok, "handle:", tostring(h))
+                end
+            elseif child.type == "PED" then
+                M.debug_print("[JSON Spawn Debug]" .. indent .. "Spawning as PED")
+                local ok, h = pcall(function()
+                    return PED.CREATE_PED(4, childModel, spawnCoords.x, spawnCoords.y, spawnCoords.z, 0, true, true)
+                end)
+                if ok and h and h ~= 0 then 
+                    childHandle = h 
+                    M.debug_print("[JSON Spawn Debug]" .. indent .. "Child PED spawned successfully:", h)
+                    
+                    -- Apply ped attributes
+                    if child.ped_attributes then
+                        local attrs = child.ped_attributes
+                        
+                        -- Apply animation
+                        if attrs.animation and attrs.animation.dictionary and attrs.animation.clip then
+                            Script.Yield(100)
+                            pcall(function()
+                                STREAMING.REQUEST_ANIM_DICT(attrs.animation.dictionary)
+                                local timeout = 0
+                                while not STREAMING.HAS_ANIM_DICT_LOADED(attrs.animation.dictionary) and timeout < 50 do
+                                    Script.Yield(10)
+                                    timeout = timeout + 1
+                                end
+                                if STREAMING.HAS_ANIM_DICT_LOADED(attrs.animation.dictionary) then
+                                    TASK.TASK_PLAY_ANIM(h, attrs.animation.dictionary, attrs.animation.clip, 8.0, -8.0, -1, attrs.animation.loop and 1 or 0, 0, false, false, false)
+                                    M.debug_print("[JSON Spawn Debug]" .. indent .. "Applied animation:", attrs.animation.clip)
+                                end
+                            end)
+                        end
+                        
+                        -- Apply components (clothing)
+                        if attrs.components then
+                            for compKey, compData in pairs(attrs.components) do
+                                local compId = tonumber(compKey:match("_(%d+)"))
+                                if compId and compData.drawable_variation then
+                                    pcall(function()
+                                        PED.SET_PED_COMPONENT_VARIATION(h, compId, compData.drawable_variation, compData.texture_variation or 0, compData.palette_variation or 0)
+                                    end)
+                                end
+                            end
+                            M.debug_print("[JSON Spawn Debug]" .. indent .. "Applied ped components")
+                        end
+                        
+                        -- Apply props (accessories)
+                        if attrs.props then
+                            for propKey, propData in pairs(attrs.props) do
+                                local propId = tonumber(propKey:match("_(%d+)"))
+                                if propId and propData.drawable_variation and propData.drawable_variation ~= -1 then
+                                    pcall(function()
+                                        PED.SET_PED_PROP_INDEX(h, propId, propData.drawable_variation, propData.texture_variation or 0, true)
+                                    end)
+                                end
+                            end
+                            M.debug_print("[JSON Spawn Debug]" .. indent .. "Applied ped props")
+                        end
+                        
+                        -- Apply other ped settings
+                        if attrs.ignore_events then
+                            pcall(function() PED.SET_PED_CONFIG_FLAG(h, 208, true) end)
+                        end
+                        
+                        if attrs.keep_on_task then
+                            pcall(function() PED.SET_PED_KEEP_TASK(h, true) end)
+                        end
+                    end
+                else
+                    M.debug_print("[JSON Spawn Debug]" .. indent .. "Failed to spawn child PED, ok:", ok, "handle:", tostring(h))
+                end
+            else
+                -- It's an object - try multiple methods
+                M.debug_print("[JSON Spawn Debug]" .. indent .. "Spawning as OBJECT")
+                
+                -- Try GTA.CreateObject first (preferred method)
+                if GTA and GTA.CreateObject then
+                    local ok, h = pcall(function()
+                        return GTA.CreateObject(childModel, spawnCoords.x, spawnCoords.y, spawnCoords.z, true, true)
+                    end)
+                    if ok and h and h ~= 0 then
+                        childHandle = h
+                        M.debug_print("[JSON Spawn Debug]" .. indent .. "Child OBJECT spawned successfully with GTA.CreateObject:", h)
+                    end
+                end
+                
+                -- Try GTA.CreateWorldObject if first method failed
+                if not childHandle or childHandle == 0 then
+                    if GTA and GTA.CreateWorldObject then
+                        local ok, h = pcall(function()
+                            return GTA.CreateWorldObject(childModel, spawnCoords.x, spawnCoords.y, spawnCoords.z, true, true)
+                        end)
+                        if ok and h and h ~= 0 then
+                            childHandle = h
+                            M.debug_print("[JSON Spawn Debug]" .. indent .. "Child OBJECT spawned successfully with GTA.CreateWorldObject:", h)
+                        end
+                    end
+                end
+                
+                -- Try OBJECT.CREATE_OBJECT as final fallback
+                if not childHandle or childHandle == 0 then
+                    local ok, h = pcall(function()
+                        return OBJECT.CREATE_OBJECT(childModel, spawnCoords.x, spawnCoords.y, spawnCoords.z, true, false, false)
+                    end)
+                    if ok and h and h ~= 0 then
+                        childHandle = h
+                        M.debug_print("[JSON Spawn Debug]" .. indent .. "Child OBJECT spawned successfully with OBJECT.CREATE_OBJECT:", h)
+                    else
+                        M.debug_print("[JSON Spawn Debug]" .. indent .. "Failed to spawn child OBJECT with all methods, ok:", ok, "handle:", tostring(h))
+                    end
+                end
+            end
+            
+            if childHandle and childHandle ~= 0 then
+                M.debug_print("[JSON Spawn Debug]" .. indent .. "Child spawned, handle:", childHandle)
+                
+                -- Apply all options from JSON
+                if child.options then
+                    local opts = child.options
+                    
+                    -- Set visibility
+                    if opts.is_visible ~= nil then
+                        pcall(function() 
+                            ENTITY.SET_ENTITY_VISIBLE(childHandle, opts.is_visible, false) 
+                            M.debug_print("[JSON Spawn Debug]" .. indent .. "Visibility set to:", opts.is_visible)
+                        end)
+                    end
+                    
+                    -- Set invincibility
+                    if opts.is_invincible ~= nil then
+                        pcall(function() ENTITY.SET_ENTITY_INVINCIBLE(childHandle, opts.is_invincible) end)
+                    end
+                    
+                    -- Set collision
+                    if opts.has_collision ~= nil then
+                        pcall(function() ENTITY.SET_ENTITY_COLLISION(childHandle, opts.has_collision, false) end)
+                    end
+                    
+                    -- Set frozen state
+                    if opts.is_frozen ~= nil then
+                        pcall(function() ENTITY.FREEZE_ENTITY_POSITION(childHandle, opts.is_frozen) end)
+                    end
+                    
+                    -- Set gravity
+                    if opts.has_gravity ~= nil and not opts.has_gravity then
+                        pcall(function() ENTITY.SET_ENTITY_HAS_GRAVITY(childHandle, false) end)
+                    end
+                    
+                    -- Set alpha/transparency
+                    if opts.alpha and opts.alpha ~= 255 then
+                        pcall(function() ENTITY.SET_ENTITY_ALPHA(childHandle, opts.alpha, false) end)
+                    end
+                    
+                    -- Set proofs (fire, bullet, explosion, melee)
+                    local fireProof = opts.is_fire_proof or false
+                    local bulletProof = opts.is_bullet_proof or false
+                    local explosionProof = opts.is_explosion_proof or false
+                    local meleeProof = opts.is_melee_proof or false
+                    pcall(function()
+                        ENTITY.SET_ENTITY_PROOFS(childHandle, bulletProof, fireProof, explosionProof, false, meleeProof, false, false, false)
+                    end)
+                    
+                    -- Get bone index for attachment
+                    local boneIndex = opts.bone_index or 0
+                    
+                    -- Attach to parent
+                    if child.offset then
+                        pcall(function()
+                            ENTITY.ATTACH_ENTITY_TO_ENTITY(
+                                childHandle, parentHandle, boneIndex,
+                                child.offset.x or 0, child.offset.y or 0, child.offset.z or 0,
+                                child.rotation and child.rotation.x or 0,
+                                child.rotation and child.rotation.y or 0,
+                                child.rotation and child.rotation.z or 0,
+                                false, false, true, false, 0, true
+                            )
+                        end)
+                        M.debug_print("[JSON Spawn Debug]" .. indent .. "Attached to parent (bone:", boneIndex, ")")
+                    end
+                end
+                
+                table.insert(childEntities, childHandle)
+                
+                -- Recursively spawn nested children
+                if child.children and #child.children > 0 then
+                    M.debug_print("[JSON Spawn Debug]" .. indent .. "Spawning", #child.children, "nested children...")
+                    for j, nestedChild in ipairs(child.children) do
+                        spawnJSONChild(nestedChild, childHandle, depth + 1, childEntities)
+                    end
+                end
+                
+                return childHandle
+            end
+            
+            return nil
+        end
+        
+        -- Spawn and attach children
+        local childEntities = {}
+        if jsonData.children and #jsonData.children > 0 then
+            M.debug_print("[JSON Spawn Debug] Spawning", #jsonData.children, "top-level children...")
+            
+            for i, child in ipairs(jsonData.children) do
+                M.debug_print("[JSON Spawn Debug] Processing top-level child", i)
+                spawnJSONChild(child, vehicleHandle, 0, childEntities)
+            end
+        end
+        
+        -- Put player in vehicle if requested
+        if spawnerSettings.inVehicle and not isPreview then
+            Script.Yield(200)
+            pcall(function()
+                PED.SET_PED_INTO_VEHICLE(playerPed, vehicleHandle, -1)
+            end)
+            M.debug_print("[JSON Spawn Debug] Placed player in vehicle")
+        end
+        
+        -- Handle preview mode
+        if isPreview then
+            table.insert(previewEntities, vehicleHandle)
+            for _, entity in ipairs(childEntities) do
+                table.insert(previewEntities, entity)
+            end
+            M.debug_print("[JSON Spawn Debug] Added vehicle and", #childEntities, "children to preview entities")
+        else
+            -- Track spawned vehicle
+            local vehicleRecord = {
+                vehicle = vehicleHandle,
+                attachments = childEntities,
+                filePath = filePath
+            }
+            table.insert(spawnedVehicles, vehicleRecord)
+            M.debug_print("[JSON Spawn Debug] Tracked spawned vehicle and", #childEntities, "children")
+            
+            pcall(function()
+                local fileName = M.get_filename_from_path(filePath)
+                local attachmentCount = #childEntities
+                GUI.AddToast("Vehicle Spawned", "Spawned " .. fileName .. " with " .. attachmentCount .. " attachment" .. (attachmentCount == 1 and "" or "s"), 5000, 0)
+                print("Vehicle Spawned", "Spawned " .. fileName .. " with " .. attachmentCount .. " attachment" .. (attachmentCount == 1 and "" or "s"))
+            end)
+        end
+    end)
+end
+
+-- JSON Map Spawning Function
+function M.spawnMapFromJSON(filePath, isPreview)
+    Script.QueueJob(function()
+        M.debug_print("[JSON Map Spawn Debug] Starting JSON map spawn for file:", filePath, "Is Preview:", tostring(isPreview))
+        
+        if not FileMgr.DoesFileExist(filePath) then
+            M.debug_print("[JSON Map Spawn Debug] Error: JSON file does not exist:", filePath)
+            pcall(function() GUI.AddToast("Spawn Error", "JSON file not found", 3000, 0) end)
+            return
+        end
+        
+        local jsonContent = FileMgr.ReadFileContent(filePath)
+        if not jsonContent or jsonContent == "" then
+            M.debug_print("[JSON Map Spawn Debug] Error: Failed to read JSON file or content is empty:", filePath)
+            pcall(function() GUI.AddToast("Spawn Error", "Failed to read JSON file", 3000, 0) end)
+            return
+        end
+        
+        M.debug_print("[JSON Map Spawn Debug] JSON content length:", string.len(jsonContent))
+        
+        -- Parse JSON using the same parser as vehicles
+        local jsonData
+        local parseSuccess, parseResult = pcall(function()
+            local luaCode = jsonContent
+            luaCode = luaCode:gsub("%[", "{")
+            luaCode = luaCode:gsub("%]", "}")
+            luaCode = luaCode:gsub(":null", ":nil")
+            luaCode = luaCode:gsub(",null", ",nil")
+            luaCode = luaCode:gsub("{null", "{nil")
+            luaCode = luaCode:gsub('"([^"]+)"%s*:%s*', function(key)
+                if key:match("^[%a_][%w_]*$") then
+                    return key .. "="
+                else
+                    return '["' .. key .. '"]='
+                end
+            end)
+            luaCode = "return " .. luaCode
+            M.debug_print("[JSON Map Spawn Debug] Attempting to parse JSON as Lua table...")
+            local func, err = load(luaCode)
+            if not func then
+                M.debug_print("[JSON Map Spawn Debug] Load error:", tostring(err))
+                error("Failed to parse JSON: " .. tostring(err))
+            end
+            return func()
+        end)
+        
+        if not parseSuccess or not parseResult then
+            M.debug_print("[JSON Map Spawn Debug] Error parsing JSON:", tostring(parseResult))
+            pcall(function() GUI.AddToast("Spawn Error", "Failed to parse JSON: " .. tostring(parseResult), 5000, 0) end)
+            return
+        end
+        
+        jsonData = parseResult
+        M.debug_print("[JSON Map Spawn Debug] JSON parsed successfully")
+        
+        -- Delete old map if requested
+        if spawnerSettings.deleteOldMap and #spawnedMaps > 0 then
+            M.debug_print("[JSON Map Spawn Debug] Deleting old map before spawning new one")
+            local lastMap = spawnedMaps[#spawnedMaps]
+            if lastMap and lastMap.entities then
+                for _, entityHandle in ipairs(lastMap.entities) do
+                    if entityHandle and entityHandle ~= 0 then
+                        pcall(function()
+                            if ENTITY.DOES_ENTITY_EXIST(entityHandle) then
+                                local ptr = Memory.AllocInt()
+                                local pEntity = GTA.HandleToPointer(entityHandle)
+                                if pEntity and pEntity ~= 0 then
+                                    if pEntity.NetObject and pEntity.NetObject ~= 0 then
+                                        NetworkObjectMgr.UnregisterNetworkObject(pEntity.NetObject, 15, true, true)
+                                    end
+                                    Memory.WriteInt(ptr, entityHandle)
+                                    ENTITY.DELETE_ENTITY(ptr)
+                                end
+                            end
+                        end)
+                    end
+                end
+            end
+            table.remove(spawnedMaps, #spawnedMaps)
+            M.debug_print("[JSON Map Spawn Debug] Old map deleted")
+        end
+        
+        -- Get player position for reference
+        local playerPed = PLAYER.PLAYER_PED_ID()
+        local playerCoords = ENTITY.GET_ENTITY_COORDS(playerPed, false)
+        
+        -- Determine reference coordinates
+        local refCoords = {}
+        local shouldTeleport = false
+        
+        if jsonData.always_spawn_at_position and jsonData.position then
+            -- Map has always_spawn_at_position flag - use map position
+            refCoords.x = jsonData.position.x
+            refCoords.y = jsonData.position.y
+            refCoords.z = jsonData.position.z
+            shouldTeleport = spawnerSettings.teleportToMap
+            M.debug_print("[JSON Map Spawn Debug] Using map position (always_spawn_at_position):", refCoords.x, refCoords.y, refCoords.z)
+        elseif jsonData.position and spawnerSettings.teleportToMap then
+            -- Map has position and teleport is enabled - use map position
+            refCoords.x = jsonData.position.x
+            refCoords.y = jsonData.position.y
+            refCoords.z = jsonData.position.z
+            shouldTeleport = true
+            M.debug_print("[JSON Map Spawn Debug] Using map position (teleport enabled):", refCoords.x, refCoords.y, refCoords.z)
+        else
+            -- Use player position
+            refCoords.x = playerCoords.x
+            refCoords.y = playerCoords.y
+            refCoords.z = playerCoords.z
+            M.debug_print("[JSON Map Spawn Debug] Using player position:", refCoords.x, refCoords.y, refCoords.z)
+        end
+        
+        -- Teleport player if needed
+        if shouldTeleport then
+            M.debug_print("[JSON Map Spawn Debug] Teleporting player to map position")
+            pcall(function()
+                ENTITY.SET_ENTITY_COORDS(playerPed, refCoords.x, refCoords.y, refCoords.z, false, false, false, true)
+            end)
+        end
+        
+        -- Recursive function to spawn children and their nested children
+        local function spawnMapChild(child, parentHandle, depth, allEntities)
+            local indent = string.rep("  ", depth)
+            M.debug_print("[JSON Map Spawn Debug]" .. indent .. "Processing child at depth", depth, "type:", child.type)
+            
+            local childModel = child.hash or child.model
+            if not childModel then
+                M.debug_print("[JSON Map Spawn Debug]" .. indent .. "No model hash/model found, skipping")
+                return nil
+            end
+            
+            M.debug_print("[JSON Map Spawn Debug]" .. indent .. "Model:", tostring(childModel))
+            M.request_model_load(childModel)
+            Script.Yield(100)
+            
+            
+            -- Calculate spawn position
+            local spawnPos
+            -- First priority: use child's absolute position if available
+            if child.position then
+                spawnPos = {
+                    x = child.position.x,
+                    y = child.position.y,
+                    z = child.position.z
+                }
+                M.debug_print("[JSON Map Spawn Debug]" .. indent .. "Using child's absolute position:", spawnPos.x, spawnPos.y, spawnPos.z)
+            elseif parentHandle and parentHandle ~= 0 then
+                -- If there's a parent and no absolute position, spawn at parent's position (will be attached with offset)
+                local parentCoords = ENTITY.GET_ENTITY_COORDS(parentHandle, false)
+                spawnPos = {
+                    x = parentCoords.x,
+                    y = parentCoords.y,
+                    z = parentCoords.z
+                }
+                M.debug_print("[JSON Map Spawn Debug]" .. indent .. "Using parent position for attachment")
+            else
+                -- No parent and no position, use reference coords + offset
+                spawnPos = {
+                    x = refCoords.x + (child.offset and child.offset.x or 0),
+                    y = refCoords.y + (child.offset and child.offset.y or 0),
+                    z = refCoords.z + (child.offset and child.offset.z or 0)
+                }
+                M.debug_print("[JSON Map Spawn Debug]" .. indent .. "Using reference coords + offset")
+            end
+            
+            local entityHandle
+            if child.type == "VEHICLE" then
+                M.debug_print("[JSON Map Spawn Debug]" .. indent .. "Spawning as VEHICLE")
+                local rotData = child.world_rotation or child.rotation
+                local ok, h = pcall(function()
+                    return VEHICLE.CREATE_VEHICLE(childModel, spawnPos.x, spawnPos.y, spawnPos.z, rotData and rotData.z or 0, true, true)
+                end)
+                if ok and h and h ~= 0 then 
+                    entityHandle = h 
+                    M.debug_print("[JSON Map Spawn Debug]" .. indent .. "VEHICLE spawned successfully:", h)
+                end
+            elseif child.type == "PED" then
+                M.debug_print("[JSON Map Spawn Debug]" .. indent .. "Spawning as PED")
+                local rotData = child.world_rotation or child.rotation
+                local ok, h = pcall(function()
+                    return PED.CREATE_PED(4, childModel, spawnPos.x, spawnPos.y, spawnPos.z, rotData and rotData.z or 0, true, true)
+                end)
+                if ok and h and h ~= 0 then 
+                    entityHandle = h 
+                    M.debug_print("[JSON Map Spawn Debug]" .. indent .. "PED spawned successfully:", h)
+                    
+                    -- Apply ped attributes
+                    if child.ped_attributes then
+                        local attrs = child.ped_attributes
+                        if attrs.animation and attrs.animation.dictionary and attrs.animation.clip then
+                            Script.Yield(100)
+                            pcall(function()
+                                STREAMING.REQUEST_ANIM_DICT(attrs.animation.dictionary)
+                                local timeout = 0
+                                while not STREAMING.HAS_ANIM_DICT_LOADED(attrs.animation.dictionary) and timeout < 50 do
+                                    Script.Yield(10)
+                                    timeout = timeout + 1
+                                end
+                                if STREAMING.HAS_ANIM_DICT_LOADED(attrs.animation.dictionary) then
+                                    TASK.TASK_PLAY_ANIM(h, attrs.animation.dictionary, attrs.animation.clip, 8.0, -8.0, -1, attrs.animation.loop and 1 or 0, 0, false, false, false)
+                                end
+                            end)
+                        end
+                        if attrs.components then
+                            for compKey, compData in pairs(attrs.components) do
+                                local compId = tonumber(compKey:match("_(%d+)"))
+                                if compId and compData.drawable_variation then
+                                    pcall(function()
+                                        PED.SET_PED_COMPONENT_VARIATION(h, compId, compData.drawable_variation, compData.texture_variation or 0, compData.palette_variation or 0)
+                                    end)
+                                end
+                            end
+                        end
+                        if attrs.props then
+                            for propKey, propData in pairs(attrs.props) do
+                                local propId = tonumber(propKey:match("_(%d+)"))
+                                if propId and propData.drawable_variation and propData.drawable_variation ~= -1 then
+                                    pcall(function()
+                                        PED.SET_PED_PROP_INDEX(h, propId, propData.drawable_variation, propData.texture_variation or 0, true)
+                                    end)
+                                end
+                            end
+                        end
+                        if attrs.ignore_events then
+                            pcall(function() PED.SET_PED_CONFIG_FLAG(h, 208, true) end)
+                        end
+                        if attrs.keep_on_task then
+                            pcall(function() PED.SET_PED_KEEP_TASK(h, true) end)
+                        end
+                    end
+                end
+            else
+                -- It's an object
+                M.debug_print("[JSON Map Spawn Debug]" .. indent .. "Spawning as OBJECT")
+                if GTA and GTA.CreateObject then
+                    local ok, h = pcall(function()
+                        return GTA.CreateObject(childModel, spawnPos.x, spawnPos.y, spawnPos.z, true, true)
+                    end)
+                    if ok and h and h ~= 0 then
+                        entityHandle = h
+                        M.debug_print("[JSON Map Spawn Debug]" .. indent .. "OBJECT spawned with GTA.CreateObject:", h)
+                    end
+                end
+                if not entityHandle or entityHandle == 0 then
+                    if GTA and GTA.CreateWorldObject then
+                        local ok, h = pcall(function()
+                            return GTA.CreateWorldObject(childModel, spawnPos.x, spawnPos.y, spawnPos.z, true, true)
+                        end)
+                        if ok and h and h ~= 0 then
+                            entityHandle = h
+                            M.debug_print("[JSON Map Spawn Debug]" .. indent .. "OBJECT spawned with GTA.CreateWorldObject:", h)
+                        end
+                    end
+                end
+                if not entityHandle or entityHandle == 0 then
+                    local ok, h = pcall(function()
+                        return OBJECT.CREATE_OBJECT(childModel, spawnPos.x, spawnPos.y, spawnPos.z, true, false, false)
+                    end)
+                    if ok and h and h ~= 0 then
+                        entityHandle = h
+                        M.debug_print("[JSON Map Spawn Debug]" .. indent .. "OBJECT spawned with OBJECT.CREATE_OBJECT:", h)
+                    end
+                end
+            end
+            
+            if entityHandle and entityHandle ~= 0 then
+                M.debug_print("[JSON Map Spawn Debug]" .. indent .. "Entity spawned, handle:", entityHandle)
+                
+                -- Apply rotation (use world_rotation if available, otherwise rotation)
+                local rotData = child.world_rotation or child.rotation
+                if rotData then
+                    pcall(function()
+                        ENTITY.SET_ENTITY_ROTATION(entityHandle, rotData.x or 0, rotData.y or 0, rotData.z or 0, 2, true)
+                    end)
+                    M.debug_print("[JSON Map Spawn Debug]" .. indent .. "Applied rotation:", rotData.x or 0, rotData.y or 0, rotData.z or 0)
+                end
+                
+                -- Apply options
+                if child.options then
+                    local opts = child.options
+                    if opts.is_visible ~= nil then
+                        pcall(function() ENTITY.SET_ENTITY_VISIBLE(entityHandle, opts.is_visible, false) end)
+                    end
+                    if opts.is_invincible ~= nil then
+                        pcall(function() ENTITY.SET_ENTITY_INVINCIBLE(entityHandle, opts.is_invincible) end)
+                    end
+                    if opts.has_collision ~= nil then
+                        pcall(function() ENTITY.SET_ENTITY_COLLISION(entityHandle, opts.has_collision, false) end)
+                    end
+                    if opts.is_frozen ~= nil then
+                        pcall(function() ENTITY.FREEZE_ENTITY_POSITION(entityHandle, opts.is_frozen) end)
+                    end
+                    if opts.has_gravity ~= nil and not opts.has_gravity then
+                        pcall(function() ENTITY.SET_ENTITY_HAS_GRAVITY(entityHandle, false) end)
+                    end
+                    if opts.alpha and opts.alpha ~= 255 then
+                        pcall(function() ENTITY.SET_ENTITY_ALPHA(entityHandle, opts.alpha, false) end)
+                    end
+                    
+                    -- Determine if this child should be attached to parent or spawned independently
+                    local shouldAttach = false
+                    local offsetX = child.offset and child.offset.x or 0
+                    local offsetY = child.offset and child.offset.y or 0
+                    local offsetZ = child.offset and child.offset.z or 0
+                    
+                    -- Check if offset is non-zero (meaning it should be attached)
+                    if offsetX ~= 0 or offsetY ~= 0 or offsetZ ~= 0 then
+                        shouldAttach = true
+                    end
+                    
+                    -- Also check the is_attached flag if present
+                    if opts.is_attached ~= nil and not opts.is_attached then
+                        shouldAttach = false
+                    end
+                    
+                    -- Attach to parent if this child should be attached
+                    if parentHandle and parentHandle ~= 0 and shouldAttach and child.offset then
+                        local boneIndex = opts.bone_index or 0
+                        M.debug_print("[JSON Map Spawn Debug]" .. indent .. "Attaching with offset:", offsetX, offsetY, offsetZ)
+                        pcall(function()
+                            ENTITY.ATTACH_ENTITY_TO_ENTITY(
+                                entityHandle, parentHandle, boneIndex,
+                                offsetX, offsetY, offsetZ,
+                                child.rotation and child.rotation.x or 0,
+                                child.rotation and child.rotation.y or 0,
+                                child.rotation and child.rotation.z or 0,
+                                false, false, true, false, 0, true
+                            )
+                        end)
+                        M.debug_print("[JSON Map Spawn Debug]" .. indent .. "Attached to parent (bone:", boneIndex, ")")
+                    else
+                        M.debug_print("[JSON Map Spawn Debug]" .. indent .. "Not attaching - spawned at absolute position")
+                    end
+                end
+                
+                table.insert(allEntities, entityHandle)
+                
+                -- Recursively spawn nested children
+                if child.children and #child.children > 0 then
+                    M.debug_print("[JSON Map Spawn Debug]" .. indent .. "Spawning", #child.children, "nested children...")
+                    for j, nestedChild in ipairs(child.children) do
+                        spawnMapChild(nestedChild, entityHandle, depth + 1, allEntities)
+                    end
+                end
+                
+                return entityHandle
+            end
+            
+            return nil
+        end
+        
+        
+        -- Spawn the main parent object first (the root of the JSON)
+        local mainParentHandle = nil
+        local mainModel = jsonData.hash or jsonData.model
+        
+        if mainModel then
+            M.debug_print("[JSON Map Spawn Debug] Spawning main parent object, model:", tostring(mainModel))
+            M.request_model_load(mainModel)
+            Script.Yield(100)
+            
+            -- Spawn at the position specified in the JSON
+            local mainPos = jsonData.position or refCoords
+            
+            if jsonData.type == "VEHICLE" then
+                local ok, h = pcall(function()
+                    return VEHICLE.CREATE_VEHICLE(mainModel, mainPos.x, mainPos.y, mainPos.z, jsonData.rotation and jsonData.rotation.z or 0, true, true)
+                end)
+                if ok and h and h ~= 0 then mainParentHandle = h end
+            elseif jsonData.type == "PED" then
+                local ok, h = pcall(function()
+                    return PED.CREATE_PED(4, mainModel, mainPos.x, mainPos.y, mainPos.z, jsonData.rotation and jsonData.rotation.z or 0, true, true)
+                end)
+                if ok and h and h ~= 0 then mainParentHandle = h end
+            else
+                -- It's an object
+                if GTA and GTA.CreateObject then
+                    local ok, h = pcall(function()
+                        return GTA.CreateObject(mainModel, mainPos.x, mainPos.y, mainPos.z, true, true)
+                    end)
+                    if ok and h and h ~= 0 then mainParentHandle = h end
+                end
+                if not mainParentHandle or mainParentHandle == 0 then
+                    if GTA and GTA.CreateWorldObject then
+                        local ok, h = pcall(function()
+                            return GTA.CreateWorldObject(mainModel, mainPos.x, mainPos.y, mainPos.z, true, true)
+                        end)
+                        if ok and h and h ~= 0 then mainParentHandle = h end
+                    end
+                end
+                if not mainParentHandle or mainParentHandle == 0 then
+                    local ok, h = pcall(function()
+                        return OBJECT.CREATE_OBJECT(mainModel, mainPos.x, mainPos.y, mainPos.z, true, false, false)
+                    end)
+                    if ok and h and h ~= 0 then mainParentHandle = h end
+                end
+            end
+            
+            if mainParentHandle and mainParentHandle ~= 0 then
+                M.debug_print("[JSON Map Spawn Debug] Main parent spawned successfully, handle:", mainParentHandle)
+                
+                -- Apply rotation to main parent (use world_rotation if available)
+                local mainRotData = jsonData.world_rotation or jsonData.rotation
+                if mainRotData then
+                    pcall(function()
+                        ENTITY.SET_ENTITY_ROTATION(mainParentHandle, mainRotData.x or 0, mainRotData.y or 0, mainRotData.z or 0, 2, true)
+                    end)
+                end
+                
+                -- Apply options to main parent
+                if jsonData.options then
+                    local opts = jsonData.options
+                    if opts.is_visible ~= nil then
+                        pcall(function() ENTITY.SET_ENTITY_VISIBLE(mainParentHandle, opts.is_visible, false) end)
+                    end
+                    if opts.is_invincible ~= nil then
+                        pcall(function() ENTITY.SET_ENTITY_INVINCIBLE(mainParentHandle, opts.is_invincible) end)
+                    end
+                    if opts.has_collision ~= nil then
+                        pcall(function() ENTITY.SET_ENTITY_COLLISION(mainParentHandle, opts.has_collision, false) end)
+                    end
+                    if opts.is_frozen ~= nil then
+                        pcall(function() ENTITY.FREEZE_ENTITY_POSITION(mainParentHandle, opts.is_frozen) end)
+                    end
+                    if opts.has_gravity ~= nil and not opts.has_gravity then
+                        pcall(function() ENTITY.SET_ENTITY_HAS_GRAVITY(mainParentHandle, false) end)
+                    end
+                    if opts.alpha and opts.alpha ~= 255 then
+                        pcall(function() ENTITY.SET_ENTITY_ALPHA(mainParentHandle, opts.alpha, false) end)
+                    end
+                end
+            else
+                M.debug_print("[JSON Map Spawn Debug] Failed to spawn main parent object")
+            end
+        end
+        
+        -- Spawn all children attached to the main parent (or standalone if no parent)
+        local spawnedEntities = {}
+        if mainParentHandle then
+            table.insert(spawnedEntities, mainParentHandle)
+        end
+        
+        if jsonData.children and #jsonData.children > 0 then
+            M.debug_print("[JSON Map Spawn Debug] Spawning", #jsonData.children, "children...")
+            
+            for i, child in ipairs(jsonData.children) do
+                M.debug_print("[JSON Map Spawn Debug] Processing child", i)
+                spawnMapChild(child, mainParentHandle, 1, spawnedEntities)
+            end
+        end
+        
+        M.debug_print("[JSON Map Spawn Debug] Successfully spawned", #spawnedEntities, "entities")
+        
+        -- Track spawned map
+        local mapRecord = {
+            entities = spawnedEntities,
+            filePath = filePath,
+            markers = {} -- No markers for JSON maps yet
+        }
+        table.insert(spawnedMaps, mapRecord)
+        
+        pcall(function()
+            local fileName = M.get_filename_from_path(filePath)
+            GUI.AddToast("Map Spawned", "Spawned " .. fileName .. " with " .. #spawnedEntities .. " entity" .. (#spawnedEntities == 1 and "" or "entities"), 5000, 0)
+            print("Map Spawned", "Spawned " .. fileName .. " with " .. #spawnedEntities .. " entity" .. (#spawnedEntities == 1 and "" or "entities"))
+        end)
+    end)
+end
+
+-- JSON Outfit Spawning Function
+function M.spawnOutfitFromJSON(filePath, isPreview)
+    print("[JSON Outfit] Function called with file:", filePath, "isPreview:", tostring(isPreview))
+    isPreview = isPreview or false
+    
+    Script.QueueJob(function()
+        print("[JSON Outfit] Inside Script.QueueJob")
+        M.debug_print("[JSON Outfit Spawn Debug] Starting JSON outfit spawn for file:", filePath, "Is Preview:", tostring(isPreview))
+        
+        if not FileMgr.DoesFileExist(filePath) then
+            print("[JSON Outfit] Error: File does not exist:", filePath)
+            M.debug_print("[JSON Outfit Spawn Debug] Error: JSON file does not exist:", filePath)
+            pcall(function() GUI.AddToast("Spawn Error", "JSON file not found", 3000, 0) end)
+            return
+        end
+        
+        print("[JSON Outfit] File exists, reading content...")
+        local jsonContent = FileMgr.ReadFileContent(filePath)
+        if not jsonContent or jsonContent == "" then
+            print("[JSON Outfit] Error: Failed to read file or content empty")
+            M.debug_print("[JSON Outfit Spawn Debug] Error: Failed to read JSON file or content is empty:", filePath)
+            pcall(function() GUI.AddToast("Spawn Error", "Failed to read JSON file", 3000, 0) end)
+            return
+        end
+        
+        print("[JSON Outfit] Content read successfully, length:", string.len(jsonContent))
+        M.debug_print("[JSON Outfit Spawn Debug] JSON content length:", string.len(jsonContent))
+        
+        -- Parse JSON using the same parser
+        print("[JSON Outfit] Attempting to parse JSON...")
+        local jsonData
+        local parseSuccess, parseResult = pcall(function()
+            local luaCode = jsonContent
+            luaCode = luaCode:gsub("%[", "{")
+            luaCode = luaCode:gsub("%]", "}")
+            luaCode = luaCode:gsub(":null", ":nil")
+            luaCode = luaCode:gsub(",null", ",nil")
+            luaCode = luaCode:gsub("{null", "{nil")
+            luaCode = luaCode:gsub('"([^"]+)"%s*:%s*', function(key)
+                if key:match("^[%a_][%w_]*$") then
+                    return key .. "="
+                else
+                    return '["' .. key .. '"]='
+                end
+            end)
+            luaCode = "return " .. luaCode
+            local func, err = load(luaCode)
+            if not func then
+                error("Failed to parse JSON: " .. tostring(err))
+            end
+            return func()
+        end)
+        
+        if not parseSuccess or not parseResult then
+            print("[JSON Outfit] Parse failed:", tostring(parseResult))
+            M.debug_print("[JSON Outfit Spawn Debug] Error parsing JSON:", tostring(parseResult))
+            pcall(function() GUI.AddToast("Spawn Error", "Failed to parse JSON: " .. tostring(parseResult), 5000, 0) end)
+            return
+        end
+        
+        jsonData = parseResult
+        print("[JSON Outfit] Parse successful!")
+        M.debug_print("[JSON Outfit Spawn Debug] JSON parsed successfully")
+        
+        -- Check if it's a ped outfit
+        print("[JSON Outfit] Checking type, got:", tostring(jsonData.type))
+        if jsonData.type ~= "PED" then
+            print("[JSON Outfit] Error: Not a PED type")
+            M.debug_print("[JSON Outfit Spawn Debug] Error: JSON is not a PED type, got:", tostring(jsonData.type))
+            pcall(function() GUI.AddToast("Spawn Error", "This JSON is not a PED outfit", 3000, 0) end)
+            return
+        end
+        
+        -- Check is_player flag FIRST before validating model hash
+        local isAttachToPlayer = (jsonData.is_player == false)  -- When is_player is false, attach directly to player
+        print("[JSON Outfit] is_player:", tostring(jsonData.is_player), "isAttachToPlayer:", tostring(isAttachToPlayer))
+        
+        -- Only validate model hash if we need to spawn a new ped (is_player is true or nil)
+        local modelHash = jsonData.hash or jsonData.model
+        if not isAttachToPlayer then
+            print("[JSON Outfit] Model hash:", tostring(modelHash))
+            if not modelHash or modelHash == 0 then
+                print("[JSON Outfit] Error: Invalid model hash")
+                M.debug_print("[JSON Outfit Spawn Debug] Error: Invalid model hash")
+                return
+            end
+        else
+            print("[JSON Outfit] is_player is false - skipping model hash validation (attaching to player)")
+        end
+        
+        -- Get player position and heading
+        print("[JSON Outfit] Getting player position...")
+        local playerPed = GTA.GetLocalPed()
+        if not playerPed then
+            print("[JSON Outfit] Error: Player ped not found")
+            M.debug_print("[JSON Outfit Spawn Debug] Error: Player ped not found")
+            return
+        end
+        
+        local playerHandle = GTA.PointerToHandle(playerPed) or PLAYER.PLAYER_PED_ID()
+        if not playerHandle or playerHandle == 0 then
+            print("[JSON Outfit] Error: Player handle not found")
+            M.debug_print("[JSON Outfit Spawn Debug] Error: Player handle not found")
+            return
+        end
+        
+        print("[JSON Outfit] Player handle:", playerHandle)
+        local pcoords = ENTITY.GET_ENTITY_COORDS(playerHandle, false)
+        local heading = (playerPed.Heading or 0.0)
+        
+        -- Calculate spawn position (in front of player for preview, or at player for actual spawn)
+        local spawnCoords
+        if isPreview then
+            local offset_distance = 2.0
+            local rad_heading = math.rad(heading)
+            spawnCoords = {
+                x = pcoords.x + (math.sin(rad_heading) * offset_distance),
+                y = pcoords.y + (math.cos(rad_heading) * offset_distance),
+                z = pcoords.z
+            }
+            local foundGround, groundZ = GTA.GetGroundZ(spawnCoords.x, spawnCoords.y)
+            if foundGround then spawnCoords.z = groundZ end
+        else
+            spawnCoords = { x = pcoords.x, y = pcoords.y, z = pcoords.z }
+        end
+        
+        print("[JSON Outfit] Spawn coords:", spawnCoords.x, spawnCoords.y, spawnCoords.z)
+        
+        -- Determine target ped based on is_player flag
+        local targetPed
+        local spawnedPed = nil -- Only set if we actually spawn a new ped
+        
+        if isAttachToPlayer then
+            -- Attach directly to player ped (no new ped spawned)
+            print("[JSON Outfit] is_player is false - attaching objects directly to player")
+            M.debug_print("[JSON Outfit Spawn Debug] is_player is false - attaching objects directly to player")
+            targetPed = playerHandle
+        else
+            -- Spawn a new ped (is_player is true or nil)
+            print("[JSON Outfit] Requesting model load...")
+            M.request_model_load(modelHash)
+            Script.Yield(200)
+            
+            print("[JSON Outfit] Creating ped...")
+            local ok, h = pcall(function()
+                return PED.CREATE_PED(4, modelHash, spawnCoords.x, spawnCoords.y, spawnCoords.z, heading, false, false)
+            end)
+            if ok and h and h ~= 0 then
+                spawnedPed = h
+            end
+            
+            if not spawnedPed or spawnedPed == 0 then
+                print("[JSON Outfit] Error: Failed to spawn ped")
+                M.debug_print("[JSON Outfit Spawn Debug] Error: Failed to spawn ped")
+                return
+            end
+            
+            print("[JSON Outfit] Ped spawned successfully, handle:", spawnedPed)
+            M.debug_print("[JSON Outfit Spawn Debug] Spawned outfit ped handle:", spawnedPed)
+            targetPed = spawnedPed
+        end
+        
+        -- Apply ped attributes (components, props, armor) to the target ped
+        if jsonData.ped_attributes then
+            print("[JSON Outfit] Applying ped attributes to target ped:", targetPed)
+            M.debug_print("[JSON Outfit Spawn Debug] Applying ped attributes")
+            local attrs = jsonData.ped_attributes
+            
+            -- Apply components (clothing)
+            if attrs.components then
+                print("[JSON Outfit] Applying components...")
+                for compKey, compData in pairs(attrs.components) do
+                    local compId = tonumber(compKey:match("_(%d+)"))
+                    if compId and compData.drawable_variation then
+                        pcall(function()
+                            PED.SET_PED_COMPONENT_VARIATION(
+                                targetPed, 
+                                compId, 
+                                compData.drawable_variation, 
+                                compData.texture_variation or 0, 
+                                compData.palette_variation or 0
+                            )
+                            print("[JSON Outfit] Set component", compId, "to drawable:", compData.drawable_variation, "texture:", compData.texture_variation or 0)
+                        end)
+                    end
+                end
+            end
+            
+            -- Apply props (accessories like hats, glasses, etc.)
+            if attrs.props then
+                print("[JSON Outfit] Applying props...")
+                for propKey, propData in pairs(attrs.props) do
+                    local propId = tonumber(propKey:match("_(%d+)"))
+                    if propId then
+                        if propData.drawable_variation and propData.drawable_variation ~= -1 then
+                            pcall(function()
+                                PED.SET_PED_PROP_INDEX(
+                                    targetPed, 
+                                    propId, 
+                                    propData.drawable_variation, 
+                                    propData.texture_variation or 0, 
+                                    true
+                                )
+                                print("[JSON Outfit] Set prop", propId, "to drawable:", propData.drawable_variation, "texture:", propData.texture_variation or 0)
+                            end)
+                        else
+                            -- Clear the prop if drawable_variation is -1
+                            pcall(function()
+                                PED.CLEAR_PED_PROP(targetPed, propId)
+                                print("[JSON Outfit] Cleared prop", propId)
+                            end)
+                        end
+                    end
+                end
+            end
+            
+            -- Apply armor
+            if attrs.armor then
+                pcall(function()
+                    PED.SET_PED_ARMOUR(targetPed, attrs.armor)
+                    print("[JSON Outfit] Set armor to", attrs.armor)
+                end)
+            end
+            
+            print("[JSON Outfit] Ped attributes applied successfully")
+            M.debug_print("[JSON Outfit Spawn Debug] Ped attributes applied successfully")
+        end
+        
+        -- Spawn and attach children objects (with recursive nested children support)
+        local attachedObjects = {}
+        
+        -- Recursive function to spawn and attach children
+        local function spawnAndAttachChildren(children, parentEntity, parentName)
+            if not children or #children == 0 then return end
+            
+            print("[JSON Outfit] Spawning", #children, "children attached to", parentName)
+            M.debug_print("[JSON Outfit Spawn Debug] Spawning", #children, "children attached to", parentName)
+            
+            for i, child in ipairs(children) do
+                local childModel = child.hash or child.model
+                if childModel then
+                    M.request_model_load(childModel)
+                    Script.Yield(100)
+                    
+                    local objectHandle
+                    if GTA and GTA.CreateObject then
+                        local ok2, h2 = pcall(function()
+                            return GTA.CreateObject(childModel, spawnCoords.x, spawnCoords.y, spawnCoords.z, true, true)
+                        end)
+                        if ok2 and h2 and h2 ~= 0 then
+                            objectHandle = h2
+                        end
+                    end
+                    
+                    if not objectHandle or objectHandle == 0 then
+                        local ok2, h2 = pcall(function()
+                            return OBJECT.CREATE_OBJECT(childModel, spawnCoords.x, spawnCoords.y, spawnCoords.z, true, false, false)
+                        end)
+                        if ok2 and h2 and h2 ~= 0 then
+                            objectHandle = h2
+                        end
+                    end
+                    
+                    if objectHandle and objectHandle ~= 0 then
+                        local childName = child.name or child.model or tostring(childModel)
+                        print("[JSON Outfit] Child", i, "(", childName, ") spawned, handle:", objectHandle)
+                        M.debug_print("[JSON Outfit Spawn Debug] Child", i, "(", childName, ") spawned, handle:", objectHandle)
+                        
+                        -- Apply options
+                        if child.options then
+                            local opts = child.options
+                            if opts.is_visible ~= nil then
+                                pcall(function() ENTITY.SET_ENTITY_VISIBLE(objectHandle, opts.is_visible, false) end)
+                            end
+                            if opts.has_collision ~= nil then
+                                pcall(function() ENTITY.SET_ENTITY_COLLISION(objectHandle, opts.has_collision, false) end)
+                            end
+                            if opts.is_invincible ~= nil then
+                                pcall(function() ENTITY.SET_ENTITY_INVINCIBLE(objectHandle, opts.is_invincible) end)
+                            end
+                        end
+                        
+                        -- Attach to parent entity (could be the player/ped or another object)
+                        local boneIndex = child.options and child.options.bone_index or 0
+                        pcall(function()
+                            ENTITY.ATTACH_ENTITY_TO_ENTITY(
+                                objectHandle, parentEntity, boneIndex,
+                                child.offset and child.offset.x or 0,
+                                child.offset and child.offset.y or 0,
+                                child.offset and child.offset.z or 0,
+                                child.rotation and child.rotation.x or 0,
+                                child.rotation and child.rotation.y or 0,
+                                child.rotation and child.rotation.z or 0,
+                                false, false, false, false, 2, true
+                            )
+                        end)
+                        print("[JSON Outfit] Attached", childName, "to bone", boneIndex, "on", parentName)
+                        M.debug_print("[JSON Outfit Spawn Debug] Attached", childName, "to bone", boneIndex, "on", parentName)
+                        
+                        table.insert(attachedObjects, objectHandle)
+                        
+                        -- Recursively spawn and attach nested children to THIS object
+                        if child.children and type(child.children) == "table" and #child.children > 0 then
+                            print("[JSON Outfit] Processing nested children for", childName)
+                            spawnAndAttachChildren(child.children, objectHandle, childName)
+                        end
+                    else
+                        print("[JSON Outfit] Failed to spawn child", i)
+                        M.debug_print("[JSON Outfit Spawn Debug] Failed to spawn child", i)
+                    end
+                end
+            end
+        end
+        
+        -- Start the recursive spawning from the top-level children
+        if jsonData.children and #jsonData.children > 0 then
+            local parentName = isAttachToPlayer and "player" or "spawned ped"
+            spawnAndAttachChildren(jsonData.children, targetPed, parentName)
+        end
+        
+        print("[JSON Outfit] Total attachments spawned:", #attachedObjects)
+        M.debug_print("[JSON Outfit Spawn Debug] Spawned", #attachedObjects, "attachments")
+        
+        -- Handle preview vs actual spawn
+        if isPreview then
+            if spawnedPed then
+                table.insert(previewEntities, spawnedPed)
+            end
+            for _, obj in ipairs(attachedObjects) do
+                table.insert(previewEntities, obj)
+            end
+            print("[JSON Outfit] Added to preview entities")
+            M.debug_print("[JSON Outfit Spawn Debug] Added to preview entities")
+        else
+            -- Change player to the spawned ped if is_player is true (and we spawned a ped)
+            if jsonData.is_player and spawnedPed then
+                print("[JSON Outfit] Changing player to spawned ped...")
+                pcall(function()
+                    local pid = PLAYER.PLAYER_ID()
+                    if pid then
+                        PLAYER.CHANGE_PLAYER_PED(pid, spawnedPed, true, true)
+                        print("[JSON Outfit] Changed player to spawned ped")
+                        M.debug_print("[JSON Outfit Spawn Debug] Changed player to spawned ped")
+                    end
+                end)
+            end
+            
+            -- Track spawned outfit
+            local outfitRecord = {
+                spawnedPed = spawnedPed, -- Will be nil if attached directly to player
+                attachments = attachedObjects,
+                filePath = filePath,
+                attachedToPlayer = isAttachToPlayer
+            }
+            table.insert(spawnedOutfits, outfitRecord)
+            
+            print("[JSON Outfit] Spawn complete!")
+            pcall(function()
+                local fileName = M.get_filename_from_path(filePath)
+                local msg = isAttachToPlayer 
+                    and ("Attached " .. #attachedObjects .. " object" .. (#attachedObjects == 1 and "" or "s") .. " to player")
+                    or ("Spawned " .. fileName .. " with " .. #attachedObjects .. " attachment" .. (#attachedObjects == 1 and "" or "s"))
+                GUI.AddToast("Outfit Spawned", msg, 5000, 0)
+                print("Outfit Spawned", msg)
+            end)
+        end
     end)
 end
 
