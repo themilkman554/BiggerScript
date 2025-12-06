@@ -1,5 +1,5 @@
 ---bigger script
-GUI.AddToast("BiggerScriptv5", "Added Json Support\n Improved UI", 10000, 0)
+GUI.AddToast("BiggerScriptv5.1", "Fixed JSON Spawner\n Improved Outfit Spawner", 10000, 0)
 
 if Cherax.GetEdition() == "LE" then
     GUI.AddToast("BiggerScript", "Legacy Version of Cherax breaks vehicles with too many attachments", 10000, 0)
@@ -141,7 +141,9 @@ local spawnerSettings = {
     teleportToMap = true,
     vehicleFly = false,
     upsideDownMap = false,
-    radioOff = false
+    radioOff = false,
+    onlyApplyAttachments = false,
+    deleteLastOutfitAttachments = false
 }
 
 
@@ -794,6 +796,14 @@ local function renderMenyooTab()
                     ImGui.Spacing()
 
                     spawnerSettings.previewOutfit = ImGui.Checkbox("Preview Outfit", spawnerSettings.previewOutfit)
+                    
+                    spawnerSettings.onlyApplyAttachments = ImGui.Checkbox("Only Apply Attachments", spawnerSettings.onlyApplyAttachments)
+                    if ImGui.IsItemHovered() then
+                        ImGui.SetTooltip("May break positioning")
+                    end
+                    
+                    spawnerSettings.deleteLastOutfitAttachments = ImGui.Checkbox("Delete Last Outfit Attachments", spawnerSettings.deleteLastOutfitAttachments)
+                    
                     ImGui.Spacing()
 
                     ImGui.PushStyleColor(ImGuiCol.Button, 0.36, 0.016, 0.157, 1.0)

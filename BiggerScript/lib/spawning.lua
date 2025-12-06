@@ -4752,20 +4752,20 @@ function M.spawnOutfitFromJSON(filePath, isPreview)
             return
         end
         
-        print("[JSON Outfit] File exists, reading content...")
+        M.debug_print("[JSON Outfit] File exists, reading content...")
         local jsonContent = FileMgr.ReadFileContent(filePath)
         if not jsonContent or jsonContent == "" then
-            print("[JSON Outfit] Error: Failed to read file or content empty")
+            M.debug_print("[JSON Outfit] Error: Failed to read file or content empty")
             M.debug_print("[JSON Outfit Spawn Debug] Error: Failed to read JSON file or content is empty:", filePath)
             pcall(function() GUI.AddToast("Spawn Error", "Failed to read JSON file", 3000, 0) end)
             return
         end
         
-        print("[JSON Outfit] Content read successfully, length:", string.len(jsonContent))
+        M.debug_print("[JSON Outfit] Content read successfully, length:", string.len(jsonContent))
         M.debug_print("[JSON Outfit Spawn Debug] JSON content length:", string.len(jsonContent))
         
         -- Parse JSON using the same parser
-        print("[JSON Outfit] Attempting to parse JSON...")
+        M.debug_print("[JSON Outfit] Attempting to parse JSON...")
         local jsonData
         local parseSuccess, parseResult = pcall(function()
             local luaCode = jsonContent
@@ -4790,20 +4790,20 @@ function M.spawnOutfitFromJSON(filePath, isPreview)
         end)
         
         if not parseSuccess or not parseResult then
-            print("[JSON Outfit] Parse failed:", tostring(parseResult))
+            M.debug_print("[JSON Outfit] Parse failed:", tostring(parseResult))
             M.debug_print("[JSON Outfit Spawn Debug] Error parsing JSON:", tostring(parseResult))
             pcall(function() GUI.AddToast("Spawn Error", "Failed to parse JSON: " .. tostring(parseResult), 5000, 0) end)
             return
         end
         
         jsonData = parseResult
-        print("[JSON Outfit] Parse successful!")
+        M.debug_print("[JSON Outfit] Parse successful!")
         M.debug_print("[JSON Outfit Spawn Debug] JSON parsed successfully")
         
         -- Check if it's a ped outfit
-        print("[JSON Outfit] Checking type, got:", tostring(jsonData.type))
+        M.debug_print("[JSON Outfit] Checking type, got:", tostring(jsonData.type))
         if jsonData.type ~= "PED" then
-            print("[JSON Outfit] Error: Not a PED type")
+            M.debug_print("[JSON Outfit] Error: Not a PED type")
             M.debug_print("[JSON Outfit Spawn Debug] Error: JSON is not a PED type, got:", tostring(jsonData.type))
             pcall(function() GUI.AddToast("Spawn Error", "This JSON is not a PED outfit", 3000, 0) end)
             return
@@ -4811,38 +4811,38 @@ function M.spawnOutfitFromJSON(filePath, isPreview)
         
         -- Check is_player flag FIRST before validating model hash
         local isAttachToPlayer = (jsonData.is_player == false)  -- When is_player is false, attach directly to player
-        print("[JSON Outfit] is_player:", tostring(jsonData.is_player), "isAttachToPlayer:", tostring(isAttachToPlayer))
+        M.debug_print("[JSON Outfit] is_player:", tostring(jsonData.is_player), "isAttachToPlayer:", tostring(isAttachToPlayer))
         
         -- Only validate model hash if we need to spawn a new ped (is_player is true or nil)
         local modelHash = jsonData.hash or jsonData.model
         if not isAttachToPlayer then
-            print("[JSON Outfit] Model hash:", tostring(modelHash))
+            M.debug_print("[JSON Outfit] Model hash:", tostring(modelHash))
             if not modelHash or modelHash == 0 then
-                print("[JSON Outfit] Error: Invalid model hash")
+                M.debug_print("[JSON Outfit] Error: Invalid model hash")
                 M.debug_print("[JSON Outfit Spawn Debug] Error: Invalid model hash")
                 return
             end
         else
-            print("[JSON Outfit] is_player is false - skipping model hash validation (attaching to player)")
+            M.debug_print("[JSON Outfit] is_player is false - skipping model hash validation (attaching to player)")
         end
         
         -- Get player position and heading
-        print("[JSON Outfit] Getting player position...")
+        M.debug_print("[JSON Outfit] Getting player position...")
         local playerPed = GTA.GetLocalPed()
         if not playerPed then
-            print("[JSON Outfit] Error: Player ped not found")
+            M.debug_print("[JSON Outfit] Error: Player ped not found")
             M.debug_print("[JSON Outfit Spawn Debug] Error: Player ped not found")
             return
         end
         
         local playerHandle = GTA.PointerToHandle(playerPed) or PLAYER.PLAYER_PED_ID()
         if not playerHandle or playerHandle == 0 then
-            print("[JSON Outfit] Error: Player handle not found")
+            M.debug_print("[JSON Outfit] Error: Player handle not found")
             M.debug_print("[JSON Outfit Spawn Debug] Error: Player handle not found")
             return
         end
         
-        print("[JSON Outfit] Player handle:", playerHandle)
+        M.debug_print("[JSON Outfit] Player handle:", playerHandle)
         local pcoords = ENTITY.GET_ENTITY_COORDS(playerHandle, false)
         local heading = (playerPed.Heading or 0.0)
         
@@ -4862,64 +4862,99 @@ function M.spawnOutfitFromJSON(filePath, isPreview)
             spawnCoords = { x = pcoords.x, y = pcoords.y, z = pcoords.z }
         end
         
-        print("[JSON Outfit] Spawn coords:", spawnCoords.x, spawnCoords.y, spawnCoords.z)
+        M.debug_print("[JSON Outfit] Spawn coords:", spawnCoords.x, spawnCoords.y, spawnCoords.z)
         
-        -- Determine target ped based on is_player flag
-        local targetPed
-        local spawnedPed = nil -- Only set if we actually spawn a new ped
+        -- Delete last outfit attachments if toggle is enabled
+        if spawnerSettings.deleteLastOutfitAttachments and #spawnedOutfits > 0 then
+            M.debug_print("[JSON Outfit] Deleting last outfit attachments...")
+            local lastOutfit = spawnedOutfits[#spawnedOutfits]
+            if lastOutfit and lastOutfit.attachments then
+                for _, attachmentHandle in ipairs(lastOutfit.attachments) do
+                    if attachmentHandle and attachmentHandle ~= 0 then
+                        pcall(function()
+                            if ENTITY.DOES_ENTITY_EXIST(attachmentHandle) then
+                                local ptr = Memory.AllocInt()
+                                local pEntity = GTA.HandleToPointer(attachmentHandle)
+                                if pEntity and pEntity ~= 0 then
+                                    if pEntity.NetObject and pEntity.NetObject ~= 0 then
+                                        NetworkObjectMgr.UnregisterNetworkObject(pEntity.NetObject, 15, true, true)
+                                    end
+                                    Memory.WriteInt(ptr, attachmentHandle)
+                                    ENTITY.DELETE_ENTITY(ptr)
+                                end
+                            end
+                        end)
+                    end
+                end
+            end
+            table.remove(spawnedOutfits, #spawnedOutfits)
+            M.debug_print("[JSON Outfit] Last outfit attachments deleted")
+        end
         
-        if isAttachToPlayer then
-            -- Attach directly to player ped (no new ped spawned)
-            print("[JSON Outfit] is_player is false - attaching objects directly to player")
-            M.debug_print("[JSON Outfit Spawn Debug] is_player is false - attaching objects directly to player")
-            targetPed = playerHandle
-        else
-            -- Spawn a new ped (is_player is true or nil)
-            print("[JSON Outfit] Requesting model load...")
+        -- Always use player's ped
+        local targetPed = playerHandle
+        local spawnedPed = nil
+        
+        -- Change player's model if not onlyApplyAttachments and model hash is provided
+        if not spawnerSettings.onlyApplyAttachments and not isAttachToPlayer and modelHash then
+            M.debug_print("[JSON Outfit] Changing player model to:", modelHash)
+            
+            -- Store old ped handle before changing model
+            local oldPedHandle = playerHandle
+            
             M.request_model_load(modelHash)
             Script.Yield(200)
             
-            print("[JSON Outfit] Creating ped...")
-            -- Use Cherax API for ped spawning
-            if GTA and GTA.CreatePed then
-                local ok, h = pcall(function()
-                    return GTA.CreatePed(modelHash, 26, spawnCoords.x, spawnCoords.y, spawnCoords.z, heading, false, false)
-                end)
-                if ok and h and h ~= 0 then
-                    spawnedPed = h
+            -- Change player's ped model
+            local modelChangeSuccess = false
+            pcall(function()
+                local playerID = PLAYER.PLAYER_ID()
+                if playerID and playerID >= 0 then
+                    PLAYER.SET_PLAYER_MODEL(playerID, modelHash)
+                    Script.Yield(200) -- Give more time for model change
+                    modelChangeSuccess = true
+                    M.debug_print("[JSON Outfit] Player model changed successfully")
+                    M.debug_print("[JSON Outfit Spawn Debug] Player model changed to:", modelHash)
+                end
+            end)
+            
+            -- Update player handle after model change
+            if modelChangeSuccess then
+                Script.Yield(100)
+                playerPed = GTA.GetLocalPed()
+                if playerPed then
+                    targetPed = GTA.PointerToHandle(playerPed) or PLAYER.PLAYER_PED_ID()
+                    M.debug_print("[JSON Outfit] Updated target ped handle after model change:", targetPed)
+                    
+                    -- Delete old ped
+                    if oldPedHandle and oldPedHandle ~= 0 and oldPedHandle ~= targetPed then
+                        pcall(function()
+                            if ENTITY.DOES_ENTITY_EXIST(oldPedHandle) then
+                                local ptr = Memory.AllocInt()
+                                Memory.WriteInt(ptr, oldPedHandle)
+                                ENTITY.DELETE_ENTITY(ptr)
+                                M.debug_print("[JSON Outfit] Deleted old ped handle:", oldPedHandle)
+                            end
+                        end)
+                    end
                 end
             end
-            
-            -- Fallback to native if Cherax API failed
-            if not spawnedPed or spawnedPed == 0 then
-                local ok, h = pcall(function()
-                    return PED.CREATE_PED(4, modelHash, spawnCoords.x, spawnCoords.y, spawnCoords.z, heading, false, false)
-                end)
-                if ok and h and h ~= 0 then
-                    spawnedPed = h
-                end
+        else
+            if spawnerSettings.onlyApplyAttachments then
+                M.debug_print("[JSON Outfit] Only applying attachments (not changing model)")
             end
-            
-            if not spawnedPed or spawnedPed == 0 then
-                print("[JSON Outfit] Error: Failed to spawn ped")
-                M.debug_print("[JSON Outfit Spawn Debug] Error: Failed to spawn ped")
-                return
-            end
-            
-            print("[JSON Outfit] Ped spawned successfully, handle:", spawnedPed)
-            M.debug_print("[JSON Outfit Spawn Debug] Spawned outfit ped handle:", spawnedPed)
-            targetPed = spawnedPed
         end
         
-        -- Apply ped attributes (components, props, armor) to the target ped
-        if jsonData.ped_attributes then
-            print("[JSON Outfit] Applying ped attributes to target ped:", targetPed)
+        -- Apply ped attributes (components, props, armor, weapon) to the target ped
+        -- ONLY if not in onlyApplyAttachments mode
+        if jsonData.ped_attributes and not spawnerSettings.onlyApplyAttachments then
+            M.debug_print("[JSON Outfit] Applying ped attributes to target ped:", targetPed)
             M.debug_print("[JSON Outfit Spawn Debug] Applying ped attributes")
             local attrs = jsonData.ped_attributes
             
             -- Apply components (clothing)
             if attrs.components then
-                print("[JSON Outfit] Applying components...")
+                M.debug_print("[JSON Outfit] Applying components...")
                 for compKey, compData in pairs(attrs.components) do
                     local compId = tonumber(compKey:match("_(%d+)"))
                     if compId and compData.drawable_variation then
@@ -4931,7 +4966,7 @@ function M.spawnOutfitFromJSON(filePath, isPreview)
                                 compData.texture_variation or 0, 
                                 compData.palette_variation or 0
                             )
-                            print("[JSON Outfit] Set component", compId, "to drawable:", compData.drawable_variation, "texture:", compData.texture_variation or 0)
+                            M.debug_print("[JSON Outfit] Set component", compId, "to drawable:", compData.drawable_variation, "texture:", compData.texture_variation or 0)
                         end)
                     end
                 end
@@ -4939,7 +4974,7 @@ function M.spawnOutfitFromJSON(filePath, isPreview)
             
             -- Apply props (accessories like hats, glasses, etc.)
             if attrs.props then
-                print("[JSON Outfit] Applying props...")
+                M.debug_print("[JSON Outfit] Applying props...")
                 for propKey, propData in pairs(attrs.props) do
                     local propId = tonumber(propKey:match("_(%d+)"))
                     if propId then
@@ -4952,13 +4987,13 @@ function M.spawnOutfitFromJSON(filePath, isPreview)
                                     propData.texture_variation or 0, 
                                     true
                                 )
-                                print("[JSON Outfit] Set prop", propId, "to drawable:", propData.drawable_variation, "texture:", propData.texture_variation or 0)
+                                M.debug_print("[JSON Outfit] Set prop", propId, "to drawable:", propData.drawable_variation, "texture:", propData.texture_variation or 0)
                             end)
                         else
                             -- Clear the prop if drawable_variation is -1
                             pcall(function()
                                 PED.CLEAR_PED_PROP(targetPed, propId)
-                                print("[JSON Outfit] Cleared prop", propId)
+                                M.debug_print("[JSON Outfit] Cleared prop", propId)
                             end)
                         end
                     end
@@ -4969,23 +5004,23 @@ function M.spawnOutfitFromJSON(filePath, isPreview)
             if attrs.armor then
                 pcall(function()
                     PED.SET_PED_ARMOUR(targetPed, attrs.armor)
-                    print("[JSON Outfit] Set armor to", attrs.armor)
+                    M.debug_print("[JSON Outfit] Set armor to", attrs.armor)
                 end)
             end
             
             -- Apply weapon
             if attrs.weapon and attrs.weapon.model then
-                print("[JSON Outfit] Applying weapon...")
+                M.debug_print("[JSON Outfit] Applying weapon...")
                 local weaponModel = attrs.weapon.model
                 local weaponHash
                 
                 -- Convert weapon model to hash if it's a string
                 if type(weaponModel) == "string" then
                     weaponHash = MISC.GET_HASH_KEY(weaponModel)
-                    print("[JSON Outfit] Weapon model string:", weaponModel, "converted to hash:", weaponHash)
+                    M.debug_print("[JSON Outfit] Weapon model string:", weaponModel, "converted to hash:", weaponHash)
                 else
                     weaponHash = weaponModel
-                    print("[JSON Outfit] Weapon hash:", weaponHash)
+                    M.debug_print("[JSON Outfit] Weapon hash:", weaponHash)
                 end
                 
                 -- Phase the weapon model
@@ -4995,12 +5030,12 @@ function M.spawnOutfitFromJSON(filePath, isPreview)
                 -- Give weapon to ped and force equip it
                 pcall(function()
                     WEAPON.GIVE_WEAPON_TO_PED(targetPed, weaponHash, 9999, false, true)
-                    print("[JSON Outfit] Gave weapon", weaponModel, "to ped and equipped it")
+                    M.debug_print("[JSON Outfit] Gave weapon", weaponModel, "to ped and equipped it")
                     M.debug_print("[JSON Outfit Spawn Debug] Gave weapon", weaponModel, "to ped")
                 end)
             end
             
-            print("[JSON Outfit] Ped attributes applied successfully")
+            M.debug_print("[JSON Outfit] Ped attributes applied successfully")
             M.debug_print("[JSON Outfit Spawn Debug] Ped attributes applied successfully")
         end
         
@@ -5011,7 +5046,7 @@ function M.spawnOutfitFromJSON(filePath, isPreview)
         local function spawnAndAttachChildren(children, parentEntity, parentName)
             if not children or #children == 0 then return end
             
-            print("[JSON Outfit] Spawning", #children, "children attached to", parentName)
+            M.debug_print("[JSON Outfit] Spawning", #children, "children attached to", parentName)
             M.debug_print("[JSON Outfit Spawn Debug] Spawning", #children, "children attached to", parentName)
             
             for i, child in ipairs(children) do
@@ -5043,7 +5078,7 @@ function M.spawnOutfitFromJSON(filePath, isPreview)
                     
                     if objectHandle and objectHandle ~= 0 then
                         local childName = child.name or child.model or tostring(childModel)
-                        print("[JSON Outfit] Child", i, "(", childName, ") spawned, handle:", objectHandle)
+                        M.debug_print("[JSON Outfit] Child", i, "(", childName, ") spawned, handle:", objectHandle)
                         M.debug_print("[JSON Outfit Spawn Debug] Child", i, "(", childName, ") spawned, handle:", objectHandle)
                         
                         -- Apply options
@@ -5074,18 +5109,18 @@ function M.spawnOutfitFromJSON(filePath, isPreview)
                                 false, false, false, false, 2, true
                             )
                         end)
-                        print("[JSON Outfit] Attached", childName, "to bone", boneIndex, "on", parentName)
+                        M.debug_print("[JSON Outfit] Attached", childName, "to bone", boneIndex, "on", parentName)
                         M.debug_print("[JSON Outfit Spawn Debug] Attached", childName, "to bone", boneIndex, "on", parentName)
                         
                         table.insert(attachedObjects, objectHandle)
                         
                         -- Recursively spawn and attach nested children to THIS object
                         if child.children and type(child.children) == "table" and #child.children > 0 then
-                            print("[JSON Outfit] Processing nested children for", childName)
+                            M.debug_print("[JSON Outfit] Processing nested children for", childName)
                             spawnAndAttachChildren(child.children, objectHandle, childName)
                         end
                     else
-                        print("[JSON Outfit] Failed to spawn child", i)
+                        M.debug_print("[JSON Outfit] Failed to spawn child", i)
                         M.debug_print("[JSON Outfit Spawn Debug] Failed to spawn child", i)
                     end
                 end
@@ -5098,7 +5133,7 @@ function M.spawnOutfitFromJSON(filePath, isPreview)
             spawnAndAttachChildren(jsonData.children, targetPed, parentName)
         end
         
-        print("[JSON Outfit] Total attachments spawned:", #attachedObjects)
+        M.debug_print("[JSON Outfit] Total attachments spawned:", #attachedObjects)
         M.debug_print("[JSON Outfit Spawn Debug] Spawned", #attachedObjects, "attachments")
         
         -- Handle preview vs actual spawn
@@ -5109,39 +5144,26 @@ function M.spawnOutfitFromJSON(filePath, isPreview)
             for _, obj in ipairs(attachedObjects) do
                 table.insert(previewEntities, obj)
             end
-            print("[JSON Outfit] Added to preview entities")
+            M.debug_print("[JSON Outfit] Added to preview entities")
             M.debug_print("[JSON Outfit Spawn Debug] Added to preview entities")
         else
-            -- Change player to the spawned ped if is_player is true (and we spawned a ped)
-            if jsonData.is_player and spawnedPed then
-                print("[JSON Outfit] Changing player to spawned ped...")
-                pcall(function()
-                    local pid = PLAYER.PLAYER_ID()
-                    if pid then
-                        PLAYER.CHANGE_PLAYER_PED(pid, spawnedPed, true, true)
-                        print("[JSON Outfit] Changed player to spawned ped")
-                        M.debug_print("[JSON Outfit Spawn Debug] Changed player to spawned ped")
-                    end
-                end)
-            end
-            
             -- Track spawned outfit
             local outfitRecord = {
-                spawnedPed = spawnedPed, -- Will be nil if attached directly to player
+                spawnedPed = spawnedPed, -- Will be nil since we don't spawn new peds anymore
                 attachments = attachedObjects,
                 filePath = filePath,
-                attachedToPlayer = isAttachToPlayer
+                attachedToPlayer = true -- Always true now since we always attach to player
             }
             table.insert(spawnedOutfits, outfitRecord)
             
-            print("[JSON Outfit] Spawn complete!")
+            M.debug_print("[JSON Outfit] Spawn complete!")
             pcall(function()
                 local fileName = M.get_filename_from_path(filePath)
                 local msg = isAttachToPlayer 
                     and ("Attached " .. #attachedObjects .. " object" .. (#attachedObjects == 1 and "" or "s") .. " to player")
                     or ("Spawned " .. fileName .. " with " .. #attachedObjects .. " attachment" .. (#attachedObjects == 1 and "" or "s"))
                 GUI.AddToast("Outfit Spawned", msg, 5000, 0)
-                print("Outfit Spawned", msg)
+                M.debug_print("Outfit Spawned", msg)
             end)
         end
     end)
