@@ -4147,8 +4147,12 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
             pcall(function()
                 local fileName = M.get_filename_from_path(filePath)
                 local attachmentCount = #childEntities
-                GUI.AddToast("Vehicle Spawned", "Spawned " .. fileName .. " with " .. attachmentCount .. " attachment" .. (attachmentCount == 1 and "" or "s"), 5000, 0)
-                print("Vehicle Spawned", "Spawned " .. fileName .. " with " .. attachmentCount .. " attachment" .. (attachmentCount == 1 and "" or "s"))
+                local toastMessage = "Spawned " .. fileName .. " with " .. attachmentCount .. " attachment" .. (attachmentCount == 1 and "" or "s")
+                if jsonData.author and jsonData.author ~= "" then
+                    toastMessage = toastMessage .. "\nby " .. jsonData.author
+                end
+                GUI.AddToast("Vehicle Spawned", toastMessage, 5000, 0)
+                print("Vehicle Spawned", toastMessage)
             end)
         end
     end)
