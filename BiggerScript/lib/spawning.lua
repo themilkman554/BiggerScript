@@ -4973,6 +4973,33 @@ function M.spawnOutfitFromJSON(filePath, isPreview)
                 end)
             end
             
+            -- Apply weapon
+            if attrs.weapon and attrs.weapon.model then
+                print("[JSON Outfit] Applying weapon...")
+                local weaponModel = attrs.weapon.model
+                local weaponHash
+                
+                -- Convert weapon model to hash if it's a string
+                if type(weaponModel) == "string" then
+                    weaponHash = MISC.GET_HASH_KEY(weaponModel)
+                    print("[JSON Outfit] Weapon model string:", weaponModel, "converted to hash:", weaponHash)
+                else
+                    weaponHash = weaponModel
+                    print("[JSON Outfit] Weapon hash:", weaponHash)
+                end
+                
+                -- Phase the weapon model
+                M.request_model_load(weaponHash)
+                Script.Yield(100)
+                
+                -- Give weapon to ped and force equip it
+                pcall(function()
+                    WEAPON.GIVE_WEAPON_TO_PED(targetPed, weaponHash, 9999, false, true)
+                    print("[JSON Outfit] Gave weapon", weaponModel, "to ped and equipped it")
+                    M.debug_print("[JSON Outfit Spawn Debug] Gave weapon", weaponModel, "to ped")
+                end)
+            end
+            
             print("[JSON Outfit] Ped attributes applied successfully")
             M.debug_print("[JSON Outfit Spawn Debug] Ped attributes applied successfully")
         end
