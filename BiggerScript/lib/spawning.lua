@@ -3731,19 +3731,46 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
         
         -- Spawn the main vehicle
         local vehicleHandle
-        local spawnSuccess, spawnResult = pcall(function()
-            return GTA.SpawnVehicle(modelHash, spawnCoords.x, spawnCoords.y, spawnCoords.z, playerHeading, true, true)
-        end)
+        local playerID = PLAYER.PLAYER_ID()
+        local forwardOffset = 5.0
         
-        if spawnSuccess and spawnResult and spawnResult ~= 0 then
-            vehicleHandle = spawnResult
-        else
-            M.debug_print("[JSON Spawn Debug] GTA.SpawnVehicle failed, trying VEHICLE.CREATE_VEHICLE")
+        -- Use GTA.SpawnVehicleForPlayer like INI spawning does
+        if GTA and GTA.SpawnVehicleForPlayer then
+            local spawnSuccess, spawnResult = pcall(function()
+                return GTA.SpawnVehicleForPlayer(modelHash, playerID, forwardOffset)
+            end)
+            
+            if spawnSuccess and spawnResult and spawnResult ~= 0 then
+                vehicleHandle = spawnResult
+                M.debug_print("[JSON Spawn Debug] Main vehicle spawned successfully with GTA.SpawnVehicleForPlayer:", vehicleHandle)
+            else
+                M.debug_print("[JSON Spawn Debug] GTA.SpawnVehicleForPlayer failed")
+            end
+        end
+        
+        -- Fallback to GTA.SpawnVehicle if SpawnVehicleForPlayer failed
+        if not vehicleHandle or vehicleHandle == 0 then
+            if GTA and GTA.SpawnVehicle then
+                local spawnSuccess, spawnResult = pcall(function()
+                    return GTA.SpawnVehicle(modelHash, spawnCoords.x, spawnCoords.y, spawnCoords.z, playerHeading, true, true)
+                end)
+                
+                if spawnSuccess and spawnResult and spawnResult ~= 0 then
+                    vehicleHandle = spawnResult
+                    M.debug_print("[JSON Spawn Debug] Main vehicle spawned successfully with GTA.SpawnVehicle:", vehicleHandle)
+                end
+            end
+        end
+        
+        -- Final fallback to native if both Cherax APIs failed
+        if not vehicleHandle or vehicleHandle == 0 then
+            M.debug_print("[JSON Spawn Debug] Cherax APIs failed, trying VEHICLE.CREATE_VEHICLE")
             local ok, h = pcall(function()
                 return VEHICLE.CREATE_VEHICLE(modelHash, spawnCoords.x, spawnCoords.y, spawnCoords.z, playerHeading, true, true)
             end)
             if ok and h and h ~= 0 then
                 vehicleHandle = h
+                M.debug_print("[JSON Spawn Debug] Main vehicle spawned successfully with VEHICLE.CREATE_VEHICLE:", vehicleHandle)
             end
         end
         
@@ -3866,120 +3893,152 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
             local childHandle
             if child.type == "VEHICLE" then
                 M.debug_print("[JSON Spawn Debug]" .. indent .. "Spawning as VEHICLE")
-                local ok, h = pcall(function()
-                    return VEHICLE.CREATE_VEHICLE(childModel, spawnCoords.x, spawnCoords.y, spawnCoords.z, 0, true, true)
-                end)
-                if ok and h and h ~= 0 then 
-                    childHandle = h 
-                    M.debug_print("[JSON Spawn Debug]" .. indent .. "Child VEHICLE spawned successfully:", h)
-                    
-                    -- Apply vehicle attributes if present
-                    if child.vehicle_attributes then
-                        local attrs = child.vehicle_attributes
+                -- Use Cherax API for vehicle spawning
+                if GTA and GTA.SpawnVehicle then
+                    local ok, h = pcall(function()
+                        return GTA.SpawnVehicle(childModel, spawnCoords.x, spawnCoords.y, spawnCoords.z, 0, true, true)
+                    end)
+                    if ok and h and h ~= 0 then 
+                        childHandle = h 
+                        M.debug_print("[JSON Spawn Debug]" .. indent .. "Child VEHICLE spawned successfully with GTA.SpawnVehicle:", h)
                         
-                        -- Apply mods
-                        if attrs.mods then
-                            for modKey, modValue in pairs(attrs.mods) do
-                                local modId = tonumber(modKey:match("_(%d+)"))
-                                if modId then
-                                    if type(modValue) == "boolean" then
-                                        pcall(function() VEHICLE.TOGGLE_VEHICLE_MOD(h, modId, modValue) end)
-                                    elseif type(modValue) == "number" then
-                                        pcall(function() VEHICLE.SET_VEHICLE_MOD(h, modId, modValue, false) end)
+                        -- Apply vehicle attributes if present
+                        if child.vehicle_attributes then
+                            local attrs = child.vehicle_attributes
+                            
+                            -- Apply mods
+                            if attrs.mods then
+                                for modKey, modValue in pairs(attrs.mods) do
+                                    local modId = tonumber(modKey:match("_(%d+)"))
+                                    if modId then
+                                        if type(modValue) == "boolean" then
+                                            pcall(function() VEHICLE.TOGGLE_VEHICLE_MOD(h, modId, modValue) end)
+                                        elseif type(modValue) == "number" then
+                                            pcall(function() VEHICLE.SET_VEHICLE_MOD(h, modId, modValue, false) end)
+                                        end
                                     end
                                 end
                             end
-                        end
-                        
-                        -- Apply paint
-                        if attrs.paint then
-                            if attrs.paint.primary and attrs.paint.primary.is_custom and attrs.paint.primary.custom_color then
-                                local c = attrs.paint.primary.custom_color
-                                pcall(function() VEHICLE.SET_VEHICLE_CUSTOM_PRIMARY_COLOUR(h, c.r or 0, c.g or 0, c.b or 0) end)
+                            
+                            -- Apply paint
+                            if attrs.paint then
+                                if attrs.paint.primary and attrs.paint.primary.is_custom and attrs.paint.primary.custom_color then
+                                    local c = attrs.paint.primary.custom_color
+                                    pcall(function() VEHICLE.SET_VEHICLE_CUSTOM_PRIMARY_COLOUR(h, c.r or 0, c.g or 0, c.b or 0) end)
+                                end
+                                if attrs.paint.secondary and attrs.paint.secondary.is_custom and attrs.paint.secondary.custom_color then
+                                    local c = attrs.paint.secondary.custom_color
+                                    pcall(function() VEHICLE.SET_VEHICLE_CUSTOM_SECONDARY_COLOUR(h, c.r or 0, c.g or 0, c.b or 0) end)
+                                end
                             end
-                            if attrs.paint.secondary and attrs.paint.secondary.is_custom and attrs.paint.secondary.custom_color then
-                                local c = attrs.paint.secondary.custom_color
-                                pcall(function() VEHICLE.SET_VEHICLE_CUSTOM_SECONDARY_COLOUR(h, c.r or 0, c.g or 0, c.b or 0) end)
+                            
+                            -- Apply options
+                            if attrs.options then
+                                if attrs.options.engine_running then
+                                    pcall(function() VEHICLE.SET_VEHICLE_ENGINE_ON(h, true, true, false) end)
+                                end
                             end
                         end
-                        
-                        -- Apply options
-                        if attrs.options then
-                            if attrs.options.engine_running then
-                                pcall(function() VEHICLE.SET_VEHICLE_ENGINE_ON(h, true, true, false) end)
-                            end
-                        end
+                    else
+                        M.debug_print("[JSON Spawn Debug]" .. indent .. "Failed to spawn child VEHICLE with GTA.SpawnVehicle, ok:", ok, "handle:", tostring(h))
                     end
-                else
-                    M.debug_print("[JSON Spawn Debug]" .. indent .. "Failed to spawn child VEHICLE, ok:", ok, "handle:", tostring(h))
+                end
+                
+                -- Fallback to native if Cherax API failed
+                if not childHandle or childHandle == 0 then
+                    local ok, h = pcall(function()
+                        return VEHICLE.CREATE_VEHICLE(childModel, spawnCoords.x, spawnCoords.y, spawnCoords.z, 0, true, true)
+                    end)
+                    if ok and h and h ~= 0 then 
+                        childHandle = h 
+                        M.debug_print("[JSON Spawn Debug]" .. indent .. "Child VEHICLE spawned successfully with VEHICLE.CREATE_VEHICLE:", h)
+                    else
+                        M.debug_print("[JSON Spawn Debug]" .. indent .. "Failed to spawn child VEHICLE, ok:", ok, "handle:", tostring(h))
+                    end
                 end
             elseif child.type == "PED" then
                 M.debug_print("[JSON Spawn Debug]" .. indent .. "Spawning as PED")
-                local ok, h = pcall(function()
-                    return PED.CREATE_PED(4, childModel, spawnCoords.x, spawnCoords.y, spawnCoords.z, 0, true, true)
-                end)
-                if ok and h and h ~= 0 then 
-                    childHandle = h 
-                    M.debug_print("[JSON Spawn Debug]" .. indent .. "Child PED spawned successfully:", h)
-                    
-                    -- Apply ped attributes
-                    if child.ped_attributes then
-                        local attrs = child.ped_attributes
+                -- Use Cherax API for ped spawning
+                if GTA and GTA.CreatePed then
+                    local ok, h = pcall(function()
+                        return GTA.CreatePed(childModel, 26, spawnCoords.x, spawnCoords.y, spawnCoords.z, 0, true, true)
+                    end)
+                    if ok and h and h ~= 0 then 
+                        childHandle = h 
+                        M.debug_print("[JSON Spawn Debug]" .. indent .. "Child PED spawned successfully with GTA.CreatePed:", h)
                         
-                        -- Apply animation
-                        if attrs.animation and attrs.animation.dictionary and attrs.animation.clip then
-                            Script.Yield(100)
-                            pcall(function()
-                                STREAMING.REQUEST_ANIM_DICT(attrs.animation.dictionary)
-                                local timeout = 0
-                                while not STREAMING.HAS_ANIM_DICT_LOADED(attrs.animation.dictionary) and timeout < 50 do
-                                    Script.Yield(10)
-                                    timeout = timeout + 1
-                                end
-                                if STREAMING.HAS_ANIM_DICT_LOADED(attrs.animation.dictionary) then
-                                    TASK.TASK_PLAY_ANIM(h, attrs.animation.dictionary, attrs.animation.clip, 8.0, -8.0, -1, attrs.animation.loop and 1 or 0, 0, false, false, false)
-                                    M.debug_print("[JSON Spawn Debug]" .. indent .. "Applied animation:", attrs.animation.clip)
-                                end
-                            end)
-                        end
-                        
-                        -- Apply components (clothing)
-                        if attrs.components then
-                            for compKey, compData in pairs(attrs.components) do
-                                local compId = tonumber(compKey:match("_(%d+)"))
-                                if compId and compData.drawable_variation then
-                                    pcall(function()
-                                        PED.SET_PED_COMPONENT_VARIATION(h, compId, compData.drawable_variation, compData.texture_variation or 0, compData.palette_variation or 0)
-                                    end)
-                                end
+                        -- Apply ped attributes
+                        if child.ped_attributes then
+                            local attrs = child.ped_attributes
+                            
+                            -- Apply animation
+                            if attrs.animation and attrs.animation.dictionary and attrs.animation.clip then
+                                Script.Yield(100)
+                                pcall(function()
+                                    STREAMING.REQUEST_ANIM_DICT(attrs.animation.dictionary)
+                                    local timeout = 0
+                                    while not STREAMING.HAS_ANIM_DICT_LOADED(attrs.animation.dictionary) and timeout < 50 do
+                                        Script.Yield(10)
+                                        timeout = timeout + 1
+                                    end
+                                    if STREAMING.HAS_ANIM_DICT_LOADED(attrs.animation.dictionary) then
+                                        TASK.TASK_PLAY_ANIM(h, attrs.animation.dictionary, attrs.animation.clip, 8.0, -8.0, -1, attrs.animation.loop and 1 or 0, 0, false, false, false)
+                                        M.debug_print("[JSON Spawn Debug]" .. indent .. "Applied animation:", attrs.animation.clip)
+                                    end
+                                end)
                             end
-                            M.debug_print("[JSON Spawn Debug]" .. indent .. "Applied ped components")
-                        end
-                        
-                        -- Apply props (accessories)
-                        if attrs.props then
-                            for propKey, propData in pairs(attrs.props) do
-                                local propId = tonumber(propKey:match("_(%d+)"))
-                                if propId and propData.drawable_variation and propData.drawable_variation ~= -1 then
-                                    pcall(function()
-                                        PED.SET_PED_PROP_INDEX(h, propId, propData.drawable_variation, propData.texture_variation or 0, true)
-                                    end)
+                            
+                            -- Apply components (clothing)
+                            if attrs.components then
+                                for compKey, compData in pairs(attrs.components) do
+                                    local compId = tonumber(compKey:match("_(%d+)"))
+                                    if compId and compData.drawable_variation then
+                                        pcall(function()
+                                            PED.SET_PED_COMPONENT_VARIATION(h, compId, compData.drawable_variation, compData.texture_variation or 0, compData.palette_variation or 0)
+                                        end)
+                                    end
                                 end
+                                M.debug_print("[JSON Spawn Debug]" .. indent .. "Applied ped components")
                             end
-                            M.debug_print("[JSON Spawn Debug]" .. indent .. "Applied ped props")
+                            
+                            -- Apply props (accessories)
+                            if attrs.props then
+                                for propKey, propData in pairs(attrs.props) do
+                                    local propId = tonumber(propKey:match("_(%d+)"))
+                                    if propId and propData.drawable_variation and propData.drawable_variation ~= -1 then
+                                        pcall(function()
+                                            PED.SET_PED_PROP_INDEX(h, propId, propData.drawable_variation, propData.texture_variation or 0, true)
+                                        end)
+                                    end
+                                end
+                                M.debug_print("[JSON Spawn Debug]" .. indent .. "Applied ped props")
+                            end
+                            
+                            -- Apply other ped settings
+                            if attrs.ignore_events then
+                                pcall(function() PED.SET_PED_CONFIG_FLAG(h, 208, true) end)
+                            end
+                            
+                            if attrs.keep_on_task then
+                                pcall(function() PED.SET_PED_KEEP_TASK(h, true) end)
+                            end
                         end
-                        
-                        -- Apply other ped settings
-                        if attrs.ignore_events then
-                            pcall(function() PED.SET_PED_CONFIG_FLAG(h, 208, true) end)
-                        end
-                        
-                        if attrs.keep_on_task then
-                            pcall(function() PED.SET_PED_KEEP_TASK(h, true) end)
-                        end
+                    else
+                        M.debug_print("[JSON Spawn Debug]" .. indent .. "Failed to spawn child PED with GTA.CreatePed, ok:", ok, "handle:", tostring(h))
                     end
-                else
-                    M.debug_print("[JSON Spawn Debug]" .. indent .. "Failed to spawn child PED, ok:", ok, "handle:", tostring(h))
+                end
+                
+                -- Fallback to native if Cherax API failed
+                if not childHandle or childHandle == 0 then
+                    local ok, h = pcall(function()
+                        return PED.CREATE_PED(4, childModel, spawnCoords.x, spawnCoords.y, spawnCoords.z, 0, true, true)
+                    end)
+                    if ok and h and h ~= 0 then 
+                        childHandle = h 
+                        M.debug_print("[JSON Spawn Debug]" .. indent .. "Child PED spawned successfully with PED.CREATE_PED:", h)
+                    else
+                        M.debug_print("[JSON Spawn Debug]" .. indent .. "Failed to spawn child PED, ok:", ok, "handle:", tostring(h))
+                    end
                 end
             else
                 -- It's an object - try multiple methods
@@ -4327,66 +4386,94 @@ function M.spawnMapFromJSON(filePath, isPreview)
             if child.type == "VEHICLE" then
                 M.debug_print("[JSON Map Spawn Debug]" .. indent .. "Spawning as VEHICLE")
                 local rotData = child.world_rotation or child.rotation
-                local ok, h = pcall(function()
-                    return VEHICLE.CREATE_VEHICLE(childModel, spawnPos.x, spawnPos.y, spawnPos.z, rotData and rotData.z or 0, true, true)
-                end)
-                if ok and h and h ~= 0 then 
-                    entityHandle = h 
-                    M.debug_print("[JSON Map Spawn Debug]" .. indent .. "VEHICLE spawned successfully:", h)
+                -- Use Cherax API for vehicle spawning
+                if GTA and GTA.SpawnVehicle then
+                    local ok, h = pcall(function()
+                        return GTA.SpawnVehicle(childModel, spawnPos.x, spawnPos.y, spawnPos.z, rotData and rotData.z or 0, true, true)
+                    end)
+                    if ok and h and h ~= 0 then 
+                        entityHandle = h 
+                        M.debug_print("[JSON Map Spawn Debug]" .. indent .. "VEHICLE spawned successfully with GTA.SpawnVehicle:", h)
+                    end
+                end
+                
+                -- Fallback to native if Cherax API failed
+                if not entityHandle or entityHandle == 0 then
+                    local ok, h = pcall(function()
+                        return VEHICLE.CREATE_VEHICLE(childModel, spawnPos.x, spawnPos.y, spawnPos.z, rotData and rotData.z or 0, true, true)
+                    end)
+                    if ok and h and h ~= 0 then 
+                        entityHandle = h 
+                        M.debug_print("[JSON Map Spawn Debug]" .. indent .. "VEHICLE spawned successfully with VEHICLE.CREATE_VEHICLE:", h)
+                    end
                 end
             elseif child.type == "PED" then
                 M.debug_print("[JSON Map Spawn Debug]" .. indent .. "Spawning as PED")
                 local rotData = child.world_rotation or child.rotation
-                local ok, h = pcall(function()
-                    return PED.CREATE_PED(4, childModel, spawnPos.x, spawnPos.y, spawnPos.z, rotData and rotData.z or 0, true, true)
-                end)
-                if ok and h and h ~= 0 then 
-                    entityHandle = h 
-                    M.debug_print("[JSON Map Spawn Debug]" .. indent .. "PED spawned successfully:", h)
-                    
-                    -- Apply ped attributes
-                    if child.ped_attributes then
-                        local attrs = child.ped_attributes
-                        if attrs.animation and attrs.animation.dictionary and attrs.animation.clip then
-                            Script.Yield(100)
-                            pcall(function()
-                                STREAMING.REQUEST_ANIM_DICT(attrs.animation.dictionary)
-                                local timeout = 0
-                                while not STREAMING.HAS_ANIM_DICT_LOADED(attrs.animation.dictionary) and timeout < 50 do
-                                    Script.Yield(10)
-                                    timeout = timeout + 1
-                                end
-                                if STREAMING.HAS_ANIM_DICT_LOADED(attrs.animation.dictionary) then
-                                    TASK.TASK_PLAY_ANIM(h, attrs.animation.dictionary, attrs.animation.clip, 8.0, -8.0, -1, attrs.animation.loop and 1 or 0, 0, false, false, false)
-                                end
-                            end)
-                        end
-                        if attrs.components then
-                            for compKey, compData in pairs(attrs.components) do
-                                local compId = tonumber(compKey:match("_(%d+)"))
-                                if compId and compData.drawable_variation then
-                                    pcall(function()
-                                        PED.SET_PED_COMPONENT_VARIATION(h, compId, compData.drawable_variation, compData.texture_variation or 0, compData.palette_variation or 0)
-                                    end)
+                -- Use Cherax API for ped spawning
+                if GTA and GTA.CreatePed then
+                    local ok, h = pcall(function()
+                        return GTA.CreatePed(childModel, 26, spawnPos.x, spawnPos.y, spawnPos.z, rotData and rotData.z or 0, true, true)
+                    end)
+                    if ok and h and h ~= 0 then 
+                        entityHandle = h 
+                        M.debug_print("[JSON Map Spawn Debug]" .. indent .. "PED spawned successfully with GTA.CreatePed:", h)
+                        
+                        -- Apply ped attributes
+                        if child.ped_attributes then
+                            local attrs = child.ped_attributes
+                            if attrs.animation and attrs.animation.dictionary and attrs.animation.clip then
+                                Script.Yield(100)
+                                pcall(function()
+                                    STREAMING.REQUEST_ANIM_DICT(attrs.animation.dictionary)
+                                    local timeout = 0
+                                    while not STREAMING.HAS_ANIM_DICT_LOADED(attrs.animation.dictionary) and timeout < 50 do
+                                        Script.Yield(10)
+                                        timeout = timeout + 1
+                                    end
+                                    if STREAMING.HAS_ANIM_DICT_LOADED(attrs.animation.dictionary) then
+                                        TASK.TASK_PLAY_ANIM(h, attrs.animation.dictionary, attrs.animation.clip, 8.0, -8.0, -1, attrs.animation.loop and 1 or 0, 0, false, false, false)
+                                    end
+                                end)
+                            end
+                            if attrs.components then
+                                for compKey, compData in pairs(attrs.components) do
+                                    local compId = tonumber(compKey:match("_(%d+)"))
+                                    if compId and compData.drawable_variation then
+                                        pcall(function()
+                                            PED.SET_PED_COMPONENT_VARIATION(h, compId, compData.drawable_variation, compData.texture_variation or 0, compData.palette_variation or 0)
+                                        end)
+                                    end
                                 end
                             end
-                        end
-                        if attrs.props then
-                            for propKey, propData in pairs(attrs.props) do
-                                local propId = tonumber(propKey:match("_(%d+)"))
-                                if propId and propData.drawable_variation and propData.drawable_variation ~= -1 then
-                                    pcall(function()
-                                        PED.SET_PED_PROP_INDEX(h, propId, propData.drawable_variation, propData.texture_variation or 0, true)
-                                    end)
+                            if attrs.props then
+                                for propKey, propData in pairs(attrs.props) do
+                                    local propId = tonumber(propKey:match("_(%d+)"))
+                                    if propId and propData.drawable_variation and propData.drawable_variation ~= -1 then
+                                        pcall(function()
+                                            PED.SET_PED_PROP_INDEX(h, propId, propData.drawable_variation, propData.texture_variation or 0, true)
+                                        end)
+                                    end
                                 end
                             end
+                            if attrs.ignore_events then
+                                pcall(function() PED.SET_PED_CONFIG_FLAG(h, 208, true) end)
+                            end
+                            if attrs.keep_on_task then
+                                pcall(function() PED.SET_PED_KEEP_TASK(h, true) end)
+                            end
                         end
-                        if attrs.ignore_events then
-                            pcall(function() PED.SET_PED_CONFIG_FLAG(h, 208, true) end)
-                        end
-                        if attrs.keep_on_task then
-                            pcall(function() PED.SET_PED_KEEP_TASK(h, true) end)
-                        end
+                    end
+                end
+                
+                -- Fallback to native if Cherax API failed
+                if not entityHandle or entityHandle == 0 then
+                    local ok, h = pcall(function()
+                        return PED.CREATE_PED(4, childModel, spawnPos.x, spawnPos.y, spawnPos.z, rotData and rotData.z or 0, true, true)
+                    end)
+                    if ok and h and h ~= 0 then 
+                        entityHandle = h 
+                        M.debug_print("[JSON Map Spawn Debug]" .. indent .. "PED spawned successfully with PED.CREATE_PED:", h)
                     end
                 end
             else
@@ -4523,15 +4610,37 @@ function M.spawnMapFromJSON(filePath, isPreview)
             local mainPos = jsonData.position or refCoords
             
             if jsonData.type == "VEHICLE" then
-                local ok, h = pcall(function()
-                    return VEHICLE.CREATE_VEHICLE(mainModel, mainPos.x, mainPos.y, mainPos.z, jsonData.rotation and jsonData.rotation.z or 0, true, true)
-                end)
-                if ok and h and h ~= 0 then mainParentHandle = h end
+                -- Use Cherax API for vehicle spawning
+                if GTA and GTA.SpawnVehicle then
+                    local ok, h = pcall(function()
+                        return GTA.SpawnVehicle(mainModel, mainPos.x, mainPos.y, mainPos.z, jsonData.rotation and jsonData.rotation.z or 0, true, true)
+                    end)
+                    if ok and h and h ~= 0 then mainParentHandle = h end
+                end
+                
+                -- Fallback to native if Cherax API failed
+                if not mainParentHandle or mainParentHandle == 0 then
+                    local ok, h = pcall(function()
+                        return VEHICLE.CREATE_VEHICLE(mainModel, mainPos.x, mainPos.y, mainPos.z, jsonData.rotation and jsonData.rotation.z or 0, true, true)
+                    end)
+                    if ok and h and h ~= 0 then mainParentHandle = h end
+                end
             elseif jsonData.type == "PED" then
-                local ok, h = pcall(function()
-                    return PED.CREATE_PED(4, mainModel, mainPos.x, mainPos.y, mainPos.z, jsonData.rotation and jsonData.rotation.z or 0, true, true)
-                end)
-                if ok and h and h ~= 0 then mainParentHandle = h end
+                -- Use Cherax API for ped spawning
+                if GTA and GTA.CreatePed then
+                    local ok, h = pcall(function()
+                        return GTA.CreatePed(mainModel, 26, mainPos.x, mainPos.y, mainPos.z, jsonData.rotation and jsonData.rotation.z or 0, true, true)
+                    end)
+                    if ok and h and h ~= 0 then mainParentHandle = h end
+                end
+                
+                -- Fallback to native if Cherax API failed
+                if not mainParentHandle or mainParentHandle == 0 then
+                    local ok, h = pcall(function()
+                        return PED.CREATE_PED(4, mainModel, mainPos.x, mainPos.y, mainPos.z, jsonData.rotation and jsonData.rotation.z or 0, true, true)
+                    end)
+                    if ok and h and h ~= 0 then mainParentHandle = h end
+                end
             else
                 -- It's an object
                 if GTA and GTA.CreateObject then
@@ -4771,11 +4880,24 @@ function M.spawnOutfitFromJSON(filePath, isPreview)
             Script.Yield(200)
             
             print("[JSON Outfit] Creating ped...")
-            local ok, h = pcall(function()
-                return PED.CREATE_PED(4, modelHash, spawnCoords.x, spawnCoords.y, spawnCoords.z, heading, false, false)
-            end)
-            if ok and h and h ~= 0 then
-                spawnedPed = h
+            -- Use Cherax API for ped spawning
+            if GTA and GTA.CreatePed then
+                local ok, h = pcall(function()
+                    return GTA.CreatePed(modelHash, 26, spawnCoords.x, spawnCoords.y, spawnCoords.z, heading, false, false)
+                end)
+                if ok and h and h ~= 0 then
+                    spawnedPed = h
+                end
+            end
+            
+            -- Fallback to native if Cherax API failed
+            if not spawnedPed or spawnedPed == 0 then
+                local ok, h = pcall(function()
+                    return PED.CREATE_PED(4, modelHash, spawnCoords.x, spawnCoords.y, spawnCoords.z, heading, false, false)
+                end)
+                if ok and h and h ~= 0 then
+                    spawnedPed = h
+                end
             end
             
             if not spawnedPed or spawnedPed == 0 then
@@ -4872,6 +4994,7 @@ function M.spawnOutfitFromJSON(filePath, isPreview)
                     Script.Yield(100)
                     
                     local objectHandle
+                    -- Use Cherax API for object spawning
                     if GTA and GTA.CreateObject then
                         local ok2, h2 = pcall(function()
                             return GTA.CreateObject(childModel, spawnCoords.x, spawnCoords.y, spawnCoords.z, true, true)
@@ -4881,6 +5004,7 @@ function M.spawnOutfitFromJSON(filePath, isPreview)
                         end
                     end
                     
+                    -- Fallback to native if Cherax API failed
                     if not objectHandle or objectHandle == 0 then
                         local ok2, h2 = pcall(function()
                             return OBJECT.CREATE_OBJECT(childModel, spawnCoords.x, spawnCoords.y, spawnCoords.z, true, false, false)
