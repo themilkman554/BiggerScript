@@ -3678,30 +3678,43 @@ function M.spawnOutfitFromXML(filePath, isPreview)
             local foundGround, groundZ = GTA.GetGroundZ(spawnCoords.x, spawnCoords.y)
             if foundGround then spawnCoords.z = groundZ + 1.0 end
         end
-        M.request_model_load(modelHash)
-        local spawnedPed = M.create_by_type(modelHash, 1, spawnCoords)
-        if not spawnedPed or spawnedPed == 0 then
-            M.debug_print("[Spawn Debug] create_by_type failed for outfit ped. Trying PED.CREATE_PED.")
-            local ok, h = pcall(function() return PED.CREATE_PED(4, modelHash, spawnCoords.x, spawnCoords.y, spawnCoords.z, 0.0, false, false) end)
-            if ok and h and h ~= 0 then spawnedPed = h end
-        end
-        if not spawnedPed or spawnedPed == 0 then
-            M.debug_print("[Spawn Debug] Error: Failed to spawn main ped for outfit model hash:", modelHash, "from:", filePath)
-            return
-        end
-        M.debug_print("[Spawn Debug] Spawned outfit ped handle:", tostring(spawnedPed))
-        if spawnedPed ~= 0 then
-            if outfitData.PedProperties then
-                M.apply_ped_properties(spawnedPed, outfitData.PedProperties)
-                M.debug_print("[Spawn Debug] Applied ped properties for outfit ped:", tostring(spawnedPed))
+        
+        local spawnedPed = nil
+        local targetPed = playerHandle  -- Default to player's ped
+        
+        -- Only spawn a new ped if onlyApplyAttachments is false
+        if not spawnerSettings.onlyApplyAttachments then
+            M.request_model_load(modelHash)
+            spawnedPed = M.create_by_type(modelHash, 1, spawnCoords)
+            if not spawnedPed or spawnedPed == 0 then
+                M.debug_print("[Spawn Debug] create_by_type failed for outfit ped. Trying PED.CREATE_PED.")
+                local ok, h = pcall(function() return PED.CREATE_PED(4, modelHash, spawnCoords.x, spawnCoords.y, spawnCoords.z, 0.0, false, false) end)
+                if ok and h and h ~= 0 then spawnedPed = h end
+            end
+            if not spawnedPed or spawnedPed == 0 then
+                M.debug_print("[Spawn Debug] Error: Failed to spawn main ped for outfit model hash:", modelHash, "from:", filePath)
+                return
+            end
+            M.debug_print("[Spawn Debug] Spawned outfit ped handle:", tostring(spawnedPed))
+            targetPed = spawnedPed
+            
+            -- Apply ped properties only if we spawned a new ped
+            if spawnedPed ~= 0 then
+                if outfitData.PedProperties then
+                    M.apply_ped_properties(spawnedPed, outfitData.PedProperties)
+                    M.debug_print("[Spawn Debug] Applied ped properties for outfit ped:", tostring(spawnedPed))
+                end
+            else
+                M.debug_print("[Spawn Debug] Error: spawnedPed is invalid, skipping property application and attachments.")
+                return
             end
         else
-            M.debug_print("[Spawn Debug] Error: spawnedPed is invalid, skipping property application and attachments.")
-            return
+            M.debug_print("[Spawn Debug] onlyApplyAttachments is enabled, using player's current ped")
         end
+        
         local parentHandleMap = {}
         local xmlInitialHandle = M.safe_tonumber(outfitData.InitialHandle, nil)
-        if xmlInitialHandle then parentHandleMap[xmlInitialHandle] = spawnedPed end
+        if xmlInitialHandle then parentHandleMap[xmlInitialHandle] = targetPed end
         if not parsedAttachments or #parsedAttachments == 0 then
             M.debug_print("[Spawn Debug] No attachments found for outfit.")
         else
@@ -3747,7 +3760,7 @@ function M.spawnOutfitFromXML(filePath, isPreview)
         local attached_ok = false
         local maxChecks = 15
         for i = 1, maxChecks do
-            if all_attachments_attached(createdAttachments, spawnedPed) then
+            if all_attachments_attached(createdAttachments, targetPed) then
                 attached_ok = true
                 break
             end
@@ -3756,8 +3769,8 @@ function M.spawnOutfitFromXML(filePath, isPreview)
                     if ah and ah ~= 0 and ENTITY.DOES_ENTITY_EXIST(ah) then
                         local attachedTo = nil
                         pcall(function() attachedTo = ENTITY.GET_ENTITY_ATTACHED_TO(ah) end)
-                        if attachedTo ~= spawnedPed then
-                            M.debug_print("[Spawn Debug] Re-attaching attachment", tostring(ah), "to spawned ped", tostring(spawnedPed))
+                        if attachedTo ~= targetPed then
+                            M.debug_print("[Spawn Debug] Re-attaching attachment", tostring(ah), "to target ped", tostring(targetPed))
                             pcall(function()
                                 local originalAttData = nil
                                 for _, originalAtt in ipairs(parsedAttachments) do
@@ -3766,7 +3779,7 @@ function M.spawnOutfitFromXML(filePath, isPreview)
                                         break
                                     end
                                 end
-                                ENTITY.ATTACH_ENTITY_TO_ENTITY(ah, spawnedPed, -1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, false, false, spawnerSettings.disableCollision, false, 0, true)
+                                ENTITY.ATTACH_ENTITY_TO_ENTITY(ah, targetPed, -1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, false, false, spawnerSettings.disableCollision, false, 0, true)
                                 M.debug_print("[Spawn Debug] Re-attached attachment", tostring(ah), "with collisionFlag:", tostring(spawnerSettings.disableCollision))
                             end)
                         end
@@ -3779,24 +3792,29 @@ function M.spawnOutfitFromXML(filePath, isPreview)
             M.debug_print("[Spawn Debug] Warning: Not all attachments were successfully attached to the spawned ped.")
         end
         if isPreview then
-            table.insert(previewEntities, spawnedPed)
+            if spawnedPed then
+                table.insert(previewEntities, spawnedPed)
+            end
             for _, attachment in ipairs(createdAttachments) do
             table.insert(previewEntities, attachment)
         end
         -- All preview logic is now handled by M.startPreviewUpdater
         return
     end
-    pcall(function()
-            if PLAYER and PLAYER.PLAYER_ID and PLAYER.CHANGE_PLAYER_PED then
-                local pid = PLAYER.PLAYER_ID()
-                if pid then
-                    Script.Yield(2000)
-                    PLAYER.CHANGE_PLAYER_PED(pid, spawnedPed, true, true)
-                    M.debug_print("[Spawn Debug] Player changed to spawned ped:", tostring(spawnedPed))
-                    Script.Yield(250)
+    -- Only change player to spawned ped if we actually spawned a new ped
+    if spawnedPed and not spawnerSettings.onlyApplyAttachments then
+        pcall(function()
+                if PLAYER and PLAYER.PLAYER_ID and PLAYER.CHANGE_PLAYER_PED then
+                    local pid = PLAYER.PLAYER_ID()
+                    if pid then
+                        Script.Yield(2000)
+                        PLAYER.CHANGE_PLAYER_PED(pid, spawnedPed, true, true)
+                        M.debug_print("[Spawn Debug] Player changed to spawned ped:", tostring(spawnedPed))
+                        Script.Yield(250)
+                    end
                 end
-            end
-        end)
+            end)
+    end
         local outfitRecord = { attachments = createdAttachments, spawnedPed = spawnedPed, filePath = filePath }
         table.insert(spawnedOutfits, outfitRecord)
         M.debug_print("[Spawn Debug] Outfit spawned and recorded. Ped handle:", tostring(spawnedPed), "Attachments count:", #createdAttachments)
@@ -5165,59 +5183,61 @@ function M.spawnOutfitFromJSON(filePath, isPreview)
             M.debug_print("[JSON Outfit] Last outfit attachments deleted")
         end
         
-        -- Always use player's ped
-        local targetPed = playerHandle
-        local spawnedPed = nil
         
-        -- Change player's model if not onlyApplyAttachments and model hash is provided
-        if not spawnerSettings.onlyApplyAttachments and not isAttachToPlayer and modelHash then
-            M.debug_print("[JSON Outfit] Changing player model to:", modelHash)
-            
-            -- Store old ped handle before changing model
-            local oldPedHandle = playerHandle
-            
+        -- Determine target ped based on is_player flag and onlyApplyAttachments setting
+        local targetPed
+        local spawnedPed = nil -- Only set if we actually spawn a new ped
+        
+        -- If onlyApplyAttachments is enabled, always attach to player (skip model swap and ped properties)
+        -- OR if isAttachToPlayer is true (is_player flag is false in JSON)
+        if spawnerSettings.onlyApplyAttachments or isAttachToPlayer then
+            -- Attach directly to player ped (no new ped spawned)
+            if spawnerSettings.onlyApplyAttachments then
+                M.debug_print("[JSON Outfit] onlyApplyAttachments is enabled - attaching objects directly to player")
+                M.debug_print("[JSON Outfit Spawn Debug] onlyApplyAttachments is enabled - attaching objects directly to player")
+            else
+                M.debug_print("[JSON Outfit] is_player is false - attaching objects directly to player")
+                M.debug_print("[JSON Outfit Spawn Debug] is_player is false - attaching objects directly to player")
+            end
+            targetPed = playerHandle
+        else
+            -- Spawn a new ped (is_player is true or nil, and onlyApplyAttachments is false)
+            M.debug_print("[JSON Outfit] Requesting model load...")
             M.request_model_load(modelHash)
             Script.Yield(200)
             
-            -- Change player's ped model
-            local modelChangeSuccess = false
-            pcall(function()
-                local playerID = PLAYER.PLAYER_ID()
-                if playerID and playerID >= 0 then
-                    PLAYER.SET_PLAYER_MODEL(playerID, modelHash)
-                    Script.Yield(200) -- Give more time for model change
-                    modelChangeSuccess = true
-                    M.debug_print("[JSON Outfit] Player model changed successfully")
-                    M.debug_print("[JSON Outfit Spawn Debug] Player model changed to:", modelHash)
+            M.debug_print("[JSON Outfit] Creating ped...")
+            -- Use Cherax API for ped spawning
+            if GTA and GTA.CreatePed then
+                local ok, h = pcall(function()
+                    return GTA.CreatePed(modelHash, 26, spawnCoords.x, spawnCoords.y, spawnCoords.z, heading, false, false)
+                end)
+                if ok and h and h ~= 0 then
+                    spawnedPed = h
                 end
-            end)
+            end
             
-            -- Update player handle after model change
-            if modelChangeSuccess then
-                Script.Yield(100)
-                playerPed = GTA.GetLocalPed()
-                if playerPed then
-                    targetPed = GTA.PointerToHandle(playerPed) or PLAYER.PLAYER_PED_ID()
-                    M.debug_print("[JSON Outfit] Updated target ped handle after model change:", targetPed)
-                    
-                    -- Delete old ped
-                    if oldPedHandle and oldPedHandle ~= 0 and oldPedHandle ~= targetPed then
-                        pcall(function()
-                            if ENTITY.DOES_ENTITY_EXIST(oldPedHandle) then
-                                local ptr = Memory.AllocInt()
-                                Memory.WriteInt(ptr, oldPedHandle)
-                                ENTITY.DELETE_ENTITY(ptr)
-                                M.debug_print("[JSON Outfit] Deleted old ped handle:", oldPedHandle)
-                            end
-                        end)
-                    end
+            -- Fallback to native if Cherax API failed
+            if not spawnedPed or spawnedPed == 0 then
+                local ok, h = pcall(function()
+                    return PED.CREATE_PED(4, modelHash, spawnCoords.x, spawnCoords.y, spawnCoords.z, heading, false, false)
+                end)
+                if ok and h and h ~= 0 then
+                    spawnedPed = h
                 end
             end
-        else
-            if spawnerSettings.onlyApplyAttachments then
-                M.debug_print("[JSON Outfit] Only applying attachments (not changing model)")
+            
+            if not spawnedPed or spawnedPed == 0 then
+                M.debug_print("[JSON Outfit] Error: Failed to spawn ped")
+                M.debug_print("[JSON Outfit Spawn Debug] Error: Failed to spawn ped")
+                return
             end
+            
+            targetPed = spawnedPed
+            M.debug_print("[JSON Outfit] Spawned ped handle:", spawnedPed)
+            M.debug_print("[JSON Outfit Spawn Debug] Spawned ped handle:", spawnedPed)
         end
+
         
         -- Apply ped attributes (components, props, armor, weapon) to the target ped
         -- ONLY if not in onlyApplyAttachments mode
@@ -5311,6 +5331,19 @@ function M.spawnOutfitFromJSON(filePath, isPreview)
             
             M.debug_print("[JSON Outfit] Ped attributes applied successfully")
             M.debug_print("[JSON Outfit Spawn Debug] Ped attributes applied successfully")
+        end
+        
+        -- Change player to the spawned ped if we spawned a new one
+        if spawnedPed and not isAttachToPlayer then
+            M.debug_print("[JSON Outfit] Changing player to spawned ped...")
+            pcall(function()
+                local playerID = PLAYER.PLAYER_ID()
+                if playerID and playerID >= 0 then
+                    PLAYER.CHANGE_PLAYER_PED(playerID, spawnedPed, true, false)
+                    M.debug_print("[JSON Outfit] Player changed to spawned ped successfully")
+                    M.debug_print("[JSON Outfit Spawn Debug] Player changed to spawned ped")
+                end
+            end)
         end
         
         -- Spawn and attach children objects (with recursive nested children support)
@@ -5423,10 +5456,10 @@ function M.spawnOutfitFromJSON(filePath, isPreview)
         else
             -- Track spawned outfit
             local outfitRecord = {
-                spawnedPed = spawnedPed, -- Will be nil since we don't spawn new peds anymore
+                spawnedPed = spawnedPed, -- Will be set if we spawned a new ped, nil if attached to player
                 attachments = attachedObjects,
                 filePath = filePath,
-                attachedToPlayer = true -- Always true now since we always attach to player
+                attachedToPlayer = isAttachToPlayer -- True if attached to player, false if new ped spawned
             }
             table.insert(spawnedOutfits, outfitRecord)
             
