@@ -1,4 +1,4 @@
-local M = {}
+﻿local M = {}
 local previewUpdateJob = nil
 local isPreviewUpdaterRunning = false
 local lastSpawnedVehiclePath = nil
@@ -67,7 +67,6 @@ function M.init(context)
 
     upsidedownmap_module.init({
         spawnerSettings = spawnerSettings,
-        debug_print = M.debug_print,
         spawnedMaps = spawnedMaps,
         xmlMapsFolder = xmlMapsFolder,
         constructor_lib = constructor_lib,
@@ -266,7 +265,6 @@ end
 function M.apply_task_sequence_to_entity(entityHandle, sequence)
     if not sequence or not entityHandle or entityHandle == 0 then return end
     if sequence.autoStart == false then
-        M.debug_print("TaskSequence Auto-start disabled, skipping for entity:", tostring(entityHandle))
         return
     end
     if not sequence.tasks or #sequence.tasks == 0 then return end
@@ -280,17 +278,14 @@ function M.execute_task_sequence_item(entityHandle, task)
     if task.Type == 39 then
         M.run_ptfx_task(entityHandle, task)
     else
-        M.debug_print("TaskSequence Unsupported task type:", tostring(task.Type))
     end
 end
 
 function M.run_ptfx_task(entityHandle, task)
     if not task or not (task.EffectName and task.AssetName) then
-        M.debug_print("TaskSequence Missing asset or effect, skipping task.")
         return
     end
     if not GRAPHICS then
-        M.debug_print("TaskSequence GRAPHICS natives unavailable, skipping task.")
         return
     end
     
@@ -299,7 +294,6 @@ function M.run_ptfx_task(entityHandle, task)
         
 
         if not ENTITY or not ENTITY.DOES_ENTITY_EXIST or not ENTITY.DOES_ENTITY_EXIST(entityHandle) then
-            M.debug_print("TaskSequence Entity does not exist, skipping PTFX")
             return
         end
         
@@ -314,7 +308,6 @@ function M.run_ptfx_task(entityHandle, task)
         local scale = task.Scale or 1.0
         
         if task.IsLoopedTask then
-            M.debug_print("TaskSequence Starting looped PTFX:", task.EffectName)
             
             local handle = nil
             local ok, err = pcall(function()
@@ -332,7 +325,6 @@ function M.run_ptfx_task(entityHandle, task)
                 end
 
                 if GRAPHICS.START_NETWORKED_PARTICLE_FX_LOOPED_ON_ENTITY_BONE then
-                    M.debug_print("TaskSequence Using networked looped PTFX (Bone)")
                     handle = GRAPHICS.START_NETWORKED_PARTICLE_FX_LOOPED_ON_ENTITY_BONE(
                         task.EffectName,
                         entityHandle,
@@ -344,7 +336,6 @@ function M.run_ptfx_task(entityHandle, task)
                         r, g, b, a
                     )
                 elseif GRAPHICS.START_PARTICLE_FX_LOOPED_ON_ENTITY_BONE then
-                    M.debug_print("TaskSequence Using local looped PTFX (Bone)")
                     handle = GRAPHICS.START_PARTICLE_FX_LOOPED_ON_ENTITY_BONE(
                         task.EffectName,
                         entityHandle,
@@ -355,7 +346,6 @@ function M.run_ptfx_task(entityHandle, task)
                         false, false, false
                     )
                 elseif GRAPHICS.START_NETWORKED_PARTICLE_FX_LOOPED_ON_ENTITY then
-                    M.debug_print("TaskSequence Using networked looped PTFX (Entity)")
                     handle = GRAPHICS.START_NETWORKED_PARTICLE_FX_LOOPED_ON_ENTITY(
                         task.EffectName,
                         entityHandle,
@@ -366,7 +356,6 @@ function M.run_ptfx_task(entityHandle, task)
                         r, g, b, a
                     )
                 elseif GRAPHICS.START_PARTICLE_FX_LOOPED_ON_ENTITY then
-                    M.debug_print("TaskSequence Using local looped PTFX (Entity)")
                     handle = GRAPHICS.START_PARTICLE_FX_LOOPED_ON_ENTITY(
                         task.EffectName,
                         entityHandle,
@@ -376,17 +365,14 @@ function M.run_ptfx_task(entityHandle, task)
                         false, false, false
                     )
                 else
-                    M.debug_print("TaskSequence Looped particle native unavailable.")
                 end
             end)
 
             if not ok then
-                M.debug_print("TaskSequence Error starting looped PTFX:", tostring(err))
                 return
             end
             
             if handle and handle ~= 0 then
-                M.debug_print("TaskSequence Looped PTFX started with handle:", tostring(handle))
                 
 
                 if task.Colour then
@@ -415,7 +401,6 @@ function M.run_ptfx_task(entityHandle, task)
                 
                 if task.KeepTaskRunningAfterTime and task.KeepTaskRunningAfterTime < 0 then
                     local refreshInterval = 150
-                    M.debug_print("TaskSequence PTFX will loop indefinitely, restarting every:", refreshInterval, "ms")
                     
                     Script.QueueJob(function()
                         while ENTITY and ENTITY.DOES_ENTITY_EXIST and ENTITY.DOES_ENTITY_EXIST(entityHandle) do
@@ -435,7 +420,6 @@ function M.run_ptfx_task(entityHandle, task)
                             
 
                             if not ensure_ptfx_asset_loaded(task.AssetName) then
-                                M.debug_print("TaskSequence Failed to reload PTFX asset, stopping loop")
                                 break
                             end
                             
@@ -499,7 +483,6 @@ function M.run_ptfx_task(entityHandle, task)
                             
                             if newHandle and newHandle ~= 0 then
                                 handle = newHandle
-                                M.debug_print("TaskSequence PTFX restarted with new handle:", tostring(handle))
                                 
 
                                 if task.Colour then
@@ -526,7 +509,6 @@ function M.run_ptfx_task(entityHandle, task)
                                     end)
                                 end
                             else
-                                M.debug_print("TaskSequence PTFX restart failed, stopping loop")
                                 break
                             end
                         end
@@ -535,29 +517,23 @@ function M.run_ptfx_task(entityHandle, task)
                         if GRAPHICS.STOP_PARTICLE_FX_LOOPED and handle then
                             pcall(function() 
                                 GRAPHICS.STOP_PARTICLE_FX_LOOPED(handle, false) 
-                                M.debug_print("TaskSequence Stopped PTFX (loop ended):", tostring(handle))
                             end)
                         end
                     end)
                 elseif task.Duration and task.Duration > 0 then
-                    M.debug_print("TaskSequence PTFX will run for duration:", task.Duration)
                     Script.QueueJob(function()
                         Script.Yield(task.Duration)
                         if GRAPHICS.STOP_PARTICLE_FX_LOOPED then
                             pcall(function() 
                                 GRAPHICS.STOP_PARTICLE_FX_LOOPED(handle, false) 
-                                M.debug_print("TaskSequence Stopped PTFX after duration:", tostring(handle))
                             end)
                         end
                     end)
                 else
-                    M.debug_print("TaskSequence PTFX will run indefinitely (no duration specified)")
                 end
             else
-                M.debug_print("TaskSequence Looped PTFX failed to start (handle is 0/nil)")
             end
         else
-            M.debug_print("TaskSequence Starting non-looped PTFX:", task.EffectName)
             if task.Colour and GRAPHICS.SET_PARTICLE_FX_NON_LOOPED_COLOUR then
                 pcall(function()
                     GRAPHICS.SET_PARTICLE_FX_NON_LOOPED_COLOUR(
@@ -585,7 +561,6 @@ function M.run_ptfx_task(entityHandle, task)
                     )
                 end)
             else
-                M.debug_print("TaskSequence Non-looped particle native unavailable.")
             end
         end
     end)
@@ -599,29 +574,24 @@ function M.parse_ini_file(filePath)
     -- UTF-8 BOM is the byte sequence EF BB BF (or the character U+FEFF)
     if iniContent:sub(1, 3) == "\239\187\191" then
         iniContent = iniContent:sub(4)
-        M.debug_print("[Parse INI Debug] Stripped UTF-8 BOM from file")
     end
     
     local data = {}
     local currentSection = nil
     for line in iniContent:gmatch("[^\r\n]+") do
-        M.debug_print("[Parse INI Debug] Processing line:", line)
         line = M.trim(line)
         if line:match("^%[.+%]$") then
             currentSection = line:match("^%[(.+)%]$")
             data[currentSection] = data[currentSection] or {}
-            M.debug_print("[Parse INI Debug] Found section:", currentSection)
         elseif line:match("^[^;=]+=[^;]*$") and currentSection then
             local key, value = line:match("^([^;=]+)=([^;]*)$")
             if key and value then
                 local trimmedKey = M.trim(key)
                 local trimmedValue = M.trim(value):match("^(.-)%s*;.*$") or M.trim(value)
                 data[currentSection][trimmedKey] = trimmedValue
-                M.debug_print("[Parse INI Debug] Section:", currentSection, "Key:", trimmedKey, "Value:", trimmedValue)
             end
         end
     end
-    M.debug_print("[Parse INI Debug] Finished parsing INI file. Data table:", tostring(data))
     return data
 end
 
@@ -725,7 +695,6 @@ function M.parse_ini_attachments(iniData, mainVehicleSelfNumeration)
     for sectionName, attachmentSection in pairs(iniData) do
         if M.safe_tonumber(sectionName) ~= nil or sectionName:match("^Attached Object %d+$") or sectionName:match("^Vehicle%d+$") or sectionName:match("^Object%d+$") then
             if sectionName == "Vehicle0" or sectionName == "Object0" then goto continue end
-            M.debug_print("[Parse INI Debug] Processing attachment section:", sectionName, "Content:", tostring(attachmentSection))
             local att = {}
             att.ModelHash = M.safe_tonumber(attachmentSection.Hash or attachmentSection.model or attachmentSection.Model, nil)
             att.HashName = attachmentSection["model name"] or attachmentSection["Model Name"] or attachmentSection.model or attachmentSection.Model or attachmentSection.Hash
@@ -768,7 +737,6 @@ function M.parse_ini_attachments(iniData, mainVehicleSelfNumeration)
             -- Parse vehicle-specific properties if this is a vehicle attachment
             if sectionName:match("^Vehicle%d+$") then
                 att.Type = "2" -- Vehicle type
-                M.debug_print("[Parse INI Debug] Detected vehicle attachment:", sectionName)
                 
                 -- Parse vehicle mods
                 local modsSection = iniData[sectionName .. "Mods"]
@@ -1101,7 +1069,6 @@ else
 end
 
 -- Debug to verify
-M.debug_print("[Parse Attach Debug] IsCollisionProof tag read as:", tostring(e.IsCollisionProof))
 
                 local taskSequenceXml = M.get_xml_element(attInner, "TaskSequence")
                 if taskSequenceXml then
@@ -1173,7 +1140,6 @@ function M.create_by_type(model, typ, coords)
 end
 
 function M.spawn_attachments(parsedAttachments, parentHandleMap, fallbackCoords, disableCollisionForAttachments, isPreview)
-    M.debug_print("[Spawn Debug] Starting spawn_attachments. Number of attachments to process:", #parsedAttachments, "Is Preview:", tostring(isPreview))
     local created = {}
     local attachMeta = {}
     local playerPed = nil
@@ -1181,10 +1147,8 @@ function M.spawn_attachments(parsedAttachments, parentHandleMap, fallbackCoords,
     local playerHeading = 0.0
     pcall(function()
         playerPed = GTA.GetLocalPed()
-        if playerPed then playerPos = playerPed.Position M.debug_print("[Spawn Debug] Player position:", playerPos.x, playerPos.y, playerPos.z) playerHeading = playerPed.Heading or 0.0 end
     end)
     for i, att in ipairs(parsedAttachments) do
-        M.debug_print("[Spawn Debug] Processing attachment", i, ": ModelHash:", att.ModelHash, "HashName:", att.HashName, "Type:", att.Type)
         local model = att.ModelHash or att.HashName
         if not model then
             M.debug_print("[Spawn Debug] Warning: Attachment", i, "has no model hash or name. Skipping.")
@@ -1195,22 +1159,18 @@ function M.spawn_attachments(parsedAttachments, parentHandleMap, fallbackCoords,
             spawnCoords.x = att.PositionRotation.X or 0.0
             spawnCoords.y = att.PositionRotation.Y or 0.0
             spawnCoords.z = att.PositionRotation.Z or 0.0
-            M.debug_print("[Spawn Debug] Attachment", i, "using explicit position:", spawnCoords.x, spawnCoords.y, spawnCoords.z)
         elseif fallbackCoords and fallbackCoords.x and fallbackCoords.y and fallbackCoords.z then
             spawnCoords.x = fallbackCoords.x
             spawnCoords.y = fallbackCoords.y
             spawnCoords.z = fallbackCoords.z
-            M.debug_print("[Spawn Debug] Attachment", i, "using fallback position:", spawnCoords.x, spawnCoords.y, spawnCoords.z)
         elseif playerPos then
             local forwardX = math.sin(math.rad(playerHeading)) * 1.5
             local forwardY = math.cos(math.rad(playerHeading)) * 1.5
             spawnCoords.x = playerPos.x + forwardX
             spawnCoords.y = playerPos.y + forwardY
             spawnCoords.z = playerPos.z + 0.5
-            M.debug_print("[Spawn Debug] Attachment", i, "using player-relative position:", spawnCoords.x, spawnCoords.y, spawnCoords.z)
         else
             spawnCoords.x = 0.0; spawnCoords.y = 0.0; spawnCoords.z = 0.0
-            M.debug_print("[Spawn Debug] Attachment", i, "using default 0,0,0 position.")
         end
         M.request_model_load(model)
         if STREAMING and STREAMING.HAS_MODEL_LOADED then
@@ -1237,13 +1197,9 @@ function M.spawn_attachments(parsedAttachments, parentHandleMap, fallbackCoords,
             local ihStr = tostring(att.InitialHandle)
             if ihNum ~= nil then parentHandleMap[ihNum] = h end
             parentHandleMap[ihStr] = h
-            M.debug_print("[Spawn Debug] Attachment", i, "InitialHandle:", tostring(att.InitialHandle), "mapped to handle:", tostring(h))
         end
-        if att.IsInvincible then pcall(function() ENTITY.SET_ENTITY_INVINCIBLE(h, true) end) M.debug_print("[Spawn Debug] Attachment", i, "set invincible.") end
-        if att.IsVisible ~= nil then pcall(function() ENTITY.SET_ENTITY_VISIBLE(h, att.IsVisible, false) end) M.debug_print("[Spawn Debug] Attachment", i, "set visible:", tostring(att.IsVisible)) end
         if isPreview then
             pcall(function() ENTITY.SET_ENTITY_COLLISION(h, false, false) end)
-            M.debug_print("[Spawn Debug] Attachment", i, "collision disabled for preview.")
         else
             -- Apply collision proofing based on original setting
             local finalCollisionProof = false
@@ -1261,26 +1217,20 @@ pcall(function()
     ENTITY.SET_ENTITY_COLLISION(h, not finalCollisionProof, false)
 end)
 
-M.debug_print("[Spawn Debug] Attachment", i, "set collision proof:", tostring(finalCollisionProof), "collision enabled:", tostring(not finalCollisionProof))
 
 
-M.debug_print("[Spawn Debug] Attachment", i, "XML IsCollisionProof value:", tostring(att.IsCollisionProof), "→ finalCollisionProof:", tostring(finalCollisionProof))
 
             pcall(function() ENTITY.SET_ENTITY_PROOFS(h, false, finalCollisionProof, false, false, false, false, false, false) end)
-            M.debug_print("[Spawn Debug] Attachment", i, "set collision proof:", tostring(finalCollisionProof))
         end
 
-        if att.FrozenPos ~= nil then pcall(function() ENTITY.FREEZE_ENTITY_POSITION(h, att.FrozenPos) end) M.debug_print("[Spawn Debug] Attachment", i, "set frozen position:", tostring(att.FrozenPos)) end
         if att.OpacityLevel ~= nil then
             local opacityLevel = M.safe_tonumber(att.OpacityLevel, nil)
             if opacityLevel ~= nil and opacityLevel == 0 then
                 pcall(function() ENTITY.SET_ENTITY_ALPHA(h, 0, false) end)
-                M.debug_print("[Spawn Debug] Attachment", i, "set alpha to 0 due to opacity level 0.")
             end
         end
         if att.PedProperties and (tostring(att.Type) == "1") then
             M.apply_ped_properties(h, att.PedProperties)
-            M.debug_print("[Spawn Debug] Applied ped properties for attachment", i)
         end
         if att.VehicleProperties and (tostring(att.Type) == "2") then
             local vp = att.VehicleProperties
@@ -1338,12 +1288,10 @@ M.debug_print("[Spawn Debug] Attachment", i, "XML IsCollisionProof value:", tost
                 end
             end
             
-            M.debug_print("[Spawn Debug] Applied vehicle properties for attachment", i)
         end
         
         -- Apply INI vehicle properties if this is a vehicle attachment from INI
         if att.VehicleMods or att.VehicleToggles or att.VehicleColors or att.Neons then
-            M.debug_print("[Spawn Debug] Applying INI vehicle properties for attachment", i)
             
             -- Set mod kit first
             M.try_call(VEHICLE, "SET_VEHICLE_MOD_KIT", h, 0)
@@ -1353,7 +1301,6 @@ M.debug_print("[Spawn Debug] Attachment", i, "XML IsCollisionProof value:", tost
                 for modId, modValue in pairs(att.VehicleMods) do
                     if modValue >= -1 then
                         M.try_call(VEHICLE, "SET_VEHICLE_MOD", h, modId, modValue, false)
-                        M.debug_print("[Spawn Debug] Applied mod", modId, "=", modValue, "to attachment", i)
                     end
                 end
             end
@@ -1447,11 +1394,9 @@ M.debug_print("[Spawn Debug] Attachment", i, "XML IsCollisionProof value:", tost
                 M.try_call(VEHICLE, "SET_VEHICLE_DIRT_LEVEL", h, att.PaintFade)
             end
             
-            M.debug_print("[Spawn Debug] Applied INI vehicle properties for attachment", i)
         end
         if att.TaskSequence then
             M.apply_task_sequence_to_entity(h, att.TaskSequence)
-            M.debug_print("[Spawn Debug] TaskSequence detected and applied for attachment", i)
         end
         local meta = {
             created = h,
@@ -1506,14 +1451,11 @@ M.debug_print("[Spawn Debug] Attachment", i, "XML IsCollisionProof value:", tost
     end
     local phdbg = {}
     for k, v in pairs(parentHandleMap) do phdbg[#phdbg+1] = tostring(k) .. "->" .. tostring(v) end
-    M.debug_print("[Spawn Debug] Parent handle map (before attachments):", table.concat(phdbg, ", "))
-    M.debug_print("[Spawn Debug] Full attachMeta table (before attachments):", tostring(attachMeta)) -- Added debug print for full attachMeta
     for _, m in ipairs(attachMeta) do
         M.debug_print("[Spawn Debug] Processing attachment meta for entity:", tostring(m.created), "AttachedTo:", tostring(m.attachedto), "Bone:", tostring(m.bone), "Offsets:", m.x, m.y, m.z, "Rot:", m.pitch, m.roll, m.yaw)
         if m.attachedto then
             local parentHandle = parentHandleMap[M.safe_tonumber(m.attachedto)] or parentHandleMap[tostring(m.attachedto)]
             if parentHandle and parentHandle ~= 0 and m.created and m.created ~= 0 then
-                M.debug_print("[Spawn Debug] Attempting to attach entity", tostring(m.created), "to parent", tostring(parentHandle), "Bone:", tostring(m.bone), "Offsets:", m.x, m.y, m.z, "Rot:", m.pitch, m.roll, m.yaw, "IsCollisionProof:", tostring(m.iscollisionproof), "IsPed:", tostring(m.isped))
                 local ok, err = pcall(function()
                     ENTITY.ATTACH_ENTITY_TO_ENTITY(
                         m.created,
@@ -1528,7 +1470,6 @@ M.debug_print("[Spawn Debug] Attachment", i, "XML IsCollisionProof value:", tost
                 if ok then
                     M.debug_print("[Spawn Debug] Successfully attached entity", tostring(m.created), "to parent", tostring(parentHandle))
                 else
-                    M.debug_print("[Spawn Debug] Error attaching entity", tostring(m.created), "to parent", tostring(parentHandle), ":", tostring(err))
                 end
             else
                 M.debug_print("[Spawn Debug] Warning: Could not attach entity", tostring(m.created), ". Parent handle not found or invalid for attachedto:", tostring(m.attachedto))
@@ -1587,7 +1528,6 @@ function M.managePreview(hoveredFile)
 
     -- Always clear previous preview entities and stop updater before processing a new preview.
     if #previewEntities > 0 then
-        M.debug_print("[Preview Manager] Clearing previous preview entities and stopping updater.")
         M.clearPreview()
         M.stopPreviewUpdater()
     end
@@ -1595,7 +1535,6 @@ function M.managePreview(hoveredFile)
     currentPreviewFile = hoveredFile
 
     if not hoveredFile then
-        M.debug_print("[Preview Manager] No file hovered, ensuring preview is cleared.")
         return
     end
 
@@ -1679,7 +1618,6 @@ function M.startPreviewUpdater()
             ::continue_loop::
         end
         previewUpdateJob = nil -- Clear the job reference when the loop ends
-        M.debug_print("[Preview Updater] Preview updater job finished.")
     end)
 end
 
@@ -1694,7 +1632,6 @@ function M.stopPreviewUpdater()
     if isPreviewUpdaterRunning then
         isPreviewUpdaterRunning = false -- Set flag to false to stop the loop
         -- The job reference will be set to nil by the job itself when the loop terminates
-        M.debug_print("[Preview Updater] Stopping preview updater.")
     end
 end
 
@@ -1967,7 +1904,6 @@ function M.deleteVehicle(vehicleData)
                 if attachmentHandle and attachmentHandle ~= 0 then
                     pcall(function()
                         if ENTITY and ENTITY.DOES_ENTITY_EXIST(attachmentHandle) then
-                            M.debug_print("[Delete Debug] Attachment entity type invalid:", tostring(entityType))
                             local entityType = ENTITY.GET_ENTITY_TYPE(attachmentHandle)
                             if not entityType or entityType < 0 or entityType > 3 then
                                 return
@@ -1975,13 +1911,11 @@ function M.deleteVehicle(vehicleData)
                             local ptr = Memory.AllocInt()
                             local pEntity = GTA.HandleToPointer(attachmentHandle)
                             if pEntity and pEntity ~= 0 then
-                                M.debug_print("[Delete Debug] Unregistering and deleting attachment network object:", tostring(attachmentHandle))
                                 if pEntity.NetObject and pEntity.NetObject ~= 0 then
                                     NetworkObjectMgr.UnregisterNetworkObject(pEntity.NetObject, 15, true, true)
                                 end
                                 Memory.WriteInt(ptr, attachmentHandle)
                                 ENTITY.DELETE_ENTITY(ptr)
-                                M.debug_print("[Delete Debug] Attachment deleted:", tostring(attachmentHandle))
                             else
                                 M.debug_print("[Delete Debug] Warning: Attachment pointer invalid for handle:", tostring(attachmentHandle))
                             end
@@ -1995,7 +1929,6 @@ function M.deleteVehicle(vehicleData)
         if vehicleData.vehicle and vehicleData.vehicle ~= 0 then
             pcall(function()
                 if ENTITY and ENTITY.DOES_ENTITY_EXIST(vehicleData.vehicle) then
-                    M.debug_print("[Delete Debug] Vehicle entity type invalid:", tostring(entityType))
                     local entityType = ENTITY.GET_ENTITY_TYPE(vehicleData.vehicle)
                     if entityType ~= 2 then
                         return
@@ -2003,18 +1936,14 @@ function M.deleteVehicle(vehicleData)
                     local ptr = Memory.AllocInt()
                     local pEntity = GTA.HandleToPointer(vehicleData.vehicle)
                     if pEntity and pEntity ~= 0 then
-                        M.debug_print("[Delete Debug] Unregistering and deleting vehicle network object:", tostring(vehicleData.vehicle))
                         if pEntity.NetObject and pEntity.NetObject ~= 0 then
                             NetworkObjectMgr.UnregisterNetworkObject(pEntity.NetObject, 15, true, true)
                         end
                         Memory.WriteInt(ptr, vehicleData.vehicle)
                         ENTITY.DELETE_ENTITY(ptr)
-                        M.debug_print("[Delete Debug] Vehicle deleted:", tostring(vehicleData.vehicle))
                     else
-                        M.debug_print("[Delete Debug] Warning: Vehicle pointer invalid for handle:", tostring(vehicleData.vehicle))
                     end
                 else
-                    M.debug_print("[Delete Debug] Warning: Vehicle entity does not exist for handle:", tostring(vehicleData.vehicle))
                 end
             end)
         end
@@ -2023,34 +1952,28 @@ end
 
 function M.deleteAllSpawnedVehicles()
     Script.QueueJob(function()
-        M.debug_print("[Delete Debug] Deleting all spawned vehicles. Count:", #spawnedVehicles)
         local vehiclesToDelete = {}
         for _, vehicleData in pairs(spawnedVehicles) do
             table.insert(vehiclesToDelete, vehicleData)
         end
         for i, vehicleData in ipairs(vehiclesToDelete) do
-            M.debug_print("[Delete Debug] Processing vehicle", i, "from path:", vehicleData.filePath)
             if vehicleData.attachments then
                 for _, attachmentHandle in ipairs(vehicleData.attachments) do
                     if attachmentHandle and attachmentHandle ~= 0 then
                         pcall(function()
                             if ENTITY and ENTITY.DOES_ENTITY_EXIST(attachmentHandle) then
-                                M.debug_print("[Delete Debug] Deleting attachment handle:", tostring(attachmentHandle))
                                 local entityType = ENTITY.GET_ENTITY_TYPE(attachmentHandle)
                                 if not entityType or entityType < 0 or entityType > 3 then
-                                    M.debug_print("[Delete Debug] Attachment entity type invalid:", tostring(entityType))
                                     return
                                 end
                                 local ptr = Memory.AllocInt()
                                 local pEntity = GTA.HandleToPointer(attachmentHandle)
                                 if pEntity and pEntity ~= 0 then
-                                    M.debug_print("[Delete Debug] Unregistering and deleting attachment network object:", tostring(attachmentHandle))
                                     if pEntity.NetObject and pEntity.NetObject ~= 0 then
                                         NetworkObjectMgr.UnregisterNetworkObject(pEntity.NetObject, 15, true, true)
                                     end
                                     Memory.WriteInt(ptr, attachmentHandle)
                                     ENTITY.DELETE_ENTITY(ptr)
-                                    M.debug_print("[Delete Debug] Attachment deleted:", tostring(attachmentHandle))
                                 else
                                     M.debug_print("[Delete Debug] Warning: Attachment pointer invalid for handle:", tostring(attachmentHandle))
                                 end
@@ -2064,66 +1987,52 @@ function M.deleteAllSpawnedVehicles()
             if vehicleData.vehicle and vehicleData.vehicle ~= 0 then
                 pcall(function()
                     if ENTITY and ENTITY.DOES_ENTITY_EXIST(vehicleData.vehicle) then
-                        M.debug_print("[Delete Debug] Deleting vehicle handle:", tostring(vehicleData.vehicle))
                         local entityType = ENTITY.GET_ENTITY_TYPE(vehicleData.vehicle)
                         if entityType ~= 2 then
-                            M.debug_print("[Delete Debug] Vehicle entity type invalid:", tostring(entityType))
                             return
                         end
                         local ptr = Memory.AllocInt()
                         local pEntity = GTA.HandleToPointer(vehicleData.vehicle)
                         if pEntity and pEntity ~= 0 then
-                            M.debug_print("[Delete Debug] Unregistering and deleting vehicle network object:", tostring(vehicleData.vehicle))
                             if pEntity.NetObject and pEntity.NetObject ~= 0 then
                                 NetworkObjectMgr.UnregisterNetworkObject(pEntity.NetObject, 15, true, true)
                             end
                             Memory.WriteInt(ptr, vehicleData.vehicle)
                             ENTITY.DELETE_ENTITY(ptr)
-                            M.debug_print("[Delete Debug] Vehicle deleted:", tostring(vehicleData.vehicle))
                         else
-                            M.debug_print("[Delete Debug] Warning: Vehicle pointer invalid for handle:", tostring(vehicleData.vehicle))
                         end
                     else
-                        M.debug_print("[Delete Debug] Warning: Vehicle entity does not exist for handle:", tostring(vehicleData.vehicle))
                     end
                 end)
             end
         end
         for k in pairs(spawnedVehicles) do spawnedVehicles[k] = nil end
-        M.debug_print("[Delete Debug] All spawned vehicles cleared.")
     end)
 end
 
 function M.deleteAllSpawnedMaps()
     Script.QueueJob(function()
-        M.debug_print("[Delete Debug] Deleting all spawned maps. Count:", #spawnedMaps)
         local mapsToDelete = {}
         for _, mapData in pairs(spawnedMaps) do
             table.insert(mapsToDelete, mapData)
         end
         for i, mapData in ipairs(mapsToDelete) do
-            M.debug_print("[Delete Debug] Processing map", i, "from path:", mapData.filePath)
             if mapData.entities then
                 for j, entityHandle in ipairs(mapData.entities) do
                     if entityHandle and entityHandle ~= 0 then
                         pcall(function()
                             if ENTITY.DOES_ENTITY_EXIST(entityHandle) then
-                                M.debug_print("[Delete Debug] Deleting map entity handle:", tostring(entityHandle))
                                 local ptr = Memory.AllocInt()
                                 local pEntity = GTA.HandleToPointer(entityHandle)
                                 if pEntity and pEntity ~= 0 then
-                                    M.debug_print("[Delete Debug] Unregistering and deleting map entity network object:", tostring(entityHandle))
                                     if pEntity.NetObject and pEntity.NetObject ~= 0 then
                                         NetworkObjectMgr.UnregisterNetworkObject(pEntity.NetObject, 15, true, true)
                                     end
                                     Memory.WriteInt(ptr, entityHandle)
                                     ENTITY.DELETE_ENTITY(ptr)
-                                    M.debug_print("[Delete Debug] Map entity deleted:", tostring(entityHandle))
                                 else
-                                    M.debug_print("[Delete Debug] Warning: Map entity pointer invalid for handle:", tostring(entityHandle))
                                 end
                             else
-                                M.debug_print("[Delete Debug] Warning: Map entity does not exist for handle:", tostring(entityHandle))
                             end
                         end)
                     end
@@ -2131,38 +2040,30 @@ function M.deleteAllSpawnedMaps()
             end
         end
         for k in pairs(spawnedMaps) do spawnedMaps[k] = nil end
-        M.debug_print("[Delete Debug] All spawned maps cleared.")
     end)
 end
 
 function M.deleteAllSpawnedOutfits()
     Script.QueueJob(function()
-        M.debug_print("[Delete Debug] Deleting all spawned outfits. Count:", #spawnedOutfits)
         local outfitsToDelete = {}
         for _, outfitData in pairs(spawnedOutfits) do
             table.insert(outfitsToDelete, outfitData)
         end
         for i, outfitData in ipairs(outfitsToDelete) do
-            M.debug_print("[Delete Debug] Processing outfit", i, "from path:", outfitData.filePath)
             if outfitData.spawnedPed then
                 pcall(function()
                     if ENTITY and ENTITY.DOES_ENTITY_EXIST(outfitData.spawnedPed) then
-                        M.debug_print("[Delete Debug] Deleting spawned ped handle:", tostring(outfitData.spawnedPed))
                         local ptr = Memory.AllocInt()
                         local pEntity = GTA.HandleToPointer(outfitData.spawnedPed)
                         if pEntity and pEntity ~= 0 then
-                            M.debug_print("[Delete Debug] Unregistering and deleting ped network object:", tostring(outfitData.spawnedPed))
                             if pEntity.NetObject and pEntity.NetObject ~= 0 then
                                 NetworkObjectMgr.UnregisterNetworkObject(pEntity.NetObject, 15, true, true)
                             end
                             Memory.WriteInt(ptr, outfitData.spawnedPed)
                             ENTITY.DELETE_ENTITY(ptr)
-                            M.debug_print("[Delete Debug] Ped deleted:", tostring(outfitData.spawnedPed))
                         else
-                            M.debug_print("[Delete Debug] Warning: Ped pointer invalid for handle:", tostring(outfitData.spawnedPed))
                         end
                     else
-                        M.debug_print("[Delete Debug] Warning: Spawned ped entity does not exist for handle:", tostring(outfitData.spawnedPed))
                     end
                 end)
             end
@@ -2171,17 +2072,14 @@ function M.deleteAllSpawnedOutfits()
                     if attachmentHandle and attachmentHandle ~= 0 then
                         pcall(function()
                             if ENTITY and ENTITY.DOES_ENTITY_EXIST(attachmentHandle) then
-                                M.debug_print("[Delete Debug] Deleting outfit attachment handle:", tostring(attachmentHandle))
                                 local ptr = Memory.AllocInt()
                                 local pEntity = GTA.HandleToPointer(attachmentHandle)
                                 if pEntity and pEntity ~= 0 then
-                                    M.debug_print("[Delete Debug] Unregistering and deleting outfit attachment network object:", tostring(attachmentHandle))
                                     if pEntity.NetObject and pEntity.NetObject ~= 0 then
                                         NetworkObjectMgr.UnregisterNetworkObject(pEntity.NetObject, 15, true, true)
                                     end
                                     Memory.WriteInt(ptr, attachmentHandle)
                                     ENTITY.DELETE_ENTITY(ptr)
-                                    M.debug_print("[Delete Debug] Outfit attachment deleted:", tostring(attachmentHandle))
                                 else
                                     M.debug_print("[Delete Debug] Warning: Outfit attachment pointer invalid for handle:", tostring(attachmentHandle))
                                 end
@@ -2194,14 +2092,12 @@ function M.deleteAllSpawnedOutfits()
             end
         end
         for k in pairs(spawnedOutfits) do spawnedOutfits[k] = nil end
-        M.debug_print("[Delete Debug] All spawned outfits cleared.")
     end)
 end
 
 function M.spawnVehicleFromINI(filePath, isPreview)
     isPreview = isPreview or false
     Script.QueueJob(function()
-        M.debug_print("[Spawn Debug] Attempting to spawn INI vehicle from:", filePath, "Is Preview:", tostring(isPreview))
         if not isPreview and currentPreviewFile and currentPreviewFile.path == filePath and #previewEntities > 0 then
             M.clearPreview()
             M.stopPreviewUpdater()
@@ -2290,10 +2186,7 @@ function M.spawnVehicleFromINI(filePath, isPreview)
             M.debug_print("[Spawn Debug] Error: Failed to spawn main vehicle for model hash:", modelHash, "from:", filePath)
             return
         end
-        M.debug_print("[Spawn Debug] Spawned vehicle handle:", tostring(vehicleHandle), "from:", filePath:match("([^\\\\/]+)$"))
-        M.debug_print("[Spawn Debug] Applying vehicle properties from mainVehicleSection.")
         if spawnerSettings.randomColor then
-            M.debug_print("[Spawn Debug] Applying random colors for INI vehicle:", tostring(vehicleHandle))
             M.try_call(VEHICLE, "SET_VEHICLE_CUSTOM_PRIMARY_COLOUR", vehicleHandle, math.random(0,255), math.random(0,255), math.random(0,255))
             M.try_call(VEHICLE, "SET_VEHICLE_CUSTOM_SECONDARY_COLOUR", vehicleHandle, math.random(0,255), math.random(0,255), math.random(0,255))
             M.try_call(VEHICLE, "SET_VEHICLE_EXTRA_COLOUR_5", vehicleHandle, math.random(0,255))
@@ -2359,9 +2252,7 @@ function M.spawnVehicleFromINI(filePath, isPreview)
             if liveryCount and liveryCount > 0 then
                 local randomLivery = math.random(0, liveryCount - 1)
                 M.try_call(VEHICLE, "SET_VEHICLE_LIVERY", vehicleHandle, randomLivery)
-                M.debug_print("[Spawn Debug] Applied random livery", randomLivery, "for INI vehicle:", tostring(vehicleHandle))
             else
-                M.debug_print("[Spawn Debug] Warning: No liveries available for INI vehicle", tostring(vehicleHandle), "to apply random livery.")
             end
         elseif mainVehicleSection then
             local livery = M.safe_tonumber(mainVehicleSection.Livery, nil)
@@ -2412,7 +2303,6 @@ function M.spawnVehicleFromINI(filePath, isPreview)
         local opacityLevel = M.safe_tonumber(mainVehicleSection.OpacityLevel, nil)
         if opacityLevel ~= nil and opacityLevel == 0 then
             M.try_call(ENTITY, "SET_ENTITY_ALPHA", vehicleHandle, 0, false)
-            M.debug_print("[Spawn Debug] Vehicle set alpha to 0 due to opacity level 0.")
         end
         local isVisible = mainVehicleSection.IsVisible
         if isVisible ~= nil then
@@ -2422,7 +2312,6 @@ function M.spawnVehicleFromINI(filePath, isPreview)
         local parentHandleMap = {}
         if mainVehicleSelfNumeration then
             parentHandleMap[mainVehicleSelfNumeration] = vehicleHandle
-            M.debug_print("[Spawn Debug] Main vehicle SelfNumeration:", tostring(mainVehicleSelfNumeration), "mapped to handle:", tostring(vehicleHandle))
         else
             parentHandleMap["main_vehicle_placeholder"] = vehicleHandle
         end
@@ -2433,7 +2322,6 @@ function M.spawnVehicleFromINI(filePath, isPreview)
             local fallbackCoords = { x = spawnX, y = spawnY, z = spawnZ }
             createdAttachments = M.spawn_attachments(parsedAttachments, parentHandleMap, fallbackCoords, spawnerSettings.disableCollision, isPreview)
             for _, h in ipairs(createdAttachments) do pcall(function() ENTITY.SET_ENTITY_INVINCIBLE(h, true) end) end
-            M.debug_print("[Spawn Debug] Spawned", #createdAttachments, "attachments for vehicle:", tostring(vehicleHandle), "from:", filePath:match("([^\\\\/]+)$"))
         end
         spawnerSettings.inVehicle = originalInVehicleSetting
         if isPreview then
@@ -2473,9 +2361,7 @@ function M.spawnVehicleFromINI(filePath, isPreview)
             local playerHandle = GTA.PointerToHandle(playerPed)
             if playerHandle and playerHandle > 0 then
                 M.try_call(PED, "SET_PED_INTO_VEHICLE", playerHandle, vehicleHandle, -1)
-                M.debug_print("[Spawn Debug] Player put into vehicle:", tostring(vehicleHandle))
             else
-                M.debug_print("[Spawn Debug] Warning: Could not put player into vehicle. Player handle invalid.")
             end
         end
     end)
@@ -2484,7 +2370,6 @@ end
 function M.spawnVehicleFromXML(filePath, isPreview)
     isPreview = isPreview or false
     Script.QueueJob(function()
-        M.debug_print("[Spawn Debug] Attempting to spawn XML vehicle from:", filePath, "Is Preview:", tostring(isPreview))
         if not isPreview and currentPreviewFile and currentPreviewFile.path == filePath and #previewEntities > 0 then
             M.clearPreview()
             M.stopPreviewUpdater()
@@ -2568,7 +2453,6 @@ function M.spawnVehicleFromXML(filePath, isPreview)
             M.debug_print("[Spawn Debug] Error: Failed to spawn main vehicle for model hash:", modelHash, "from:", filePath)
             return
         end
-        M.debug_print("[Spawn Debug] Spawned vehicle handle:", tostring(vehicleHandle), "from:", filePath:match("([^\\\\/]+)$"))
         local initialHandleMap = {}
         local initialHandleVal = M.safe_tonumber(M.get_xml_element_content(xmlContent, "InitialHandle"), nil)
         if initialHandleVal then initialHandleMap[initialHandleVal] = vehicleHandle end
@@ -2578,7 +2462,6 @@ function M.spawnVehicleFromXML(filePath, isPreview)
         local neons = M.parse_vehicle_neons(xmlContent)
         local vehicleProperties = M.get_xml_element(xmlContent, "VehicleProperties")
         if spawnerSettings.randomColor then
-            M.debug_print("[Spawn Debug] Applying random colors for XML vehicle:", tostring(vehicleHandle))
             M.try_call(VEHICLE, "SET_VEHICLE_CUSTOM_PRIMARY_COLOUR", vehicleHandle, math.random(0,255), math.random(0,255), math.random(0,255))
             M.try_call(VEHICLE, "SET_VEHICLE_CUSTOM_SECONDARY_COLOUR", vehicleHandle, math.random(0,255), math.random(0,255), math.random(0,255))
             M.try_call(VEHICLE, "SET_VEHICLE_EXTRA_COLOUR_5", vehicleHandle, math.random(0,255))
@@ -2612,9 +2495,7 @@ function M.spawnVehicleFromXML(filePath, isPreview)
             if liveryCount and liveryCount > 0 then
                 local randomLivery = math.random(0, liveryCount - 1)
                 M.try_call(VEHICLE, "SET_VEHICLE_LIVERY", vehicleHandle, randomLivery)
-                M.debug_print("[Spawn Debug] Applied random livery", randomLivery, "for XML vehicle:", tostring(vehicleHandle))
             else
-                M.debug_print("[Spawn Debug] Warning: No liveries available for XML vehicle", tostring(vehicleHandle), "to apply random livery.")
             end
         elseif vehicleProperties then
             local livery = M.safe_tonumber(M.get_xml_element_content(vehicleProperties, "Livery"), nil)
@@ -2665,7 +2546,6 @@ function M.spawnVehicleFromXML(filePath, isPreview)
         local opacityLevel = M.safe_tonumber(M.get_xml_element_content(xmlContent, "OpacityLevel"), nil)
         if opacityLevel ~= nil and opacityLevel == 0 then
             M.try_call(ENTITY, "SET_ENTITY_ALPHA", vehicleHandle, 0, false)
-            M.debug_print("[Spawn Debug] Vehicle set alpha to 0 due to opacity level 0.")
         end
         local isVisible = M.get_xml_element_content(xmlContent, "IsVisible")
         if isVisible ~= nil then
@@ -2677,7 +2557,6 @@ function M.spawnVehicleFromXML(filePath, isPreview)
         if (not parsedAttachments or #parsedAttachments == 0) then
             parsedAttachments = M.parse_outfit_attachments(xmlContent)
             if parsedAttachments and #parsedAttachments > 0 then
-                M.debug_print("[Spawn Debug] Found outfit attachments as fallback.")
             end
         end
         if parsedAttachments and #parsedAttachments > 0 then
@@ -2686,7 +2565,6 @@ function M.spawnVehicleFromXML(filePath, isPreview)
             local fallbackCoords = { x = spawnX, y = spawnY, z = spawnZ }
             createdAttachments = M.spawn_attachments(parsedAttachments, parentHandleMap, fallbackCoords, spawnerSettings.disableCollision, isPreview)
             for _, h in ipairs(createdAttachments) do pcall(function() ENTITY.SET_ENTITY_INVINCIBLE(h, true) end) end
-            M.debug_print("[Spawn Debug] Spawned", #createdAttachments, "attachments for vehicle:", tostring(vehicleHandle), "from:", filePath:match("([^\\\\/]+)$"))
         end
         spawnerSettings.inVehicle = originalInVehicleSetting
         if isPreview then
@@ -2712,15 +2590,12 @@ function M.spawnVehicleFromXML(filePath, isPreview)
         }
         if vehicleHandle and vehicleHandle ~= 0 and ENTITY and ENTITY.DOES_ENTITY_EXIST(vehicleHandle) then
             vehicleData.vehicle = vehicleHandle
-            M.debug_print("[Spawn Debug] Main vehicle handle recorded:", tostring(vehicleHandle))
         else
-            M.debug_print("[Spawn Debug] Warning: Main vehicle handle invalid or does not exist.")
         end
         if createdAttachments then
             for _, attachmentHandle in ipairs(createdAttachments) do
                 if attachmentHandle and attachmentHandle ~= 0 and ENTITY and ENTITY.DOES_ENTITY_EXIST(attachmentHandle) then
                     table.insert(vehicleData.attachments, attachmentHandle)
-                    M.debug_print("[Spawn Debug] Attachment handle recorded:", tostring(attachmentHandle))
                 else
                     M.debug_print("[Spawn Debug] Warning: Attachment handle invalid or does not exist:", tostring(attachmentHandle))
                 end
@@ -2728,7 +2603,6 @@ function M.spawnVehicleFromXML(filePath, isPreview)
         end
         if vehicleData.vehicle or #vehicleData.attachments > 0 then
             table.insert(spawnedVehicles, vehicleData)
-            M.debug_print("[Spawn Debug] Vehicle data recorded. Total spawned vehicles:", #spawnedVehicles)
             local filename = M.get_filename_from_path(filePath)
             local attachmentCount = #vehicleData.attachments
             pcall(function()
@@ -2736,7 +2610,6 @@ function M.spawnVehicleFromXML(filePath, isPreview)
                 print("Vehicle Spawned", "Spawned " .. filename .. " with " .. attachmentCount .. " attachment" .. (attachmentCount == 1 and "" or "s"))
             end)
         else
-            M.debug_print("[Spawn Debug] No vehicle or attachments spawned for XML file:", filePath)
         end
     end)
 end
@@ -2748,7 +2621,6 @@ function M.getFirstVehicleXml()
 end
 
 function M.spawnMenyooAttackerFromXML(filePath, targetPlayerIndex)
-    M.debug_print("[Spawn Debug] Attempting to spawn XML attacker from:", filePath, "for player index:", tostring(targetPlayerIndex))
     local originalInVehicle = spawnerSettings.inVehicle
     spawnerSettings.inVehicle = false
     Script.QueueJob(function()
@@ -2777,7 +2649,6 @@ function M.spawnMenyooAttackerFromXML(filePath, targetPlayerIndex)
             pcall(function() targetPed = PLAYER.GET_PLAYER_PED_SCRIPT_INDEX(targetPlayerIndex) end)
         end
         if not targetPed or targetPed == 0 then
-            M.debug_print("[Spawn Debug] Warning: Target ped not found for attacker. Defaulting to local ped.")
             targetPed = GTA.GetLocalPed()
         end
         if not targetPed or targetPed == 0 then
@@ -2792,7 +2663,6 @@ function M.spawnMenyooAttackerFromXML(filePath, targetPlayerIndex)
             spawnCoords.z = off.z or off[3] or 0.0
             local foundGround, gz = GTA.GetGroundZ(spawnCoords.x, spawnCoords.y)
             if foundGround then spawnCoords.z = gz end
-            M.debug_print("[Spawn Debug] Attacker spawn coordinates:", spawnCoords.x, spawnCoords.y, spawnCoords.z)
         end)
         M.request_model_load(modelHash)
         local vehicleHandle = nil
@@ -2808,7 +2678,6 @@ function M.spawnMenyooAttackerFromXML(filePath, targetPlayerIndex)
             M.debug_print("[Spawn Debug] Error: Failed to spawn main attacker vehicle for model hash:", modelHash, "from:", filePath)
             return
         end
-        M.debug_print("[Spawn Debug] Spawned attacker vehicle handle:", tostring(vehicleHandle))
         local attackerModel = M.safe_tonumber(M.get_xml_element_content(xmlContent, "AttackerModelHash"), 71929310)
         M.request_model_load(attackerModel)
         local attacker = nil
@@ -2820,7 +2689,6 @@ function M.spawnMenyooAttackerFromXML(filePath, targetPlayerIndex)
             M.debug_print("[Spawn Debug] Error: Failed to spawn attacker ped for model:", tostring(attackerModel))
             return
         end
-        M.debug_print("[Spawn Debug] Spawned attacker ped handle:", tostring(attacker))
         pcall(function()
             PED.SET_PED_INTO_VEHICLE(attacker, vehicleHandle, -1)
             ENTITY.SET_ENTITY_AS_MISSION_ENTITY(attacker, true, true)
@@ -2835,7 +2703,6 @@ function M.spawnMenyooAttackerFromXML(filePath, targetPlayerIndex)
             PED.SET_PED_RELATIONSHIP_GROUP_HASH(attacker, relHash)
             ENTITY.SET_ENTITY_INVINCIBLE(vehicleHandle, true)
             TASK.TASK_VEHICLE_MISSION_PED_TARGET(attacker, vehicleHandle, targetPed, 6, 500.0, 786988, 0.0, 0.0, true)
-            M.debug_print("[Spawn Debug] Attacker ped configured and tasked.")
         end)
         local parsedAttachments = M.parse_spooner_attachments(xmlContent)
         local createdAttachments = {}
@@ -2845,7 +2712,6 @@ function M.spawnMenyooAttackerFromXML(filePath, targetPlayerIndex)
             if initialHandleVal then parentHandleMap[initialHandleVal] = vehicleHandle end
             createdAttachments = M.spawn_attachments(parsedAttachments, parentHandleMap, spawnCoords, spawnerSettings.disableCollision)
             for _, h in ipairs(createdAttachments) do pcall(function() ENTITY.SET_ENTITY_INVINCIBLE(h, true) end) end
-            M.debug_print("[Spawn Debug] Spawned", #createdAttachments, "attachments for attacker vehicle:", tostring(vehicleHandle))
         end
         local attachments = { attacker }
         for _, h in ipairs(createdAttachments) do
@@ -2853,7 +2719,6 @@ function M.spawnMenyooAttackerFromXML(filePath, targetPlayerIndex)
         end
         table.insert(spawnedVehicles, { vehicle = vehicleHandle, attachments = attachments })
         if #createdAttachments > 0 then
-            M.debug_print("[Spawn Debug] Attacker vehicle and attachments recorded.")
         end
         spawnerSettings.inVehicle = originalInVehicle
     end)
@@ -2863,7 +2728,6 @@ function M.spawnMenyooAttackerFromINI(filePath, targetPlayerIndex)
     local originalInVehicle = spawnerSettings.inVehicle
     spawnerSettings.inVehicle = false
     Script.QueueJob(function()
-        M.debug_print("[Spawn Debug] Attempting to spawn INI attacker from:", filePath)
         if not filePath or not FileMgr.DoesFileExist(filePath) then
             M.debug_print("[Spawn Debug] Error: INI file does not exist for attacker:", filePath)
             spawnerSettings.inVehicle = originalInVehicle
@@ -2898,7 +2762,6 @@ function M.spawnMenyooAttackerFromINI(filePath, targetPlayerIndex)
             pcall(function() targetPed = PLAYER.GET_PLAYER_PED_SCRIPT_INDEX(targetPlayerIndex) end)
         end
         if not targetPed or targetPed == 0 then
-            M.debug_print("[Spawn Debug] Warning: Target ped not found for attacker. Defaulting to local ped.")
             targetPed = GTA.GetLocalPed()
         end
         if not targetPed or targetPed == 0 then
@@ -2914,7 +2777,6 @@ function M.spawnMenyooAttackerFromINI(filePath, targetPlayerIndex)
             spawnCoords.z = off.z or off[3] or 0.0
             local foundGround, gz = GTA.GetGroundZ(spawnCoords.x, spawnCoords.y)
             if foundGround then spawnCoords.z = gz end
-            M.debug_print("[Spawn Debug] Attacker spawn coordinates:", spawnCoords.x, spawnCoords.y, spawnCoords.z)
         end)
         M.request_model_load(modelHash)
         local vehicleHandle = nil
@@ -2931,7 +2793,6 @@ function M.spawnMenyooAttackerFromINI(filePath, targetPlayerIndex)
             spawnerSettings.inVehicle = originalInVehicle
             return
         end
-        M.debug_print("[Spawn Debug] Spawned attacker vehicle handle:", tostring(vehicleHandle))
         local attackerModel = M.safe_tonumber(mainVehicleSection.AttackerModelHash, 71929310)
         M.request_model_load(attackerModel)
         local attacker = nil
@@ -2944,7 +2805,6 @@ function M.spawnMenyooAttackerFromINI(filePath, targetPlayerIndex)
             spawnerSettings.inVehicle = originalInVehicle
             return
         end
-        M.debug_print("[Spawn Debug] Spawned attacker ped handle:", tostring(attacker))
         pcall(function()
             PED.SET_PED_INTO_VEHICLE(attacker, vehicleHandle, -1)
             ENTITY.SET_ENTITY_AS_MISSION_ENTITY(attacker, true, true)
@@ -2959,13 +2819,11 @@ function M.spawnMenyooAttackerFromINI(filePath, targetPlayerIndex)
             PED.SET_PED_RELATIONSHIP_GROUP_HASH(attacker, relHash)
             ENTITY.SET_ENTITY_INVINCIBLE(vehicleHandle, true)
             TASK.TASK_VEHICLE_MISSION_PED_TARGET(attacker, vehicleHandle, targetPed, 6, 500.0, 786988, 0.0, 0.0, true)
-            M.debug_print("[Spawn Debug] Attacker ped configured and tasked.")
         end)
         local mainVehicleSelfNumeration = M.safe_tonumber(mainVehicleSection.SelfNumeration, nil)
         local parentHandleMap = {}
         if mainVehicleSelfNumeration then
             parentHandleMap[mainVehicleSelfNumeration] = vehicleHandle
-            M.debug_print("[Spawn Debug] Main attacker vehicle SelfNumeration:", tostring(mainVehicleSelfNumeration), "mapped to handle:", tostring(vehicleHandle))
         else
             parentHandleMap["main_vehicle_placeholder"] = vehicleHandle
         end
@@ -2974,14 +2832,12 @@ function M.spawnMenyooAttackerFromINI(filePath, targetPlayerIndex)
         if parsedAttachments and #parsedAttachments > 0 then
             createdAttachments = M.spawn_attachments(parsedAttachments, parentHandleMap, spawnCoords, spawnerSettings.disableCollision)
             for _, h in ipairs(createdAttachments) do pcall(function() ENTITY.SET_ENTITY_INVINCIBLE(h, true) end) end
-            M.debug_print("[Spawn Debug] Spawned", #createdAttachments, "attachments for attacker vehicle:", tostring(vehicleHandle))
         end
         local attachments = { attacker }
         for _, h in ipairs(createdAttachments) do
             table.insert(attachments, h)
         end
         table.insert(spawnedVehicles, { vehicle = vehicleHandle, attachments = attachments })
-        M.debug_print("[Spawn Debug] Attacker vehicle and attachments recorded.")
         spawnerSettings.inVehicle = originalInVehicle
     end)
 end
@@ -2992,7 +2848,6 @@ function M.spawnMenyooAttackerFromJSON(filePath, targetPlayerIndex)
     spawnerSettings.inVehicle = false
     Script.QueueJob(function()
         print("[JSON Attacker] Inside Script.QueueJob")
-        M.debug_print("[Spawn Debug] Attempting to spawn JSON attacker from:", filePath, "for player index:", tostring(targetPlayerIndex))
         
         if not filePath or not FileMgr.DoesFileExist(filePath) then
             print("[JSON Attacker] Error: File does not exist:", filePath)
@@ -3036,7 +2891,6 @@ function M.spawnMenyooAttackerFromJSON(filePath, targetPlayerIndex)
         
         if not parseSuccess or not parseResult then
             print("[JSON Attacker] Parse failed:", tostring(parseResult))
-            M.debug_print("[Spawn Debug] Error parsing JSON for attacker:", tostring(parseResult))
             spawnerSettings.inVehicle = originalInVehicle
             return
         end
@@ -3068,7 +2922,6 @@ function M.spawnMenyooAttackerFromJSON(filePath, targetPlayerIndex)
             pcall(function() targetPed = PLAYER.GET_PLAYER_PED_SCRIPT_INDEX(targetPlayerIndex) end)
         end
         if not targetPed or targetPed == 0 then
-            M.debug_print("[Spawn Debug] Warning: Target ped not found for attacker. Defaulting to local ped.")
             targetPed = GTA.GetLocalPed()
         end
         if not targetPed or targetPed == 0 then
@@ -3088,7 +2941,6 @@ function M.spawnMenyooAttackerFromJSON(filePath, targetPlayerIndex)
             spawnCoords.z = off.z or off[3] or 0.0
             local foundGround, gz = GTA.GetGroundZ(spawnCoords.x, spawnCoords.y)
             if foundGround then spawnCoords.z = gz end
-            M.debug_print("[Spawn Debug] Attacker spawn coordinates:", spawnCoords.x, spawnCoords.y, spawnCoords.z)
         end)
         
         -- Spawn the vehicle
@@ -3110,7 +2962,6 @@ function M.spawnMenyooAttackerFromJSON(filePath, targetPlayerIndex)
             return
         end
         print("[JSON Attacker] Vehicle spawned, handle:", vehicleHandle)
-        M.debug_print("[Spawn Debug] Spawned attacker vehicle handle:", tostring(vehicleHandle))
         
         -- Spawn attacker ped
         print("[JSON Attacker] Spawning attacker ped...")
@@ -3128,7 +2979,6 @@ function M.spawnMenyooAttackerFromJSON(filePath, targetPlayerIndex)
             return
         end
         print("[JSON Attacker] Attacker ped spawned, handle:", attacker)
-        M.debug_print("[Spawn Debug] Spawned attacker ped handle:", tostring(attacker))
         
         -- Configure attacker
         print("[JSON Attacker] Configuring attacker...")
@@ -3146,7 +2996,6 @@ function M.spawnMenyooAttackerFromJSON(filePath, targetPlayerIndex)
             PED.SET_PED_RELATIONSHIP_GROUP_HASH(attacker, relHash)
             ENTITY.SET_ENTITY_INVINCIBLE(vehicleHandle, true)
             TASK.TASK_VEHICLE_MISSION_PED_TARGET(attacker, vehicleHandle, targetPed, 6, 500.0, 786988, 0.0, 0.0, true)
-            M.debug_print("[Spawn Debug] Attacker ped configured and tasked.")
         end)
         
         -- Spawn and attach children objects
@@ -3154,7 +3003,6 @@ function M.spawnMenyooAttackerFromJSON(filePath, targetPlayerIndex)
         local attachedObjects = {}
         if jsonData.children and #jsonData.children > 0 then
             print("[JSON Attacker] Found", #jsonData.children, "children to spawn")
-            M.debug_print("[Spawn Debug] Spawning", #jsonData.children, "attachments for JSON attacker...")
             
             for i, child in ipairs(jsonData.children) do
                 local childModel = child.hash or child.model
@@ -3193,7 +3041,6 @@ function M.spawnMenyooAttackerFromJSON(filePath, targetPlayerIndex)
                     
                     if objectHandle and objectHandle ~= 0 then
                         print("[JSON Attacker] Attachment", i, "spawned, handle:", objectHandle)
-                        M.debug_print("[Spawn Debug] Attachment", i, "spawned for JSON attacker, handle:", objectHandle)
                         
                         -- Apply options
                         if child.options then
@@ -3233,7 +3080,6 @@ function M.spawnMenyooAttackerFromJSON(filePath, targetPlayerIndex)
         end
         
         print("[JSON Attacker] Total attachments spawned:", #attachedObjects)
-        M.debug_print("[Spawn Debug] Spawned", #attachedObjects, "attachments for JSON attacker vehicle")
         
         -- Track spawned vehicle
         local attachments = { attacker }
@@ -3242,13 +3088,11 @@ function M.spawnMenyooAttackerFromJSON(filePath, targetPlayerIndex)
         end
         table.insert(spawnedVehicles, { vehicle = vehicleHandle, attachments = attachments })
         print("[JSON Attacker] Spawn complete!")
-        M.debug_print("[Spawn Debug] JSON Attacker vehicle and attachments recorded.")
         spawnerSettings.inVehicle = originalInVehicle
     end)
 end
 
 function M.spawnMapV1Networked(filePath, placements)
-    M.debug_print("[Spawn Debug] Attempting to spawn XML map with Network Maps V1 from:", filePath)
     local carattach_hash = Utils.Joaat("lazer")
     M.request_model_load(carattach_hash)
     local carattach = GTA.SpawnVehicle(carattach_hash, 0.0, 0.0, 0.0, 0.0, true, true)
@@ -3263,7 +3107,6 @@ function M.spawnMapV1Networked(filePath, placements)
         ENTITY.SET_ENTITY_VISIBLE(carattach, false, false)
         ENTITY.SET_ENTITY_LOD_DIST(carattach, 100000)
         constructor_lib.make_entity_networked({handle = carattach})
-        M.debug_print("[Spawn Debug] Base vehicle for Network Maps V1 spawned and networked:", tostring(carattach))
     end)
     local mapV1Entities = {}
     table.insert(mapV1Entities, carattach)
@@ -3272,7 +3115,6 @@ function M.spawnMapV1Networked(filePath, placements)
     for _, placement in ipairs(placements) do
         local model = placement.ModelHash or placement.HashName
         if not model then
-            M.debug_print("[Spawn Debug] Warning: Map placement has no model hash or name. Skipping creation.")
             goto continue_creation
         end
         local entityHandle = M.create_by_type(model, placement.Type, {x = 0.0, y = 0.0, z = 0.0})
@@ -3291,7 +3133,6 @@ function M.spawnMapV1Networked(filePath, placements)
     for _, placement in ipairs(placements) do
         if not placement.runtimeHandle then goto continue_placement end
         local entityHandle = placement.runtimeHandle
-        M.debug_print("[Spawn Debug] Processing entity for attachment with handle:", tostring(entityHandle))
         local isAttachedToOtherObject = false
         if placement.Attachment and placement.Attachment.isAttached then
             local parentHandle = parentHandleMap[M.safe_tonumber(placement.Attachment.AttachedTo)]
@@ -3337,7 +3178,6 @@ function M.spawnMapV1Networked(filePath, placements)
             ENTITY.SET_ENTITY_AS_MISSION_ENTITY(entityHandle, true, false)
             ENTITY.SET_ENTITY_LOD_DIST(entityHandle, 100000)
             constructor_lib.make_entity_networked({handle = entityHandle})
-            M.debug_print("[Spawn Debug] Map entity networked:", tostring(entityHandle))
         end)
         if placement.IsInvincible then pcall(function() ENTITY.SET_ENTITY_INVINCIBLE(entityHandle, true) end) end
         if placement.IsVisible ~= nil then pcall(function() ENTITY.SET_ENTITY_VISIBLE(entityHandle, placement.IsVisible, false) end) end
@@ -3345,7 +3185,6 @@ function M.spawnMapV1Networked(filePath, placements)
             local opacity = M.safe_tonumber(placement.OpacityLevel, 255)
             if opacity == 0 then
                 pcall(function() ENTITY.SET_ENTITY_ALPHA(entityHandle, 0, false) end)
-                M.debug_print("[Spawn Debug] Map entity set alpha to 0 due to opacity level 0.")
             end
         end
         if placement.HasGravity ~= nil then pcall(function() ENTITY.SET_ENTITY_HAS_GRAVITY(entityHandle, placement.HasGravity) end) end
@@ -3372,7 +3211,6 @@ end
 
 function M.spawnMapFromXML(filePath)
     Script.QueueJob(function()
-        M.debug_print("[Spawn Debug] Attempting to spawn XML map from:", filePath)
         if not FileMgr.DoesFileExist(filePath) then
             M.debug_print("[Spawn Debug] Error: XML map file does not exist:", filePath)
             return
@@ -3384,7 +3222,6 @@ function M.spawnMapFromXML(filePath)
         end
         local placements, markers = M.parse_map_placements(xmlContent)
         if (not placements or #placements == 0) and (not markers or #markers == 0) then
-            M.debug_print("[Spawn Debug] Warning: No placements or markers found in XML map file:", filePath)
             return
         end
         if spawnerSettings.deleteOldMap then
@@ -3404,10 +3241,8 @@ function M.spawnMapFromXML(filePath)
             createdEntities, spawnCount = M.spawnMapV1Networked(filePath, placements)
         else
             for _, placement in ipairs(placements) do
-                M.debug_print("[Spawn Debug] Processing map placement: ModelHash:", placement.ModelHash, "HashName:", placement.HashName, "Type:", placement.Type)
                 local model = placement.ModelHash or placement.HashName
                 if not model then
-                    M.debug_print("[Spawn Debug] Warning: Map placement has no model hash or name. Skipping.")
                     goto continue_v2
                 end
                 local spawnCoords = { x = 0.0, y = 0.0, z = 0.0 }
@@ -3421,77 +3256,61 @@ function M.spawnMapFromXML(filePath)
                     M.debug_print("[Spawn Debug] Error: Failed to create entity for map placement model:", tostring(model), "type:", placement.Type)
                     goto continue_v2
                 end
-                M.debug_print("[Spawn Debug] Successfully created entity for map placement with handle:", tostring(entityHandle))
                 pcall(function()
                     ENTITY.SET_ENTITY_COORDS(entityHandle, spawnCoords.x, spawnCoords.y, spawnCoords.z, false, false, false, true)
-                    M.debug_print("[Spawn Debug] Set entity coords for map placement:", spawnCoords.x, spawnCoords.y, spawnCoords.z)
                 end)
                 table.insert(createdEntities, entityHandle)
                 spawnCount = spawnCount + 1
                 if spawnerSettings.networkMapsV2Enabled then
                     pcall(function()
                         constructor_lib.make_entity_networked({handle = entityHandle})
-                        M.debug_print("[Spawn Debug] Map entity networked:", tostring(entityHandle))
                     end)
                 end
                 if placement.IsInvincible then
                     pcall(function() ENTITY.SET_ENTITY_INVINCIBLE(entityHandle, true) end)
-                    M.debug_print("[Spawn Debug] Map entity set invincible:", tostring(entityHandle))
                 end
                 if placement.IsVisible ~= nil then
                     pcall(function() ENTITY.SET_ENTITY_VISIBLE(entityHandle, placement.IsVisible, false) end)
-                    M.debug_print("[Spawn Debug] Map entity set visible:", tostring(placement.IsVisible))
                 end
                 if placement.OpacityLevel ~= nil then
                     local opacity = M.safe_tonumber(placement.OpacityLevel, 255)
                     if opacity == 0 then
                         pcall(function() ENTITY.SET_ENTITY_ALPHA(entityHandle, 0, false) end)
-                        M.debug_print("[Spawn Debug] Map entity set alpha to 0 due to opacity level 0.")
                     end
                 end
                 if placement.HasGravity ~= nil then
                     pcall(function() ENTITY.SET_ENTITY_HAS_GRAVITY(entityHandle, placement.HasGravity) end)
-                    M.debug_print("[Spawn Debug] Map entity set gravity:", tostring(placement.HasGravity))
                 end
                 if placement.Health ~= nil then
                     local health = M.safe_tonumber(placement.Health, 1000)
                     pcall(function() ENTITY.SET_ENTITY_HEALTH(entityHandle, health, 0) end)
-                    M.debug_print("[Spawn Debug] Map entity set health:", tostring(health))
                 end
                 if placement.MaxHealth ~= nil then
                     local maxHealth = M.safe_tonumber(placement.MaxHealth, 1000)
                     pcall(function() ENTITY.SET_ENTITY_MAX_HEALTH(entityHandle, maxHealth) end)
-                    M.debug_print("[Spawn Debug] Map entity set max health:", tostring(maxHealth))
                 end
                 if placement.IsBulletProof then
                     pcall(function() ENTITY.SET_ENTITY_PROOFS(entityHandle, true, false, false, false, false, false, false, false) end)
-                    M.debug_print("[Spawn Debug] Map entity set bulletproof.")
                 end
                 if placement.IsCollisionProof then
                     pcall(function() ENTITY.SET_ENTITY_PROOFS(entityHandle, false, true, false, false, false, false, false, false) end)
-                    M.debug_print("[Spawn Debug] Map entity set collision proof.")
                 end
                 if placement.IsExplosionProof then
                     pcall(function() ENTITY.SET_ENTITY_PROOFS(entityHandle, false, false, true, false, false, false, false, false) end)
-                    M.debug_print("[Spawn Debug] Map entity set explosion proof.")
                 end
                 if placement.IsFireProof then
                     pcall(function() ENTITY.SET_ENTITY_PROOFS(entityHandle, false, false, false, true, false, false, false, false) end)
-                    M.debug_print("[Spawn Debug] Map entity set fire proof.")
                 end
                 if placement.IsMeleeProof then
                     pcall(function() ENTITY.SET_ENTITY_PROOFS(entityHandle, false, false, false, false, true, false, false, false) end)
-                    M.debug_print("[Spawn Debug] Map entity set melee proof.")
                 end
                 if placement.PositionRotation then
                     local rotX = placement.PositionRotation.Pitch or 0.0
                     local rotY = placement.PositionRotation.Roll or 0.0
                     local rotZ = placement.PositionRotation.Yaw or 0.0
                     pcall(function() ENTITY.SET_ENTITY_ROTATION(entityHandle, rotX, rotY, rotZ, 2) end)
-                    M.debug_print("[Spawn Debug] Map entity set rotation:", rotX, rotY, rotZ)
                     if placement.FrozenPos then
                         pcall(function() ENTITY.FREEZE_ENTITY_POSITION(entityHandle, true) end)
-                        M.debug_print("[Spawn Debug] Map entity set frozen position.")
                     end
                 end
                 if placement.ObjectProperties then
@@ -3499,7 +3318,6 @@ function M.spawnMapFromXML(filePath)
                         if propName == "TextureVariation" then
                             local texture = M.safe_tonumber(propValue, 0)
                             pcall(function() OBJECT.SET_OBJECT_TEXTURE_VARIATION(entityHandle, texture) end)
-                            M.debug_print("[Spawn Debug] Map entity set texture variation:", tostring(texture))
                         end
                     end
                 end
@@ -3513,13 +3331,11 @@ function M.spawnMapFromXML(filePath)
                     local playerHandle = GTA.PointerToHandle(playerPed)
                     if playerHandle and playerHandle > 0 then
                         ENTITY.SET_ENTITY_COORDS(playerHandle, refCoords.x, refCoords.y, refCoords.z, false, false, false, true)
-                        M.debug_print("[Spawn Debug] Player teleported to map reference coordinates:", refCoords.x, refCoords.y, refCoords.z)
                     end
                 end)
             end
         end
         if markers and #markers > 0 then
-            M.debug_print("[Spawn Debug] Found", #markers, "markers. Starting marker draw loop.")
             Script.QueueJob(function()
                 while true do
                     local isMapActive = false
@@ -3562,14 +3378,12 @@ function M.spawnMapFromXML(filePath)
                 filePath = filePath
             }
             table.insert(spawnedMaps, mapData)
-            M.debug_print("[Spawn Debug] Map spawned successfully. Total objects:", spawnCount, "Total markers:", markers and #markers or 0)
             local filename = M.get_filename_from_path(filePath)
             pcall(function()
                 GUI.AddToast("Map Spawned", "Spawned " .. filename .. " with " .. spawnCount .. " object" .. (spawnCount == 1 and "" or "s") .. " and " .. (markers and #markers or 0) .. " markers", 5000, 0)
                 print("Map Spawned", "Spawned " .. filename .. " with " .. spawnCount .. " object" .. (spawnCount == 1 and "" or "s") .. " and " .. (markers and #markers or 0) .. " markers")
             end)
         else
-            M.debug_print("[Spawn Debug] No objects or markers spawned for map:", filePath)
         end
         if spawnerSettings.networkMapsV1Enabled and spawnerSettings.spawnIn000Vehicle then
             local playerPed = PLAYER.PLAYER_PED_ID()
@@ -3577,7 +3391,6 @@ function M.spawnMapFromXML(filePath)
             if playerPed and baseVehicleHandle and ENTITY.DOES_ENTITY_EXIST(baseVehicleHandle) then
                 Script.Yield(100)
                 PED.SET_PED_INTO_VEHICLE(playerPed, baseVehicleHandle, -1)
-                M.debug_print("[Spawn Debug] Player put into 0,0,0 vehicle for debug after refCoords teleport.")
             end
         end
         local allEntitiesCreated = false
@@ -3595,9 +3408,7 @@ function M.spawnMapFromXML(filePath)
             end
         end
         if allEntitiesCreated then
-            M.debug_print("[Spawn Debug] All map entities confirmed to exist.")
         else
-            M.debug_print("[Spawn Debug] Warning: Timeout waiting for all map entities to be created.")
         end
     end)
 end
@@ -3605,9 +3416,7 @@ end
 function M.spawnOutfitFromXML(filePath, isPreview)
     isPreview = isPreview or false
     Script.QueueJob(function()
-        M.debug_print("[Spawn Debug] Attempting to spawn XML outfit from:", filePath, "Is Preview:", tostring(isPreview))
         if not isPreview and currentPreviewFile and currentPreviewFile.path == filePath and #previewEntities > 0 then
-            M.debug_print("[Spawn Debug] Finalizing preview for outfit:", filePath)
             local entitiesToFinalize = {}
             for _, entity in ipairs(previewEntities) do
                 table.insert(entitiesToFinalize, entity)
@@ -3623,7 +3432,6 @@ function M.spawnOutfitFromXML(filePath, isPreview)
                     local pid = PLAYER.PLAYER_ID()
                     if pid then
                         PLAYER.CHANGE_PLAYER_PED(pid, spawnedPed, true, true)
-                        M.debug_print("[Spawn Debug] Player changed to finalized preview ped:", tostring(spawnedPed))
                     end
                 end
             end)
@@ -3687,7 +3495,6 @@ function M.spawnOutfitFromXML(filePath, isPreview)
             M.request_model_load(modelHash)
             spawnedPed = M.create_by_type(modelHash, 1, spawnCoords)
             if not spawnedPed or spawnedPed == 0 then
-                M.debug_print("[Spawn Debug] create_by_type failed for outfit ped. Trying PED.CREATE_PED.")
                 local ok, h = pcall(function() return PED.CREATE_PED(4, modelHash, spawnCoords.x, spawnCoords.y, spawnCoords.z, 0.0, false, false) end)
                 if ok and h and h ~= 0 then spawnedPed = h end
             end
@@ -3695,56 +3502,44 @@ function M.spawnOutfitFromXML(filePath, isPreview)
                 M.debug_print("[Spawn Debug] Error: Failed to spawn main ped for outfit model hash:", modelHash, "from:", filePath)
                 return
             end
-            M.debug_print("[Spawn Debug] Spawned outfit ped handle:", tostring(spawnedPed))
             targetPed = spawnedPed
             
             -- Apply ped properties only if we spawned a new ped
             if spawnedPed ~= 0 then
                 if outfitData.PedProperties then
                     M.apply_ped_properties(spawnedPed, outfitData.PedProperties)
-                    M.debug_print("[Spawn Debug] Applied ped properties for outfit ped:", tostring(spawnedPed))
                 end
             else
                 M.debug_print("[Spawn Debug] Error: spawnedPed is invalid, skipping property application and attachments.")
                 return
             end
         else
-            M.debug_print("[Spawn Debug] onlyApplyAttachments is enabled, using player's current ped")
         end
         
         local parentHandleMap = {}
         local xmlInitialHandle = M.safe_tonumber(outfitData.InitialHandle, nil)
         if xmlInitialHandle then parentHandleMap[xmlInitialHandle] = targetPed end
         if not parsedAttachments or #parsedAttachments == 0 then
-            M.debug_print("[Spawn Debug] No attachments found for outfit.")
         else
-            M.debug_print("[Spawn Debug] Found", #parsedAttachments, "attachments for outfit.")
             for i, a in ipairs(parsedAttachments) do
-                M.debug_print("[Spawn Debug] Attachment", i, ": ModelHash:", a.ModelHash, "Type:", a.Type)
             end
         end
         local createdAttachments = {}
         if parsedAttachments and #parsedAttachments > 0 then
             createdAttachments = M.spawn_attachments(parsedAttachments, parentHandleMap, spawnCoords, spawnerSettings.disableCollision, isPreview)
-            M.debug_print("[Spawn Debug] Spawned", #createdAttachments, "attachments for outfit.")
-            for _, ah in ipairs(createdAttachments) do if ah and ah ~= 0 then pcall(function() ENTITY.SET_ENTITY_INVINCIBLE(ah, true) end) M.debug_print("[Spawn Debug] Attachment", tostring(ah), "set invincible.") end end
         end
         if (not createdAttachments or #createdAttachments == 0) and parsedAttachments and #parsedAttachments > 0 then
-            M.debug_print("[Spawn Debug] No attachments created on spawned ped, attempting to spawn on player as fallback.")
             local playerCoords = ENTITY.GET_ENTITY_COORDS(playerHandle, false)
             local fallbackForPlayer = { x = playerCoords.x, y = playerCoords.y, z = playerCoords.z }
             local playerParentMap = {}
             if xmlInitialHandle then playerParentMap[xmlInitialHandle] = playerHandle end
             local createdOnPlayer = M.spawn_attachments(parsedAttachments, playerParentMap, fallbackForPlayer, spawnerSettings.disableCollision, isPreview)
-            M.debug_print("[Spawn Debug] Spawned", #createdOnPlayer, "attachments on player as fallback.")
-            for _, ah in ipairs(createdOnPlayer) do if ah and ah ~= 0 then pcall(function() ENTITY.SET_ENTITY_INVINCIBLE(ah, true) end) M.debug_print("[Spawn Debug] Fallback attachment", tostring(ah), "set invincible.") end end
             createdAttachments = createdOnPlayer
         end
         pcall(function()
             PED.SET_PED_KEEP_TASK(spawnedPed, true)
             PED.SET_BLOCKING_OF_NON_TEMPORARY_EVENTS(spawnedPed, true)
             ENTITY.SET_ENTITY_INVINCIBLE(spawnedPed, true)
-            M.debug_print("[Spawn Debug] Outfit ped configured (keep task, block events, invincible).")
         end)
         local function all_attachments_attached(list, parent)
             if not list or #list == 0 then return true end
@@ -3770,7 +3565,6 @@ function M.spawnOutfitFromXML(filePath, isPreview)
                         local attachedTo = nil
                         pcall(function() attachedTo = ENTITY.GET_ENTITY_ATTACHED_TO(ah) end)
                         if attachedTo ~= targetPed then
-                            M.debug_print("[Spawn Debug] Re-attaching attachment", tostring(ah), "to target ped", tostring(targetPed))
                             pcall(function()
                                 local originalAttData = nil
                                 for _, originalAtt in ipairs(parsedAttachments) do
@@ -3809,7 +3603,6 @@ function M.spawnOutfitFromXML(filePath, isPreview)
                     if pid then
                         Script.Yield(2000)
                         PLAYER.CHANGE_PLAYER_PED(pid, spawnedPed, true, true)
-                        M.debug_print("[Spawn Debug] Player changed to spawned ped:", tostring(spawnedPed))
                         Script.Yield(250)
                     end
                 end
@@ -3817,24 +3610,20 @@ function M.spawnOutfitFromXML(filePath, isPreview)
     end
         local outfitRecord = { attachments = createdAttachments, spawnedPed = spawnedPed, filePath = filePath }
         table.insert(spawnedOutfits, outfitRecord)
-        M.debug_print("[Spawn Debug] Outfit spawned and recorded. Ped handle:", tostring(spawnedPed), "Attachments count:", #createdAttachments)
     end)
 end
 
 function M.deleteAllSpawnedProps()
     Script.QueueJob(function()
-        M.debug_print("[Delete Debug] Deleting all spawned props. Count:", #spawnedProps)
         for i, propHandle in ipairs(spawnedProps) do
             if propHandle and ENTITY.DOES_ENTITY_EXIST(propHandle) then
                 pcall(function()
                     ENTITY.SET_ENTITY_AS_MISSION_ENTITY(propHandle, false, true)
                     ENTITY.DELETE_ENTITY(propHandle)
-                    M.debug_print("[Delete Debug] Deleted prop handle:", tostring(propHandle))
                 end)
             end
         end
         spawnedProps = {}
-        M.debug_print("[Delete Debug] All spawned props cleared.")
         pcall(function() GUI.AddToast("Props Deleted", "All spawned props deleted.", 3000, 0) end)
     end)
 end
@@ -3842,7 +3631,6 @@ end
 -- JSON Vehicle Spawning Function
 function M.spawnVehicleFromJSON(filePath, isPreview)
     Script.QueueJob(function()
-        M.debug_print("[JSON Spawn Debug] Starting JSON vehicle spawn for file:", filePath, "Is Preview:", tostring(isPreview))
         
         if not FileMgr.DoesFileExist(filePath) then
             M.debug_print("[JSON Spawn Debug] Error: JSON file does not exist:", filePath)
@@ -3857,7 +3645,6 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
             return
         end
         
-        M.debug_print("[JSON Spawn Debug] JSON content length:", string.len(jsonContent))
         
         -- Parse JSON using proper converter
         local jsonData
@@ -3890,7 +3677,6 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
             -- Wrap in return statement
             luaCode = "return " .. luaCode
             
-            M.debug_print("[JSON Spawn Debug] Attempting to parse JSON as Lua table...")
             local func, err = load(luaCode)
             if not func then
                 M.debug_print("[JSON Spawn Debug] Load error:", tostring(err))
@@ -3900,23 +3686,19 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
         end)
         
         if not parseSuccess or not parseResult then
-            M.debug_print("[JSON Spawn Debug] Error parsing JSON:", tostring(parseResult))
             pcall(function() GUI.AddToast("Spawn Error", "Failed to parse JSON: " .. tostring(parseResult), 5000, 0) end)
             return
         end
         
         jsonData = parseResult
-        M.debug_print("[JSON Spawn Debug] JSON parsed successfully")
         
         -- Detect JSON format
         local isJSTAND = jsonData.base ~= nil or jsonData.version and jsonData.version:match("Jackz Builder")
         local isConstructor = jsonData.type == "VEHICLE"
         
-        M.debug_print("[JSON Spawn Debug] Format detection - JSTAND:", isJSTAND, "Constructor:", isConstructor)
         
         -- Handle JSTAND format (Jackz Builder)
         if isJSTAND then
-            M.debug_print("[JSON Spawn Debug] Detected JSTAND (Jackz Builder) format")
             
             -- Get the base vehicle model
             local modelHash = jsonData.base and jsonData.base.model or jsonData.base and jsonData.base.data and jsonData.base.data.model
@@ -3968,7 +3750,6 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
                 end
             end
             
-            M.debug_print("[JSON Spawn Debug] Converted JSTAND to Constructor format, children:", #jsonData.children)
         end
         
         -- Check if it's a vehicle (after potential conversion)
@@ -3983,7 +3764,6 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
         local playerCoords = ENTITY.GET_ENTITY_COORDS(playerPed, false)
         local playerHeading = ENTITY.GET_ENTITY_HEADING(playerPed)
         
-        M.debug_print("[JSON Spawn Debug] Player coords:", playerCoords.x, playerCoords.y, playerCoords.z)
         
         -- Calculate spawn position
         local spawnCoords = {}
@@ -3999,7 +3779,6 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
             spawnCoords.z = playerCoords.z
         end
         
-        M.debug_print("[JSON Spawn Debug] Spawn coords:", spawnCoords.x, spawnCoords.y, spawnCoords.z)
         
         -- Delete old vehicle if requested
         if spawnerSettings.deleteOldVehicle and not isPreview then
@@ -4015,7 +3794,6 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
             return
         end
         
-        M.debug_print("[JSON Spawn Debug] Vehicle model hash:", tostring(modelHash))
         
         -- Request and load model
         M.request_model_load(modelHash)
@@ -4034,9 +3812,7 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
             
             if spawnSuccess and spawnResult and spawnResult ~= 0 then
                 vehicleHandle = spawnResult
-                M.debug_print("[JSON Spawn Debug] Main vehicle spawned successfully with GTA.SpawnVehicleForPlayer:", vehicleHandle)
             else
-                M.debug_print("[JSON Spawn Debug] GTA.SpawnVehicleForPlayer failed")
             end
         end
         
@@ -4049,20 +3825,17 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
                 
                 if spawnSuccess and spawnResult and spawnResult ~= 0 then
                     vehicleHandle = spawnResult
-                    M.debug_print("[JSON Spawn Debug] Main vehicle spawned successfully with GTA.SpawnVehicle:", vehicleHandle)
                 end
             end
         end
         
         -- Final fallback to native if both Cherax APIs failed
         if not vehicleHandle or vehicleHandle == 0 then
-            M.debug_print("[JSON Spawn Debug] Cherax APIs failed, trying VEHICLE.CREATE_VEHICLE")
             local ok, h = pcall(function()
                 return VEHICLE.CREATE_VEHICLE(modelHash, spawnCoords.x, spawnCoords.y, spawnCoords.z, playerHeading, true, true)
             end)
             if ok and h and h ~= 0 then
                 vehicleHandle = h
-                M.debug_print("[JSON Spawn Debug] Main vehicle spawned successfully with VEHICLE.CREATE_VEHICLE:", vehicleHandle)
             end
         end
         
@@ -4072,30 +3845,38 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
             return
         end
         
-        M.debug_print("[JSON Spawn Debug] Vehicle spawned successfully, handle:", tostring(vehicleHandle))
         
-        -- Apply vehicle attributes from JSON
+        -- Apply vehicle attributes from JSON with comprehensive phasing
         if jsonData.vehicle_attributes then
             local attrs = jsonData.vehicle_attributes
             
-            -- Apply mods
+            -- Phase 1: Set vehicle as modifiable
+            pcall(function()
+                VEHICLE.SET_VEHICLE_MOD_KIT(vehicleHandle, 0)
+            end)
+            Script.Yield(50)
+            
+            -- Phase 2: Apply all mods (0-49)
             if attrs.mods then
-                M.debug_print("[JSON Spawn Debug] Applying mods...")
                 for modKey, modValue in pairs(attrs.mods) do
                     local modId = tonumber(modKey:match("_(%d+)"))
                     if modId then
                         if type(modValue) == "boolean" then
-                            pcall(function() VEHICLE.TOGGLE_VEHICLE_MOD(vehicleHandle, modId, modValue) end)
-                        elseif type(modValue) == "number" then
-                            pcall(function() VEHICLE.SET_VEHICLE_MOD(vehicleHandle, modId, modValue, false) end)
+                            pcall(function() 
+                                VEHICLE.TOGGLE_VEHICLE_MOD(vehicleHandle, modId, modValue)
+                            end)
+                        elseif type(modValue) == "number" and modValue ~= -1 then
+                            pcall(function() 
+                                VEHICLE.SET_VEHICLE_MOD(vehicleHandle, modId, modValue, false)
+                            end)
                         end
                     end
                 end
+                Script.Yield(50)
             end
             
-            -- Apply paint
+            -- Phase 3: Apply paint (colors, pearlescent, fade, dirt)
             if attrs.paint then
-                M.debug_print("[JSON Spawn Debug] Applying paint...")
                 local paint = attrs.paint
                 
                 -- Primary color
@@ -4110,6 +3891,14 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
                             VEHICLE.SET_VEHICLE_COLOURS(vehicleHandle, paint.primary.vehicle_standard_color, paint.secondary and paint.secondary.vehicle_standard_color or 0)
                         end)
                     end
+                    
+                    -- Pearlescent color (on primary)
+                    if paint.primary.pearlescent_color and paint.primary.pearlescent_color ~= -1 then
+                        pcall(function()
+                            local wheelColor = paint.extra_colors and paint.extra_colors.wheel or 0
+                            VEHICLE.SET_VEHICLE_EXTRA_COLOURS(vehicleHandle, paint.primary.pearlescent_color, wheelColor)
+                        end)
+                    end
                 end
                 
                 -- Secondary color
@@ -4120,27 +3909,217 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
                     end)
                 end
                 
-                -- Pearlescent
-                if paint.extra_colors and paint.extra_colors.pearlescent then
+                -- Extra colors (pearlescent and wheel)
+                if paint.extra_colors then
+                    if paint.extra_colors.pearlescent and paint.extra_colors.pearlescent ~= -1 then
+                        pcall(function()
+                            VEHICLE.SET_VEHICLE_EXTRA_COLOURS(vehicleHandle, paint.extra_colors.pearlescent, paint.extra_colors.wheel or 0)
+                        end)
+                    end
+                end
+                
+                -- Dirt level
+                if paint.dirt_level then
                     pcall(function()
-                        VEHICLE.SET_VEHICLE_EXTRA_COLOURS(vehicleHandle, paint.extra_colors.pearlescent, paint.extra_colors.wheel or 0)
+                        VEHICLE.SET_VEHICLE_DIRT_LEVEL(vehicleHandle, paint.dirt_level)
                     end)
                 end
+                
+                -- Fade
+                if paint.fade then
+                    -- Note: Fade is typically handled through paint type, not a direct native
+                end
+                
+                -- Dashboard and interior colors
+                if paint.dashboard_color and paint.dashboard_color ~= -1 then
+                    pcall(function()
+                        VEHICLE.SET_VEHICLE_DASHBOARD_COLOUR(vehicleHandle, paint.dashboard_color)
+                    end)
+                end
+                
+                if paint.interior_color and paint.interior_color ~= -1 then
+                    pcall(function()
+                        VEHICLE.SET_VEHICLE_INTERIOR_COLOUR(vehicleHandle, paint.interior_color)
+                    end)
+                end
+                
+                -- Livery
+                if paint.livery and paint.livery ~= -1 then
+                    pcall(function()
+                        VEHICLE.SET_VEHICLE_LIVERY(vehicleHandle, paint.livery)
+                    end)
+                end
+                
+                Script.Yield(50)
             end
             
-            -- Apply options
+            -- Phase 4: Apply neon lights
+            if attrs.neon then
+                if attrs.neon.lights then
+                    pcall(function()
+                        VEHICLE.SET_VEHICLE_NEON_ENABLED(vehicleHandle, 0, attrs.neon.lights.left or false)
+                        VEHICLE.SET_VEHICLE_NEON_ENABLED(vehicleHandle, 1, attrs.neon.lights.right or false)
+                        VEHICLE.SET_VEHICLE_NEON_ENABLED(vehicleHandle, 2, attrs.neon.lights.front or false)
+                        VEHICLE.SET_VEHICLE_NEON_ENABLED(vehicleHandle, 3, attrs.neon.lights.back or false)
+                    end)
+                end
+                
+                if attrs.neon.color then
+                    pcall(function()
+                        VEHICLE.SET_VEHICLE_NEON_COLOUR(vehicleHandle, attrs.neon.color.r or 0, attrs.neon.color.g or 0, attrs.neon.color.b or 0)
+                    end)
+                end
+                Script.Yield(50)
+            end
+            
+            -- Phase 5: Apply headlights
+            if attrs.headlights then
+                if attrs.headlights.headlights_color and attrs.headlights.headlights_color ~= -1 then
+                    pcall(function()
+                        VEHICLE.SET_VEHICLE_XENON_LIGHT_COLOR_INDEX(vehicleHandle, attrs.headlights.headlights_color)
+                    end)
+                end
+                
+                if attrs.headlights.headlights_type then
+                    pcall(function()
+                        VEHICLE.TOGGLE_VEHICLE_MOD(vehicleHandle, 22, attrs.headlights.headlights_type)
+                    end)
+                end
+                
+                Script.Yield(50)
+            end
+            
+            -- Phase 6: Apply wheels
+            if attrs.wheels then
+                if attrs.wheels.wheel_type then
+                    pcall(function()
+                        VEHICLE.SET_VEHICLE_WHEEL_TYPE(vehicleHandle, attrs.wheels.wheel_type)
+                    end)
+                end
+                
+                -- Tire smoke color
+                if attrs.wheels.tire_smoke_color then
+                    pcall(function()
+                        VEHICLE.SET_VEHICLE_TYRE_SMOKE_COLOR(vehicleHandle, 
+                            attrs.wheels.tire_smoke_color.r or 0, 
+                            attrs.wheels.tire_smoke_color.g or 0, 
+                            attrs.wheels.tire_smoke_color.b or 0)
+                    end)
+                end
+                
+                -- Burst tires
+                if attrs.wheels.tires_burst then
+                    for tireKey, isBurst in pairs(attrs.wheels.tires_burst) do
+                        if isBurst then
+                            local tireId = tonumber(tireKey:match("_(%d+)"))
+                            if tireId then
+                                pcall(function()
+                                    VEHICLE.SET_VEHICLE_TYRE_BURST(vehicleHandle, tireId, true, 1000.0)
+                                end)
+                            end
+                        end
+                    end
+                end
+                
+                Script.Yield(50)
+            end
+            
+            -- Phase 7: Apply extras
+            if attrs.extras then
+                for extraKey, isEnabled in pairs(attrs.extras) do
+                    local extraId = tonumber(extraKey:match("_(%d+)"))
+                    if extraId then
+                        pcall(function()
+                            VEHICLE.SET_VEHICLE_EXTRA(vehicleHandle, extraId, not isEnabled)
+                        end)
+                    end
+                end
+                Script.Yield(50)
+            end
+            
+            -- Phase 8: Apply doors
+            if attrs.doors then
+                -- Open doors
+                if attrs.doors.open then
+                    for doorName, isOpen in pairs(attrs.doors.open) do
+                        if isOpen then
+                            local doorId = ({
+                                frontleft = 0, frontright = 1,
+                                backleft = 2, backright = 3,
+                                hood = 4, trunk = 5, trunk2 = 6
+                            })[doorName]
+                            if doorId then
+                                pcall(function()
+                                    VEHICLE.SET_VEHICLE_DOOR_OPEN(vehicleHandle, doorId, false, false)
+                                end)
+                            end
+                        end
+                    end
+                end
+                
+                -- Broken doors
+                if attrs.doors.broken then
+                    for doorName, isBroken in pairs(attrs.doors.broken) do
+                        if isBroken then
+                            local doorId = ({
+                                frontleft = 0, frontright = 1,
+                                backleft = 2, backright = 3,
+                                hood = 4, trunk = 5, trunk2 = 6
+                            })[doorName]
+                            if doorId then
+                                pcall(function()
+                                    VEHICLE.SET_VEHICLE_DOOR_BROKEN(vehicleHandle, doorId, true)
+                                end)
+                            end
+                        end
+                    end
+                end
+                Script.Yield(50)
+            end
+            
+            -- Phase 9: Apply options
             if attrs.options then
-                M.debug_print("[JSON Spawn Debug] Applying options...")
                 local opts = attrs.options
                 
                 if opts.license_plate_text then
-                    pcall(function() VEHICLE.SET_VEHICLE_NUMBER_PLATE_TEXT(vehicleHandle, opts.license_plate_text) end)
+                    pcall(function() 
+                        VEHICLE.SET_VEHICLE_NUMBER_PLATE_TEXT(vehicleHandle, opts.license_plate_text)
+                    end)
                 end
                 
-                if opts.window_tint then
-                    pcall(function() VEHICLE.SET_VEHICLE_WINDOW_TINT(vehicleHandle, opts.window_tint) end)
+                if opts.license_plate_type and opts.license_plate_type ~= -1 then
+                    pcall(function() 
+                        VEHICLE.SET_VEHICLE_NUMBER_PLATE_TEXT_INDEX(vehicleHandle, opts.license_plate_type)
+                    end)
                 end
+                
+                if opts.window_tint and opts.window_tint ~= -1 then
+                    pcall(function() 
+                        VEHICLE.SET_VEHICLE_WINDOW_TINT(vehicleHandle, opts.window_tint)
+                    end)
+                end
+                
+                if opts.bulletproof_tires then
+                    pcall(function()
+                        VEHICLE.SET_VEHICLE_TYRES_CAN_BURST(vehicleHandle, false)
+                    end)
+                end
+                
+                if opts.engine_running ~= nil then
+                    pcall(function()
+                        VEHICLE.SET_VEHICLE_ENGINE_ON(vehicleHandle, opts.engine_running, true, false)
+                    end)
+                end
+                
+                if opts.siren then
+                    pcall(function()
+                        VEHICLE.SET_VEHICLE_HAS_MUTED_SIRENS(vehicleHandle, not opts.siren)
+                    end)
+                end
+                
+                Script.Yield(50)
             end
+            
         end
         
         -- Apply spawner settings
@@ -4149,21 +4128,18 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
                 ENTITY.SET_ENTITY_INVINCIBLE(vehicleHandle, true)
                 ENTITY.SET_ENTITY_PROOFS(vehicleHandle, true, true, true, true, true, true, true, true)
             end)
-            M.debug_print("[JSON Spawn Debug] Applied god mode to vehicle")
         end
         
         if spawnerSettings.vehicleEngineOn and not isPreview then
             pcall(function()
                 VEHICLE.SET_VEHICLE_ENGINE_ON(vehicleHandle, true, true, false)
             end)
-            M.debug_print("[JSON Spawn Debug] Turned vehicle engine on")
         end
         
         if spawnerSettings.radioOff and not isPreview then
             pcall(function()
                 VEHICLE.SET_VEHICLE_RADIO_ENABLED(vehicleHandle, false)
             end)
-            M.debug_print("[JSON Spawn Debug] Turned vehicle radio off")
         end
         
         -- Recursive function to spawn a child and its nested children
@@ -4171,20 +4147,16 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
             depth = depth or 0
             local indent = string.rep("  ", depth)
             
-            M.debug_print("[JSON Spawn Debug]" .. indent .. "Processing child type:", child.type)
             local childModel = child.hash or child.model
             if not childModel then
-                M.debug_print("[JSON Spawn Debug]" .. indent .. "No model found, skipping")
                 return nil
             end
             
-            M.debug_print("[JSON Spawn Debug]" .. indent .. "Child model:", tostring(childModel))
             M.request_model_load(childModel)
             Script.Yield(100)
             
             local childHandle
             if child.type == "VEHICLE" then
-                M.debug_print("[JSON Spawn Debug]" .. indent .. "Spawning as VEHICLE")
                 -- Use Cherax API for vehicle spawning
                 if GTA and GTA.SpawnVehicle then
                     local ok, h = pcall(function()
@@ -4192,11 +4164,14 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
                     end)
                     if ok and h and h ~= 0 then 
                         childHandle = h 
-                        M.debug_print("[JSON Spawn Debug]" .. indent .. "Child VEHICLE spawned successfully with GTA.SpawnVehicle:", h)
                         
-                        -- Apply vehicle attributes if present
+                        -- Apply comprehensive vehicle attributes if present
                         if child.vehicle_attributes then
                             local attrs = child.vehicle_attributes
+                            
+                            -- Set vehicle as modifiable
+                            pcall(function() VEHICLE.SET_VEHICLE_MOD_KIT(h, 0) end)
+                            Script.Yield(50)
                             
                             -- Apply mods
                             if attrs.mods then
@@ -4205,7 +4180,7 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
                                     if modId then
                                         if type(modValue) == "boolean" then
                                             pcall(function() VEHICLE.TOGGLE_VEHICLE_MOD(h, modId, modValue) end)
-                                        elseif type(modValue) == "number" then
+                                        elseif type(modValue) == "number" and modValue ~= -1 then
                                             pcall(function() VEHICLE.SET_VEHICLE_MOD(h, modId, modValue, false) end)
                                         end
                                     end
@@ -4214,22 +4189,161 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
                             
                             -- Apply paint
                             if attrs.paint then
-                                if attrs.paint.primary and attrs.paint.primary.is_custom and attrs.paint.primary.custom_color then
-                                    local c = attrs.paint.primary.custom_color
-                                    pcall(function() VEHICLE.SET_VEHICLE_CUSTOM_PRIMARY_COLOUR(h, c.r or 0, c.g or 0, c.b or 0) end)
+                                if attrs.paint.primary then
+                                    if attrs.paint.primary.is_custom and attrs.paint.primary.custom_color then
+                                        local c = attrs.paint.primary.custom_color
+                                        pcall(function() VEHICLE.SET_VEHICLE_CUSTOM_PRIMARY_COLOUR(h, c.r or 0, c.g or 0, c.b or 0) end)
+                                    elseif attrs.paint.primary.vehicle_standard_color then
+                                        pcall(function()
+                                            VEHICLE.SET_VEHICLE_COLOURS(h, attrs.paint.primary.vehicle_standard_color, attrs.paint.secondary and attrs.paint.secondary.vehicle_standard_color or 0)
+                                        end)
+                                    end
+                                    if attrs.paint.primary.pearlescent_color and attrs.paint.primary.pearlescent_color ~= -1 then
+                                        pcall(function()
+                                            local wheelColor = attrs.paint.extra_colors and attrs.paint.extra_colors.wheel or 0
+                                            VEHICLE.SET_VEHICLE_EXTRA_COLOURS(h, attrs.paint.primary.pearlescent_color, wheelColor)
+                                        end)
+                                    end
                                 end
                                 if attrs.paint.secondary and attrs.paint.secondary.is_custom and attrs.paint.secondary.custom_color then
                                     local c = attrs.paint.secondary.custom_color
                                     pcall(function() VEHICLE.SET_VEHICLE_CUSTOM_SECONDARY_COLOUR(h, c.r or 0, c.g or 0, c.b or 0) end)
                                 end
+                                if attrs.paint.extra_colors and attrs.paint.extra_colors.pearlescent and attrs.paint.extra_colors.pearlescent ~= -1 then
+                                    pcall(function()
+                                        VEHICLE.SET_VEHICLE_EXTRA_COLOURS(h, attrs.paint.extra_colors.pearlescent, attrs.paint.extra_colors.wheel or 0)
+                                    end)
+                                end
+                                if attrs.paint.dirt_level then
+                                    pcall(function() VEHICLE.SET_VEHICLE_DIRT_LEVEL(h, attrs.paint.dirt_level) end)
+                                end
+                                if attrs.paint.dashboard_color and attrs.paint.dashboard_color ~= -1 then
+                                    pcall(function() VEHICLE.SET_VEHICLE_DASHBOARD_COLOUR(h, attrs.paint.dashboard_color) end)
+                                end
+                                if attrs.paint.interior_color and attrs.paint.interior_color ~= -1 then
+                                    pcall(function() VEHICLE.SET_VEHICLE_INTERIOR_COLOUR(h, attrs.paint.interior_color) end)
+                                end
+                                if attrs.paint.livery and attrs.paint.livery ~= -1 then
+                                    pcall(function() VEHICLE.SET_VEHICLE_LIVERY(h, attrs.paint.livery) end)
+                                end
+                            end
+                            
+                            -- Apply neon
+                            if attrs.neon then
+                                if attrs.neon.lights then
+                                    pcall(function()
+                                        VEHICLE.SET_VEHICLE_NEON_ENABLED(h, 0, attrs.neon.lights.left or false)
+                                        VEHICLE.SET_VEHICLE_NEON_ENABLED(h, 1, attrs.neon.lights.right or false)
+                                        VEHICLE.SET_VEHICLE_NEON_ENABLED(h, 2, attrs.neon.lights.front or false)
+                                        VEHICLE.SET_VEHICLE_NEON_ENABLED(h, 3, attrs.neon.lights.back or false)
+                                    end)
+                                end
+                                if attrs.neon.color then
+                                    pcall(function()
+                                        VEHICLE.SET_VEHICLE_NEON_COLOUR(h, attrs.neon.color.r or 0, attrs.neon.color.g or 0, attrs.neon.color.b or 0)
+                                    end)
+                                end
+                            end
+                            
+                            -- Apply headlights
+                            if attrs.headlights then
+                                if attrs.headlights.headlights_color and attrs.headlights.headlights_color ~= -1 then
+                                    pcall(function() VEHICLE.SET_VEHICLE_XENON_LIGHT_COLOR_INDEX(h, attrs.headlights.headlights_color) end)
+                                end
+                                if attrs.headlights.headlights_type then
+                                    pcall(function() VEHICLE.TOGGLE_VEHICLE_MOD(h, 22, attrs.headlights.headlights_type) end)
+                                end
+                            end
+                            
+                            -- Apply wheels
+                            if attrs.wheels then
+                                if attrs.wheels.wheel_type then
+                                    pcall(function() VEHICLE.SET_VEHICLE_WHEEL_TYPE(h, attrs.wheels.wheel_type) end)
+                                end
+                                if attrs.wheels.tire_smoke_color then
+                                    pcall(function()
+                                        VEHICLE.SET_VEHICLE_TYRE_SMOKE_COLOR(h, 
+                                            attrs.wheels.tire_smoke_color.r or 0, 
+                                            attrs.wheels.tire_smoke_color.g or 0, 
+                                            attrs.wheels.tire_smoke_color.b or 0)
+                                    end)
+                                end
+                                if attrs.wheels.tires_burst then
+                                    for tireKey, isBurst in pairs(attrs.wheels.tires_burst) do
+                                        if isBurst then
+                                            local tireId = tonumber(tireKey:match("_(%d+)"))
+                                            if tireId then
+                                                pcall(function() VEHICLE.SET_VEHICLE_TYRE_BURST(h, tireId, true, 1000.0) end)
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                            
+                            -- Apply extras
+                            if attrs.extras then
+                                for extraKey, isEnabled in pairs(attrs.extras) do
+                                    local extraId = tonumber(extraKey:match("_(%d+)"))
+                                    if extraId then
+                                        pcall(function() VEHICLE.SET_VEHICLE_EXTRA(h, extraId, not isEnabled) end)
+                                    end
+                                end
+                            end
+                            
+                            -- Apply doors
+                            if attrs.doors then
+                                if attrs.doors.open then
+                                    for doorName, isOpen in pairs(attrs.doors.open) do
+                                        if isOpen then
+                                            local doorId = ({
+                                                frontleft = 0, frontright = 1,
+                                                backleft = 2, backright = 3,
+                                                hood = 4, trunk = 5, trunk2 = 6
+                                            })[doorName]
+                                            if doorId then
+                                                pcall(function() VEHICLE.SET_VEHICLE_DOOR_OPEN(h, doorId, false, false) end)
+                                            end
+                                        end
+                                    end
+                                end
+                                if attrs.doors.broken then
+                                    for doorName, isBroken in pairs(attrs.doors.broken) do
+                                        if isBroken then
+                                            local doorId = ({
+                                                frontleft = 0, frontright = 1,
+                                                backleft = 2, backright = 3,
+                                                hood = 4, trunk = 5, trunk2 = 6
+                                            })[doorName]
+                                            if doorId then
+                                                pcall(function() VEHICLE.SET_VEHICLE_DOOR_BROKEN(h, doorId, true) end)
+                                            end
+                                        end
+                                    end
+                                end
                             end
                             
                             -- Apply options
                             if attrs.options then
-                                if attrs.options.engine_running then
-                                    pcall(function() VEHICLE.SET_VEHICLE_ENGINE_ON(h, true, true, false) end)
+                                if attrs.options.license_plate_text then
+                                    pcall(function() VEHICLE.SET_VEHICLE_NUMBER_PLATE_TEXT(h, attrs.options.license_plate_text) end)
+                                end
+                                if attrs.options.license_plate_type and attrs.options.license_plate_type ~= -1 then
+                                    pcall(function() VEHICLE.SET_VEHICLE_NUMBER_PLATE_TEXT_INDEX(h, attrs.options.license_plate_type) end)
+                                end
+                                if attrs.options.window_tint and attrs.options.window_tint ~= -1 then
+                                    pcall(function() VEHICLE.SET_VEHICLE_WINDOW_TINT(h, attrs.options.window_tint) end)
+                                end
+                                if attrs.options.bulletproof_tires then
+                                    pcall(function() VEHICLE.SET_VEHICLE_TYRES_CAN_BURST(h, false) end)
+                                end
+                                if attrs.options.engine_running ~= nil then
+                                    pcall(function() VEHICLE.SET_VEHICLE_ENGINE_ON(h, attrs.options.engine_running, true, false) end)
+                                end
+                                if attrs.options.siren then
+                                    pcall(function() VEHICLE.SET_VEHICLE_HAS_MUTED_SIRENS(h, not attrs.options.siren) end)
                                 end
                             end
+                            
                         end
                     else
                         M.debug_print("[JSON Spawn Debug]" .. indent .. "Failed to spawn child VEHICLE with GTA.SpawnVehicle, ok:", ok, "handle:", tostring(h))
@@ -4243,13 +4357,11 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
                     end)
                     if ok and h and h ~= 0 then 
                         childHandle = h 
-                        M.debug_print("[JSON Spawn Debug]" .. indent .. "Child VEHICLE spawned successfully with VEHICLE.CREATE_VEHICLE:", h)
                     else
                         M.debug_print("[JSON Spawn Debug]" .. indent .. "Failed to spawn child VEHICLE, ok:", ok, "handle:", tostring(h))
                     end
                 end
             elseif child.type == "PED" then
-                M.debug_print("[JSON Spawn Debug]" .. indent .. "Spawning as PED")
                 -- Use Cherax API for ped spawning
                 if GTA and GTA.CreatePed then
                     local ok, h = pcall(function()
@@ -4257,7 +4369,6 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
                     end)
                     if ok and h and h ~= 0 then 
                         childHandle = h 
-                        M.debug_print("[JSON Spawn Debug]" .. indent .. "Child PED spawned successfully with GTA.CreatePed:", h)
                         
                         -- Apply ped attributes
                         if child.ped_attributes then
@@ -4275,7 +4386,6 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
                                     end
                                     if STREAMING.HAS_ANIM_DICT_LOADED(attrs.animation.dictionary) then
                                         TASK.TASK_PLAY_ANIM(h, attrs.animation.dictionary, attrs.animation.clip, 8.0, -8.0, -1, attrs.animation.loop and 1 or 0, 0, false, false, false)
-                                        M.debug_print("[JSON Spawn Debug]" .. indent .. "Applied animation:", attrs.animation.clip)
                                     end
                                 end)
                             end
@@ -4290,7 +4400,6 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
                                         end)
                                     end
                                 end
-                                M.debug_print("[JSON Spawn Debug]" .. indent .. "Applied ped components")
                             end
                             
                             -- Apply props (accessories)
@@ -4303,7 +4412,6 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
                                         end)
                                     end
                                 end
-                                M.debug_print("[JSON Spawn Debug]" .. indent .. "Applied ped props")
                             end
                             
                             -- Apply other ped settings
@@ -4327,14 +4435,12 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
                     end)
                     if ok and h and h ~= 0 then 
                         childHandle = h 
-                        M.debug_print("[JSON Spawn Debug]" .. indent .. "Child PED spawned successfully with PED.CREATE_PED:", h)
                     else
                         M.debug_print("[JSON Spawn Debug]" .. indent .. "Failed to spawn child PED, ok:", ok, "handle:", tostring(h))
                     end
                 end
             else
                 -- It's an object - try multiple methods
-                M.debug_print("[JSON Spawn Debug]" .. indent .. "Spawning as OBJECT")
                 
                 -- Try GTA.CreateObject first (preferred method)
                 if GTA and GTA.CreateObject then
@@ -4343,7 +4449,6 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
                     end)
                     if ok and h and h ~= 0 then
                         childHandle = h
-                        M.debug_print("[JSON Spawn Debug]" .. indent .. "Child OBJECT spawned successfully with GTA.CreateObject:", h)
                     end
                 end
                 
@@ -4355,7 +4460,6 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
                         end)
                         if ok and h and h ~= 0 then
                             childHandle = h
-                            M.debug_print("[JSON Spawn Debug]" .. indent .. "Child OBJECT spawned successfully with GTA.CreateWorldObject:", h)
                         end
                     end
                 end
@@ -4367,7 +4471,6 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
                     end)
                     if ok and h and h ~= 0 then
                         childHandle = h
-                        M.debug_print("[JSON Spawn Debug]" .. indent .. "Child OBJECT spawned successfully with OBJECT.CREATE_OBJECT:", h)
                     else
                         M.debug_print("[JSON Spawn Debug]" .. indent .. "Failed to spawn child OBJECT with all methods, ok:", ok, "handle:", tostring(h))
                     end
@@ -4375,7 +4478,6 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
             end
             
             if childHandle and childHandle ~= 0 then
-                M.debug_print("[JSON Spawn Debug]" .. indent .. "Child spawned, handle:", childHandle)
                 
                 -- Apply all options from JSON
                 if child.options then
@@ -4385,7 +4487,6 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
                     if opts.is_visible ~= nil then
                         pcall(function() 
                             ENTITY.SET_ENTITY_VISIBLE(childHandle, opts.is_visible, false) 
-                            M.debug_print("[JSON Spawn Debug]" .. indent .. "Visibility set to:", opts.is_visible)
                         end)
                     end
                     
@@ -4446,7 +4547,6 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
                 
                 -- Recursively spawn nested children
                 if child.children and #child.children > 0 then
-                    M.debug_print("[JSON Spawn Debug]" .. indent .. "Spawning", #child.children, "nested children...")
                     for j, nestedChild in ipairs(child.children) do
                         spawnJSONChild(nestedChild, childHandle, depth + 1, childEntities)
                     end
@@ -4461,10 +4561,8 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
         -- Spawn and attach children
         local childEntities = {}
         if jsonData.children and #jsonData.children > 0 then
-            M.debug_print("[JSON Spawn Debug] Spawning", #jsonData.children, "top-level children...")
             
             for i, child in ipairs(jsonData.children) do
-                M.debug_print("[JSON Spawn Debug] Processing top-level child", i)
                 spawnJSONChild(child, vehicleHandle, 0, childEntities)
             end
         end
@@ -4475,7 +4573,6 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
             pcall(function()
                 PED.SET_PED_INTO_VEHICLE(playerPed, vehicleHandle, -1)
             end)
-            M.debug_print("[JSON Spawn Debug] Placed player in vehicle")
         end
         
         -- Handle preview mode
@@ -4484,7 +4581,6 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
             for _, entity in ipairs(childEntities) do
                 table.insert(previewEntities, entity)
             end
-            M.debug_print("[JSON Spawn Debug] Added vehicle and", #childEntities, "children to preview entities")
         else
             -- Track spawned vehicle
             local vehicleRecord = {
@@ -4493,7 +4589,6 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
                 filePath = filePath
             }
             table.insert(spawnedVehicles, vehicleRecord)
-            M.debug_print("[JSON Spawn Debug] Tracked spawned vehicle and", #childEntities, "children")
             
             pcall(function()
                 local fileName = M.get_filename_from_path(filePath)
@@ -4512,7 +4607,6 @@ end
 -- JSON Map Spawning Function
 function M.spawnMapFromJSON(filePath, isPreview)
     Script.QueueJob(function()
-        M.debug_print("[JSON Map Spawn Debug] Starting JSON map spawn for file:", filePath, "Is Preview:", tostring(isPreview))
         
         if not FileMgr.DoesFileExist(filePath) then
             M.debug_print("[JSON Map Spawn Debug] Error: JSON file does not exist:", filePath)
@@ -4527,7 +4621,6 @@ function M.spawnMapFromJSON(filePath, isPreview)
             return
         end
         
-        M.debug_print("[JSON Map Spawn Debug] JSON content length:", string.len(jsonContent))
         
         -- Parse JSON using the same parser as vehicles
         local jsonData
@@ -4546,7 +4639,6 @@ function M.spawnMapFromJSON(filePath, isPreview)
                 end
             end)
             luaCode = "return " .. luaCode
-            M.debug_print("[JSON Map Spawn Debug] Attempting to parse JSON as Lua table...")
             local func, err = load(luaCode)
             if not func then
                 M.debug_print("[JSON Map Spawn Debug] Load error:", tostring(err))
@@ -4556,17 +4648,14 @@ function M.spawnMapFromJSON(filePath, isPreview)
         end)
         
         if not parseSuccess or not parseResult then
-            M.debug_print("[JSON Map Spawn Debug] Error parsing JSON:", tostring(parseResult))
             pcall(function() GUI.AddToast("Spawn Error", "Failed to parse JSON: " .. tostring(parseResult), 5000, 0) end)
             return
         end
         
         jsonData = parseResult
-        M.debug_print("[JSON Map Spawn Debug] JSON parsed successfully")
         
         -- Delete old map if requested
         if spawnerSettings.deleteOldMap and #spawnedMaps > 0 then
-            M.debug_print("[JSON Map Spawn Debug] Deleting old map before spawning new one")
             local lastMap = spawnedMaps[#spawnedMaps]
             if lastMap and lastMap.entities then
                 for _, entityHandle in ipairs(lastMap.entities) do
@@ -4588,7 +4677,6 @@ function M.spawnMapFromJSON(filePath, isPreview)
                 end
             end
             table.remove(spawnedMaps, #spawnedMaps)
-            M.debug_print("[JSON Map Spawn Debug] Old map deleted")
         end
         
         -- Get player position for reference
@@ -4605,25 +4693,21 @@ function M.spawnMapFromJSON(filePath, isPreview)
             refCoords.y = jsonData.position.y
             refCoords.z = jsonData.position.z
             shouldTeleport = spawnerSettings.teleportToMap
-            M.debug_print("[JSON Map Spawn Debug] Using map position (always_spawn_at_position):", refCoords.x, refCoords.y, refCoords.z)
         elseif jsonData.position and spawnerSettings.teleportToMap then
             -- Map has position and teleport is enabled - use map position
             refCoords.x = jsonData.position.x
             refCoords.y = jsonData.position.y
             refCoords.z = jsonData.position.z
             shouldTeleport = true
-            M.debug_print("[JSON Map Spawn Debug] Using map position (teleport enabled):", refCoords.x, refCoords.y, refCoords.z)
         else
             -- Use player position
             refCoords.x = playerCoords.x
             refCoords.y = playerCoords.y
             refCoords.z = playerCoords.z
-            M.debug_print("[JSON Map Spawn Debug] Using player position:", refCoords.x, refCoords.y, refCoords.z)
         end
         
         -- Teleport player if needed
         if shouldTeleport then
-            M.debug_print("[JSON Map Spawn Debug] Teleporting player to map position")
             pcall(function()
                 ENTITY.SET_ENTITY_COORDS(playerPed, refCoords.x, refCoords.y, refCoords.z, false, false, false, true)
             end)
@@ -4632,15 +4716,12 @@ function M.spawnMapFromJSON(filePath, isPreview)
         -- Recursive function to spawn children and their nested children
         local function spawnMapChild(child, parentHandle, depth, allEntities)
             local indent = string.rep("  ", depth)
-            M.debug_print("[JSON Map Spawn Debug]" .. indent .. "Processing child at depth", depth, "type:", child.type)
             
             local childModel = child.hash or child.model
             if not childModel then
-                M.debug_print("[JSON Map Spawn Debug]" .. indent .. "No model hash/model found, skipping")
                 return nil
             end
             
-            M.debug_print("[JSON Map Spawn Debug]" .. indent .. "Model:", tostring(childModel))
             M.request_model_load(childModel)
             Script.Yield(100)
             
@@ -4654,7 +4735,6 @@ function M.spawnMapFromJSON(filePath, isPreview)
                     y = child.position.y,
                     z = child.position.z
                 }
-                M.debug_print("[JSON Map Spawn Debug]" .. indent .. "Using child's absolute position:", spawnPos.x, spawnPos.y, spawnPos.z)
             elseif parentHandle and parentHandle ~= 0 then
                 -- If there's a parent and no absolute position, spawn at parent's position (will be attached with offset)
                 local parentCoords = ENTITY.GET_ENTITY_COORDS(parentHandle, false)
@@ -4663,7 +4743,6 @@ function M.spawnMapFromJSON(filePath, isPreview)
                     y = parentCoords.y,
                     z = parentCoords.z
                 }
-                M.debug_print("[JSON Map Spawn Debug]" .. indent .. "Using parent position for attachment")
             else
                 -- No parent and no position, use reference coords + offset
                 spawnPos = {
@@ -4671,12 +4750,10 @@ function M.spawnMapFromJSON(filePath, isPreview)
                     y = refCoords.y + (child.offset and child.offset.y or 0),
                     z = refCoords.z + (child.offset and child.offset.z or 0)
                 }
-                M.debug_print("[JSON Map Spawn Debug]" .. indent .. "Using reference coords + offset")
             end
             
             local entityHandle
             if child.type == "VEHICLE" then
-                M.debug_print("[JSON Map Spawn Debug]" .. indent .. "Spawning as VEHICLE")
                 local rotData = child.world_rotation or child.rotation
                 -- Use Cherax API for vehicle spawning
                 if GTA and GTA.SpawnVehicle then
@@ -4685,7 +4762,6 @@ function M.spawnMapFromJSON(filePath, isPreview)
                     end)
                     if ok and h and h ~= 0 then 
                         entityHandle = h 
-                        M.debug_print("[JSON Map Spawn Debug]" .. indent .. "VEHICLE spawned successfully with GTA.SpawnVehicle:", h)
                     end
                 end
                 
@@ -4696,11 +4772,9 @@ function M.spawnMapFromJSON(filePath, isPreview)
                     end)
                     if ok and h and h ~= 0 then 
                         entityHandle = h 
-                        M.debug_print("[JSON Map Spawn Debug]" .. indent .. "VEHICLE spawned successfully with VEHICLE.CREATE_VEHICLE:", h)
                     end
                 end
             elseif child.type == "PED" then
-                M.debug_print("[JSON Map Spawn Debug]" .. indent .. "Spawning as PED")
                 local rotData = child.world_rotation or child.rotation
                 -- Use Cherax API for ped spawning
                 if GTA and GTA.CreatePed then
@@ -4709,7 +4783,6 @@ function M.spawnMapFromJSON(filePath, isPreview)
                     end)
                     if ok and h and h ~= 0 then 
                         entityHandle = h 
-                        M.debug_print("[JSON Map Spawn Debug]" .. indent .. "PED spawned successfully with GTA.CreatePed:", h)
                         
                         -- Apply ped attributes
                         if child.ped_attributes then
@@ -4765,19 +4838,16 @@ function M.spawnMapFromJSON(filePath, isPreview)
                     end)
                     if ok and h and h ~= 0 then 
                         entityHandle = h 
-                        M.debug_print("[JSON Map Spawn Debug]" .. indent .. "PED spawned successfully with PED.CREATE_PED:", h)
                     end
                 end
             else
                 -- It's an object
-                M.debug_print("[JSON Map Spawn Debug]" .. indent .. "Spawning as OBJECT")
                 if GTA and GTA.CreateObject then
                     local ok, h = pcall(function()
                         return GTA.CreateObject(childModel, spawnPos.x, spawnPos.y, spawnPos.z, true, true)
                     end)
                     if ok and h and h ~= 0 then
                         entityHandle = h
-                        M.debug_print("[JSON Map Spawn Debug]" .. indent .. "OBJECT spawned with GTA.CreateObject:", h)
                     end
                 end
                 if not entityHandle or entityHandle == 0 then
@@ -4787,7 +4857,6 @@ function M.spawnMapFromJSON(filePath, isPreview)
                         end)
                         if ok and h and h ~= 0 then
                             entityHandle = h
-                            M.debug_print("[JSON Map Spawn Debug]" .. indent .. "OBJECT spawned with GTA.CreateWorldObject:", h)
                         end
                     end
                 end
@@ -4797,13 +4866,11 @@ function M.spawnMapFromJSON(filePath, isPreview)
                     end)
                     if ok and h and h ~= 0 then
                         entityHandle = h
-                        M.debug_print("[JSON Map Spawn Debug]" .. indent .. "OBJECT spawned with OBJECT.CREATE_OBJECT:", h)
                     end
                 end
             end
             
             if entityHandle and entityHandle ~= 0 then
-                M.debug_print("[JSON Map Spawn Debug]" .. indent .. "Entity spawned, handle:", entityHandle)
                 
                 -- Apply rotation (use world_rotation if available, otherwise rotation)
                 local rotData = child.world_rotation or child.rotation
@@ -4811,7 +4878,6 @@ function M.spawnMapFromJSON(filePath, isPreview)
                     pcall(function()
                         ENTITY.SET_ENTITY_ROTATION(entityHandle, rotData.x or 0, rotData.y or 0, rotData.z or 0, 2, true)
                     end)
-                    M.debug_print("[JSON Map Spawn Debug]" .. indent .. "Applied rotation:", rotData.x or 0, rotData.y or 0, rotData.z or 0)
                 end
                 
                 -- Apply options
@@ -4855,7 +4921,6 @@ function M.spawnMapFromJSON(filePath, isPreview)
                     -- Attach to parent if this child should be attached
                     if parentHandle and parentHandle ~= 0 and shouldAttach and child.offset then
                         local boneIndex = opts.bone_index or 0
-                        M.debug_print("[JSON Map Spawn Debug]" .. indent .. "Attaching with offset:", offsetX, offsetY, offsetZ)
                         pcall(function()
                             ENTITY.ATTACH_ENTITY_TO_ENTITY(
                                 entityHandle, parentHandle, boneIndex,
@@ -4868,7 +4933,6 @@ function M.spawnMapFromJSON(filePath, isPreview)
                         end)
                         M.debug_print("[JSON Map Spawn Debug]" .. indent .. "Attached to parent (bone:", boneIndex, ")")
                     else
-                        M.debug_print("[JSON Map Spawn Debug]" .. indent .. "Not attaching - spawned at absolute position")
                     end
                 end
                 
@@ -4876,7 +4940,6 @@ function M.spawnMapFromJSON(filePath, isPreview)
                 
                 -- Recursively spawn nested children
                 if child.children and #child.children > 0 then
-                    M.debug_print("[JSON Map Spawn Debug]" .. indent .. "Spawning", #child.children, "nested children...")
                     for j, nestedChild in ipairs(child.children) do
                         spawnMapChild(nestedChild, entityHandle, depth + 1, allEntities)
                     end
@@ -4894,7 +4957,6 @@ function M.spawnMapFromJSON(filePath, isPreview)
         local mainModel = jsonData.hash or jsonData.model
         
         if mainModel then
-            M.debug_print("[JSON Map Spawn Debug] Spawning main parent object, model:", tostring(mainModel))
             M.request_model_load(mainModel)
             Script.Yield(100)
             
@@ -4958,7 +5020,6 @@ function M.spawnMapFromJSON(filePath, isPreview)
             end
             
             if mainParentHandle and mainParentHandle ~= 0 then
-                M.debug_print("[JSON Map Spawn Debug] Main parent spawned successfully, handle:", mainParentHandle)
                 
                 -- Apply rotation to main parent (use world_rotation if available)
                 local mainRotData = jsonData.world_rotation or jsonData.rotation
@@ -5002,15 +5063,12 @@ function M.spawnMapFromJSON(filePath, isPreview)
         end
         
         if jsonData.children and #jsonData.children > 0 then
-            M.debug_print("[JSON Map Spawn Debug] Spawning", #jsonData.children, "children...")
             
             for i, child in ipairs(jsonData.children) do
-                M.debug_print("[JSON Map Spawn Debug] Processing child", i)
                 spawnMapChild(child, mainParentHandle, 1, spawnedEntities)
             end
         end
         
-        M.debug_print("[JSON Map Spawn Debug] Successfully spawned", #spawnedEntities, "entities")
         
         -- Track spawned map
         local mapRecord = {
@@ -5035,7 +5093,6 @@ function M.spawnOutfitFromJSON(filePath, isPreview)
     
     Script.QueueJob(function()
         print("[JSON Outfit] Inside Script.QueueJob")
-        M.debug_print("[JSON Outfit Spawn Debug] Starting JSON outfit spawn for file:", filePath, "Is Preview:", tostring(isPreview))
         
         if not FileMgr.DoesFileExist(filePath) then
             print("[JSON Outfit] Error: File does not exist:", filePath)
@@ -5044,7 +5101,6 @@ function M.spawnOutfitFromJSON(filePath, isPreview)
             return
         end
         
-        M.debug_print("[JSON Outfit] File exists, reading content...")
         local jsonContent = FileMgr.ReadFileContent(filePath)
         if not jsonContent or jsonContent == "" then
             M.debug_print("[JSON Outfit] Error: Failed to read file or content empty")
@@ -5053,11 +5109,8 @@ function M.spawnOutfitFromJSON(filePath, isPreview)
             return
         end
         
-        M.debug_print("[JSON Outfit] Content read successfully, length:", string.len(jsonContent))
-        M.debug_print("[JSON Outfit Spawn Debug] JSON content length:", string.len(jsonContent))
         
         -- Parse JSON using the same parser
-        M.debug_print("[JSON Outfit] Attempting to parse JSON...")
         local jsonData
         local parseSuccess, parseResult = pcall(function()
             local luaCode = jsonContent
@@ -5082,18 +5135,13 @@ function M.spawnOutfitFromJSON(filePath, isPreview)
         end)
         
         if not parseSuccess or not parseResult then
-            M.debug_print("[JSON Outfit] Parse failed:", tostring(parseResult))
-            M.debug_print("[JSON Outfit Spawn Debug] Error parsing JSON:", tostring(parseResult))
             pcall(function() GUI.AddToast("Spawn Error", "Failed to parse JSON: " .. tostring(parseResult), 5000, 0) end)
             return
         end
         
         jsonData = parseResult
-        M.debug_print("[JSON Outfit] Parse successful!")
-        M.debug_print("[JSON Outfit Spawn Debug] JSON parsed successfully")
         
         -- Check if it's a ped outfit
-        M.debug_print("[JSON Outfit] Checking type, got:", tostring(jsonData.type))
         if jsonData.type ~= "PED" then
             M.debug_print("[JSON Outfit] Error: Not a PED type")
             M.debug_print("[JSON Outfit Spawn Debug] Error: JSON is not a PED type, got:", tostring(jsonData.type))
@@ -5103,23 +5151,19 @@ function M.spawnOutfitFromJSON(filePath, isPreview)
         
         -- Check is_player flag FIRST before validating model hash
         local isAttachToPlayer = (jsonData.is_player == false)  -- When is_player is false, attach directly to player
-        M.debug_print("[JSON Outfit] is_player:", tostring(jsonData.is_player), "isAttachToPlayer:", tostring(isAttachToPlayer))
         
         -- Only validate model hash if we need to spawn a new ped (is_player is true or nil)
         local modelHash = jsonData.hash or jsonData.model
         if not isAttachToPlayer then
-            M.debug_print("[JSON Outfit] Model hash:", tostring(modelHash))
             if not modelHash or modelHash == 0 then
                 M.debug_print("[JSON Outfit] Error: Invalid model hash")
                 M.debug_print("[JSON Outfit Spawn Debug] Error: Invalid model hash")
                 return
             end
         else
-            M.debug_print("[JSON Outfit] is_player is false - skipping model hash validation (attaching to player)")
         end
         
         -- Get player position and heading
-        M.debug_print("[JSON Outfit] Getting player position...")
         local playerPed = GTA.GetLocalPed()
         if not playerPed then
             M.debug_print("[JSON Outfit] Error: Player ped not found")
@@ -5134,7 +5178,6 @@ function M.spawnOutfitFromJSON(filePath, isPreview)
             return
         end
         
-        M.debug_print("[JSON Outfit] Player handle:", playerHandle)
         local pcoords = ENTITY.GET_ENTITY_COORDS(playerHandle, false)
         local heading = (playerPed.Heading or 0.0)
         
@@ -5154,11 +5197,9 @@ function M.spawnOutfitFromJSON(filePath, isPreview)
             spawnCoords = { x = pcoords.x, y = pcoords.y, z = pcoords.z }
         end
         
-        M.debug_print("[JSON Outfit] Spawn coords:", spawnCoords.x, spawnCoords.y, spawnCoords.z)
         
         -- Delete last outfit attachments if toggle is enabled
         if spawnerSettings.deleteLastOutfitAttachments and #spawnedOutfits > 0 then
-            M.debug_print("[JSON Outfit] Deleting last outfit attachments...")
             local lastOutfit = spawnedOutfits[#spawnedOutfits]
             if lastOutfit and lastOutfit.attachments then
                 for _, attachmentHandle in ipairs(lastOutfit.attachments) do
@@ -5180,7 +5221,6 @@ function M.spawnOutfitFromJSON(filePath, isPreview)
                 end
             end
             table.remove(spawnedOutfits, #spawnedOutfits)
-            M.debug_print("[JSON Outfit] Last outfit attachments deleted")
         end
         
         
@@ -5193,20 +5233,14 @@ function M.spawnOutfitFromJSON(filePath, isPreview)
         if spawnerSettings.onlyApplyAttachments or isAttachToPlayer then
             -- Attach directly to player ped (no new ped spawned)
             if spawnerSettings.onlyApplyAttachments then
-                M.debug_print("[JSON Outfit] onlyApplyAttachments is enabled - attaching objects directly to player")
-                M.debug_print("[JSON Outfit Spawn Debug] onlyApplyAttachments is enabled - attaching objects directly to player")
             else
-                M.debug_print("[JSON Outfit] is_player is false - attaching objects directly to player")
-                M.debug_print("[JSON Outfit Spawn Debug] is_player is false - attaching objects directly to player")
             end
             targetPed = playerHandle
         else
             -- Spawn a new ped (is_player is true or nil, and onlyApplyAttachments is false)
-            M.debug_print("[JSON Outfit] Requesting model load...")
             M.request_model_load(modelHash)
             Script.Yield(200)
             
-            M.debug_print("[JSON Outfit] Creating ped...")
             -- Use Cherax API for ped spawning
             if GTA and GTA.CreatePed then
                 local ok, h = pcall(function()
@@ -5234,21 +5268,16 @@ function M.spawnOutfitFromJSON(filePath, isPreview)
             end
             
             targetPed = spawnedPed
-            M.debug_print("[JSON Outfit] Spawned ped handle:", spawnedPed)
-            M.debug_print("[JSON Outfit Spawn Debug] Spawned ped handle:", spawnedPed)
         end
 
         
         -- Apply ped attributes (components, props, armor, weapon) to the target ped
         -- ONLY if not in onlyApplyAttachments mode
         if jsonData.ped_attributes and not spawnerSettings.onlyApplyAttachments then
-            M.debug_print("[JSON Outfit] Applying ped attributes to target ped:", targetPed)
-            M.debug_print("[JSON Outfit Spawn Debug] Applying ped attributes")
             local attrs = jsonData.ped_attributes
             
             -- Apply components (clothing)
             if attrs.components then
-                M.debug_print("[JSON Outfit] Applying components...")
                 for compKey, compData in pairs(attrs.components) do
                     local compId = tonumber(compKey:match("_(%d+)"))
                     if compId and compData.drawable_variation then
@@ -5260,7 +5289,6 @@ function M.spawnOutfitFromJSON(filePath, isPreview)
                                 compData.texture_variation or 0, 
                                 compData.palette_variation or 0
                             )
-                            M.debug_print("[JSON Outfit] Set component", compId, "to drawable:", compData.drawable_variation, "texture:", compData.texture_variation or 0)
                         end)
                     end
                 end
@@ -5268,7 +5296,6 @@ function M.spawnOutfitFromJSON(filePath, isPreview)
             
             -- Apply props (accessories like hats, glasses, etc.)
             if attrs.props then
-                M.debug_print("[JSON Outfit] Applying props...")
                 for propKey, propData in pairs(attrs.props) do
                     local propId = tonumber(propKey:match("_(%d+)"))
                     if propId then
@@ -5281,13 +5308,11 @@ function M.spawnOutfitFromJSON(filePath, isPreview)
                                     propData.texture_variation or 0, 
                                     true
                                 )
-                                M.debug_print("[JSON Outfit] Set prop", propId, "to drawable:", propData.drawable_variation, "texture:", propData.texture_variation or 0)
                             end)
                         else
                             -- Clear the prop if drawable_variation is -1
                             pcall(function()
                                 PED.CLEAR_PED_PROP(targetPed, propId)
-                                M.debug_print("[JSON Outfit] Cleared prop", propId)
                             end)
                         end
                     end
@@ -5298,23 +5323,19 @@ function M.spawnOutfitFromJSON(filePath, isPreview)
             if attrs.armor then
                 pcall(function()
                     PED.SET_PED_ARMOUR(targetPed, attrs.armor)
-                    M.debug_print("[JSON Outfit] Set armor to", attrs.armor)
                 end)
             end
             
             -- Apply weapon
             if attrs.weapon and attrs.weapon.model then
-                M.debug_print("[JSON Outfit] Applying weapon...")
                 local weaponModel = attrs.weapon.model
                 local weaponHash
                 
                 -- Convert weapon model to hash if it's a string
                 if type(weaponModel) == "string" then
                     weaponHash = MISC.GET_HASH_KEY(weaponModel)
-                    M.debug_print("[JSON Outfit] Weapon model string:", weaponModel, "converted to hash:", weaponHash)
                 else
                     weaponHash = weaponModel
-                    M.debug_print("[JSON Outfit] Weapon hash:", weaponHash)
                 end
                 
                 -- Phase the weapon model
@@ -5324,24 +5345,17 @@ function M.spawnOutfitFromJSON(filePath, isPreview)
                 -- Give weapon to ped and force equip it
                 pcall(function()
                     WEAPON.GIVE_WEAPON_TO_PED(targetPed, weaponHash, 9999, false, true)
-                    M.debug_print("[JSON Outfit] Gave weapon", weaponModel, "to ped and equipped it")
-                    M.debug_print("[JSON Outfit Spawn Debug] Gave weapon", weaponModel, "to ped")
                 end)
             end
             
-            M.debug_print("[JSON Outfit] Ped attributes applied successfully")
-            M.debug_print("[JSON Outfit Spawn Debug] Ped attributes applied successfully")
         end
         
         -- Change player to the spawned ped if we spawned a new one
         if spawnedPed and not isAttachToPlayer then
-            M.debug_print("[JSON Outfit] Changing player to spawned ped...")
             pcall(function()
                 local playerID = PLAYER.PLAYER_ID()
                 if playerID and playerID >= 0 then
                     PLAYER.CHANGE_PLAYER_PED(playerID, spawnedPed, true, false)
-                    M.debug_print("[JSON Outfit] Player changed to spawned ped successfully")
-                    M.debug_print("[JSON Outfit Spawn Debug] Player changed to spawned ped")
                 end
             end)
         end
@@ -5385,8 +5399,6 @@ function M.spawnOutfitFromJSON(filePath, isPreview)
                     
                     if objectHandle and objectHandle ~= 0 then
                         local childName = child.name or child.model or tostring(childModel)
-                        M.debug_print("[JSON Outfit] Child", i, "(", childName, ") spawned, handle:", objectHandle)
-                        M.debug_print("[JSON Outfit Spawn Debug] Child", i, "(", childName, ") spawned, handle:", objectHandle)
                         
                         -- Apply options
                         if child.options then
@@ -5423,7 +5435,6 @@ function M.spawnOutfitFromJSON(filePath, isPreview)
                         
                         -- Recursively spawn and attach nested children to THIS object
                         if child.children and type(child.children) == "table" and #child.children > 0 then
-                            M.debug_print("[JSON Outfit] Processing nested children for", childName)
                             spawnAndAttachChildren(child.children, objectHandle, childName)
                         end
                     else
@@ -5440,8 +5451,6 @@ function M.spawnOutfitFromJSON(filePath, isPreview)
             spawnAndAttachChildren(jsonData.children, targetPed, parentName)
         end
         
-        M.debug_print("[JSON Outfit] Total attachments spawned:", #attachedObjects)
-        M.debug_print("[JSON Outfit Spawn Debug] Spawned", #attachedObjects, "attachments")
         
         -- Handle preview vs actual spawn
         if isPreview then
@@ -5451,8 +5460,6 @@ function M.spawnOutfitFromJSON(filePath, isPreview)
             for _, obj in ipairs(attachedObjects) do
                 table.insert(previewEntities, obj)
             end
-            M.debug_print("[JSON Outfit] Added to preview entities")
-            M.debug_print("[JSON Outfit Spawn Debug] Added to preview entities")
         else
             -- Track spawned outfit
             local outfitRecord = {
@@ -5463,14 +5470,12 @@ function M.spawnOutfitFromJSON(filePath, isPreview)
             }
             table.insert(spawnedOutfits, outfitRecord)
             
-            M.debug_print("[JSON Outfit] Spawn complete!")
             pcall(function()
                 local fileName = M.get_filename_from_path(filePath)
                 local msg = isAttachToPlayer 
                     and ("Attached " .. #attachedObjects .. " object" .. (#attachedObjects == 1 and "" or "s") .. " to player")
                     or ("Spawned " .. fileName .. " with " .. #attachedObjects .. " attachment" .. (#attachedObjects == 1 and "" or "s"))
                 GUI.AddToast("Outfit Spawned", msg, 5000, 0)
-                M.debug_print("Outfit Spawned", msg)
             end)
         end
     end)
