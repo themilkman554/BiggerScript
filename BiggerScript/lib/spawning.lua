@@ -594,6 +594,14 @@ end
 function M.parse_ini_file(filePath)
     local iniContent = FileMgr.ReadFileContent(filePath)
     if not iniContent then return nil end
+    
+    -- Strip BOM (Byte Order Mark) if present
+    -- UTF-8 BOM is the byte sequence EF BB BF (or the character U+FEFF)
+    if iniContent:sub(1, 3) == "\239\187\191" then
+        iniContent = iniContent:sub(4)
+        M.debug_print("[Parse INI Debug] Stripped UTF-8 BOM from file")
+    end
+    
     local data = {}
     local currentSection = nil
     for line in iniContent:gmatch("[^\r\n]+") do
@@ -715,8 +723,8 @@ end
 function M.parse_ini_attachments(iniData, mainVehicleSelfNumeration)
     local attachments = {}
     for sectionName, attachmentSection in pairs(iniData) do
-        if M.safe_tonumber(sectionName) ~= nil or sectionName:match("^Attached Object %d+$") or sectionName:match("^Vehicle%d+$") then
-            if sectionName == "Vehicle0" then goto continue end
+        if M.safe_tonumber(sectionName) ~= nil or sectionName:match("^Attached Object %d+$") or sectionName:match("^Vehicle%d+$") or sectionName:match("^Object%d+$") then
+            if sectionName == "Vehicle0" or sectionName == "Object0" then goto continue end
             M.debug_print("[Parse INI Debug] Processing attachment section:", sectionName, "Content:", tostring(attachmentSection))
             local att = {}
             att.ModelHash = M.safe_tonumber(attachmentSection.Hash or attachmentSection.model or attachmentSection.Model, nil)
@@ -724,12 +732,12 @@ function M.parse_ini_attachments(iniData, mainVehicleSelfNumeration)
             att.Type = "3"
             att.InitialHandle = M.safe_tonumber(attachmentSection.SelfNumeration, nil)
             att.PositionRotation = {
-                X = M.safe_tonumber(attachmentSection["x offset"] or attachmentSection.X or attachmentSection.x, 0.0),
-                Y = M.safe_tonumber(attachmentSection["y offset"] or attachmentSection.Y or attachmentSection.y, 0.0),
-                Z = M.safe_tonumber(attachmentSection["z offset"] or attachmentSection.Z or attachmentSection.z, 0.0),
-                Pitch = M.safe_tonumber(attachmentSection.pitch or attachmentSection.RotX or attachmentSection.rotX, 0.0),
-                Roll = M.safe_tonumber(attachmentSection.roll or attachmentSection.RotY or attachmentSection.rotY, 0.0),
-                Yaw = M.safe_tonumber(attachmentSection.yaw or attachmentSection.RotZ or attachmentSection.rotZ, 0.0)
+                X = M.safe_tonumber(attachmentSection.OffsetX or attachmentSection["x offset"] or attachmentSection.X or attachmentSection.x, 0.0),
+                Y = M.safe_tonumber(attachmentSection.OffsetY or attachmentSection["y offset"] or attachmentSection.Y or attachmentSection.y, 0.0),
+                Z = M.safe_tonumber(attachmentSection.OffsetZ or attachmentSection["z offset"] or attachmentSection.Z or attachmentSection.z, 0.0),
+                Pitch = M.safe_tonumber(attachmentSection.Pitch or attachmentSection.pitch or attachmentSection.RotX or attachmentSection.rotX, 0.0),
+                Roll = M.safe_tonumber(attachmentSection.Roll or attachmentSection.roll or attachmentSection.RotY or attachmentSection.rotY, 0.0),
+                Yaw = M.safe_tonumber(attachmentSection.Yaw or attachmentSection.yaw or attachmentSection.RotZ or attachmentSection.rotZ, 0.0)
             }
             local attachedToWhat = attachmentSection.AttachedToWhat or attachmentSection.AttachedToWhat
             local attachNumeration = M.safe_tonumber(attachmentSection.AttachNumeration, nil)
@@ -756,6 +764,163 @@ function M.parse_ini_attachments(iniData, mainVehicleSelfNumeration)
             end
             att.IsCollisionProof = M.to_boolean(attachmentSection.collision or attachmentSection.Collision)
             att.FrozenPos = M.to_boolean(attachmentSection.froozen or attachmentSection.frozen or attachmentSection.Froozen or attachmentSection.Frozen)
+            
+            -- Parse vehicle-specific properties if this is a vehicle attachment
+            if sectionName:match("^Vehicle%d+$") then
+                att.Type = "2" -- Vehicle type
+                M.debug_print("[Parse INI Debug] Detected vehicle attachment:", sectionName)
+                
+                -- Parse vehicle mods
+                local modsSection = iniData[sectionName .. "Mods"]
+                if modsSection then
+                    att.VehicleMods = {}
+                    for key, value in pairs(modsSection) do
+                        if key:match("^M%d+$") then
+                            local modId = M.safe_tonumber(key:sub(2), nil)
+                            local modValue = M.safe_tonumber(value, -1)
+                            if modId and modValue >= -1 then
+                                att.VehicleMods[modId] = modValue
+                            end
+                        end
+                    end
+                end
+                
+                -- Parse vehicle toggles
+                local togglesSection = iniData[sectionName .. "Toggles"]
+                if togglesSection then
+                    att.VehicleToggles = {}
+                    for key, value in pairs(togglesSection) do
+                        if key:match("^T%d+$") then
+                            local toggleId = M.safe_tonumber(key:sub(2), nil)
+                            if toggleId then
+                                att.VehicleToggles[toggleId] = M.to_boolean(value)
+                            end
+                        end
+                    end
+                end
+                
+                -- Parse vehicle extras
+                local extrasSection = iniData[sectionName .. "Extras"]
+                if extrasSection then
+                    att.VehicleExtras = {}
+                    for key, value in pairs(extrasSection) do
+                        if key:match("^E%d+$") then
+                            local extraId = M.safe_tonumber(key:sub(2), nil)
+                            if extraId then
+                                att.VehicleExtras[extraId] = M.to_boolean(value)
+                            end
+                        end
+                    end
+                end
+                
+                -- Parse vehicle colors
+                local colorsSection = iniData[sectionName .. "VehicleColors"]
+                if colorsSection then
+                    att.VehicleColors = {
+                        Primary = M.safe_tonumber(colorsSection.Primary, nil),
+                        Secondary = M.safe_tonumber(colorsSection.Secondary, nil)
+                    }
+                end
+                
+                -- Parse extra colors (pearlescent, wheel)
+                local extraColorsSection = iniData[sectionName .. "ExtraColors"]
+                if extraColorsSection then
+                    att.ExtraColors = {
+                        Pearl = M.safe_tonumber(extraColorsSection.Pearl, nil),
+                        Wheel = M.safe_tonumber(extraColorsSection.Wheel, nil)
+                    }
+                end
+                
+                -- Parse custom primary color
+                local customPrimarySection = iniData[sectionName .. "CustomPrimaryColor"]
+                if customPrimarySection then
+                    att.CustomPrimaryColor = {
+                        R = M.safe_tonumber(customPrimarySection.R, 0),
+                        G = M.safe_tonumber(customPrimarySection.G, 0),
+                        B = M.safe_tonumber(customPrimarySection.B, 0)
+                    }
+                end
+                
+                -- Parse custom secondary color
+                local customSecondarySection = iniData[sectionName .. "CustomSecondaryColor"]
+                if customSecondarySection then
+                    att.CustomSecondaryColor = {
+                        R = M.safe_tonumber(customSecondarySection.R, 0),
+                        G = M.safe_tonumber(customSecondarySection.G, 0),
+                        B = M.safe_tonumber(customSecondarySection.B, 0)
+                    }
+                end
+                
+                -- Parse neon settings
+                local neonSection = iniData[sectionName .. "Neon"]
+                if neonSection then
+                    att.Neons = {
+                        Enabled0 = M.to_boolean(neonSection.Enabled0),
+                        Enabled1 = M.to_boolean(neonSection.Enabled1),
+                        Enabled2 = M.to_boolean(neonSection.Enabled2),
+                        Enabled3 = M.to_boolean(neonSection.Enabled3)
+                    }
+                end
+                
+                -- Parse neon color
+                local neonColorSection = iniData[sectionName .. "NeonColor"]
+                if neonColorSection then
+                    att.NeonColor = {
+                        R = M.safe_tonumber(neonColorSection.R, 255),
+                        G = M.safe_tonumber(neonColorSection.G, 255),
+                        B = M.safe_tonumber(neonColorSection.B, 255)
+                    }
+                end
+                
+                -- Parse tire smoke color
+                local tireSmokeSection = iniData[sectionName .. "TireSmoke"]
+                if tireSmokeSection then
+                    att.TireSmoke = {
+                        R = M.safe_tonumber(tireSmokeSection.R, 255),
+                        G = M.safe_tonumber(tireSmokeSection.G, 255),
+                        B = M.safe_tonumber(tireSmokeSection.B, 255)
+                    }
+                end
+                
+                -- Parse wheel type
+                local wheelTypeSection = iniData[sectionName .. "WheelType"]
+                if wheelTypeSection then
+                    att.WheelType = M.safe_tonumber(wheelTypeSection.Index, nil)
+                end
+                
+                -- Parse numberplate
+                local numberplateSection = iniData[sectionName .. "Numberplate"]
+                if numberplateSection then
+                    att.Numberplate = {
+                        Text = numberplateSection.Text,
+                        Index = M.safe_tonumber(numberplateSection.Index, 0)
+                    }
+                end
+                
+                -- Parse window tint
+                local windowTintSection = iniData[sectionName .. "WindowTint"]
+                if windowTintSection then
+                    att.WindowTint = M.safe_tonumber(windowTintSection.Index, nil)
+                end
+                
+                -- Parse paint fade
+                local paintFadeSection = iniData[sectionName .. "PaintFade"]
+                if paintFadeSection then
+                    att.PaintFade = M.safe_tonumber(paintFadeSection.PaintFade, nil)
+                end
+                
+                -- Parse custom primary/secondary flags
+                local isCustomPrimarySection = iniData[sectionName .. "IsCustomPrimary"]
+                if isCustomPrimarySection then
+                    att.IsCustomPrimary = M.to_boolean(isCustomPrimarySection.bool)
+                end
+                
+                local isCustomSecondarySection = iniData[sectionName .. "IsCustomSecondary"]
+                if isCustomSecondarySection then
+                    att.IsCustomSecondary = M.to_boolean(isCustomSecondarySection.bool)
+                end
+            end
+            
             table.insert(attachments, att)
         end
         ::continue::
@@ -1174,6 +1339,115 @@ M.debug_print("[Spawn Debug] Attachment", i, "XML IsCollisionProof value:", tost
             end
             
             M.debug_print("[Spawn Debug] Applied vehicle properties for attachment", i)
+        end
+        
+        -- Apply INI vehicle properties if this is a vehicle attachment from INI
+        if att.VehicleMods or att.VehicleToggles or att.VehicleColors or att.Neons then
+            M.debug_print("[Spawn Debug] Applying INI vehicle properties for attachment", i)
+            
+            -- Set mod kit first
+            M.try_call(VEHICLE, "SET_VEHICLE_MOD_KIT", h, 0)
+            
+            -- Apply vehicle mods
+            if att.VehicleMods then
+                for modId, modValue in pairs(att.VehicleMods) do
+                    if modValue >= -1 then
+                        M.try_call(VEHICLE, "SET_VEHICLE_MOD", h, modId, modValue, false)
+                        M.debug_print("[Spawn Debug] Applied mod", modId, "=", modValue, "to attachment", i)
+                    end
+                end
+            end
+            
+            -- Apply vehicle toggles
+            if att.VehicleToggles then
+                for toggleId, toggleValue in pairs(att.VehicleToggles) do
+                    M.try_call(VEHICLE, "SET_VEHICLE_TOGGLE_MOD", h, toggleId, toggleValue)
+                end
+            end
+            
+            -- Apply vehicle extras
+            if att.VehicleExtras then
+                for extraId, extraEnabled in pairs(att.VehicleExtras) do
+                    M.try_call(VEHICLE, "SET_VEHICLE_EXTRA", h, extraId, not extraEnabled)
+                end
+            end
+            
+            -- Apply standard vehicle colors
+            if att.VehicleColors then
+                if att.VehicleColors.Primary or att.VehicleColors.Secondary then
+                    M.try_call(VEHICLE, "SET_VEHICLE_COLOURS", h, att.VehicleColors.Primary or 0, att.VehicleColors.Secondary or 0)
+                end
+            end
+            
+            -- Apply custom colors
+            if att.IsCustomPrimary and att.CustomPrimaryColor then
+                M.try_call(VEHICLE, "SET_VEHICLE_CUSTOM_PRIMARY_COLOUR", h, 
+                    att.CustomPrimaryColor.R, att.CustomPrimaryColor.G, att.CustomPrimaryColor.B)
+            end
+            
+            if att.IsCustomSecondary and att.CustomSecondaryColor then
+                M.try_call(VEHICLE, "SET_VEHICLE_CUSTOM_SECONDARY_COLOUR", h, 
+                    att.CustomSecondaryColor.R, att.CustomSecondaryColor.G, att.CustomSecondaryColor.B)
+            end
+            
+            -- Apply extra colors (pearlescent, wheel)
+            if att.ExtraColors then
+                if att.ExtraColors.Pearl or att.ExtraColors.Wheel then
+                    M.try_call(VEHICLE, "SET_VEHICLE_EXTRA_COLOURS", h, 
+                        att.ExtraColors.Pearl or 0, att.ExtraColors.Wheel or 0)
+                end
+            end
+            
+            -- Apply neon lights
+            if att.Neons then
+                M.try_call(VEHICLE, "_SET_VEHICLE_NEON_LIGHT_ENABLED", h, 0, att.Neons.Enabled0 or false)
+                M.try_call(VEHICLE, "_SET_VEHICLE_NEON_LIGHT_ENABLED", h, 1, att.Neons.Enabled1 or false)
+                M.try_call(VEHICLE, "_SET_VEHICLE_NEON_LIGHT_ENABLED", h, 2, att.Neons.Enabled2 or false)
+                M.try_call(VEHICLE, "_SET_VEHICLE_NEON_LIGHT_ENABLED", h, 3, att.Neons.Enabled3 or false)
+                M.try_call(VEHICLE, "SET_VEHICLE_NEON_LIGHT_ENABLED", h, 0, att.Neons.Enabled0 or false)
+                M.try_call(VEHICLE, "SET_VEHICLE_NEON_LIGHT_ENABLED", h, 1, att.Neons.Enabled1 or false)
+                M.try_call(VEHICLE, "SET_VEHICLE_NEON_LIGHT_ENABLED", h, 2, att.Neons.Enabled2 or false)
+                M.try_call(VEHICLE, "SET_VEHICLE_NEON_LIGHT_ENABLED", h, 3, att.Neons.Enabled3 or false)
+            end
+            
+            -- Apply neon color
+            if att.NeonColor then
+                M.try_call(VEHICLE, "SET_VEHICLE_NEON_LIGHTS_COLOUR", h, 
+                    att.NeonColor.R, att.NeonColor.G, att.NeonColor.B)
+            end
+            
+            -- Apply tire smoke color
+            if att.TireSmoke then
+                M.try_call(VEHICLE, "SET_VEHICLE_TYRE_SMOKE_COLOR", h, 
+                    att.TireSmoke.R, att.TireSmoke.G, att.TireSmoke.B)
+            end
+            
+            -- Apply wheel type
+            if att.WheelType then
+                M.try_call(VEHICLE, "SET_VEHICLE_WHEEL_TYPE", h, att.WheelType)
+            end
+            
+            -- Apply numberplate
+            if att.Numberplate then
+                if att.Numberplate.Text then
+                    M.try_call(VEHICLE, "SET_VEHICLE_NUMBER_PLATE_TEXT", h, att.Numberplate.Text)
+                end
+                if att.Numberplate.Index then
+                    M.try_call(VEHICLE, "SET_VEHICLE_NUMBER_PLATE_TEXT_INDEX", h, att.Numberplate.Index)
+                end
+            end
+            
+            -- Apply window tint
+            if att.WindowTint and att.WindowTint >= 0 then
+                M.try_call(VEHICLE, "SET_VEHICLE_WINDOW_TINT", h, att.WindowTint)
+            end
+            
+            -- Apply paint fade (dirt level)
+            if att.PaintFade then
+                M.try_call(VEHICLE, "SET_VEHICLE_DIRT_LEVEL", h, att.PaintFade)
+            end
+            
+            M.debug_print("[Spawn Debug] Applied INI vehicle properties for attachment", i)
         end
         if att.TaskSequence then
             M.apply_task_sequence_to_entity(h, att.TaskSequence)

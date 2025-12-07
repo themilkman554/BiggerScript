@@ -186,7 +186,9 @@ local function buildFolderStructure(files, basePath)
         for i = 1, #parts do
             local part = parts[i]
             if i == #parts then
-                table.insert(cur.files, { name = part, fullPath = filePath })
+                -- Remove file extension from display name
+                local displayName = part:gsub("%.xml$", ""):gsub("%.ini$", ""):gsub("%.json$", "")
+                table.insert(cur.files, { name = displayName, fullPath = filePath })
             else
                 cur.folders[part] = cur.folders[part] or { folders = {}, files = {} }
                 cur = cur.folders[part]
@@ -546,7 +548,7 @@ local function renderMenyooTab()
             if ImGui.BeginTable("VehiclesTable", columns, ImGuiTableFlags.SizingStretchSame) then
                 ImGui.TableNextRow()
                 ImGui.TableSetColumnIndex(0)
-                if ClickGUI.BeginCustomChildWindow("Spawner Settings") then
+                if ClickGUI.BeginCustomChildWindow("Vehicle Settings") then
                     ImGui.SetWindowFontScale(1.3)
                     ImGui.SetWindowFontScale(1.0)
                     ImGui.Spacing()
@@ -665,11 +667,11 @@ local function renderMenyooTab()
 
                     spawnerSettings.networkMapsV2Enabled = ImGui.Checkbox("Network Maps V2", spawnerSettings.networkMapsV2Enabled)
                     if ImGui.IsItemHovered() then
-                        ImGui.SetTooltip("Enable networking for spawned map objects")
+                        ImGui.SetTooltip("Uses a few networking natives to hopefully network better")
                     end
                     spawnerSettings.networkMapsV1Enabled = ImGui.Checkbox("Network Maps V1", spawnerSettings.networkMapsV1Enabled)
                     if ImGui.IsItemHovered() then
-                        ImGui.SetTooltip("Enable networking for spawned map objects using the older attachment method (spawns a vehicle at 0,0,0 and attaches everything to it)")
+                        ImGui.SetTooltip("Spawns a vehicle at 0,0,0 and attaches everything to it (sometimes networks bettert)")
                     end
 
                     spawnerSettings.deleteOldMap = ImGui.Checkbox("Delete Old Map", spawnerSettings.deleteOldMap)
@@ -713,7 +715,7 @@ local function renderMenyooTab()
                     ImGui.PopStyleColor(3)
 
                     if ImGui.IsItemHovered() then
-                        ImGui.SetTooltip("Useful before Spawning maps to have more possible networkable map props")
+                        ImGui.SetTooltip("Useful to clear the objects pool/network more map props")
                     end
 
                     if hasMarkers then
@@ -799,7 +801,7 @@ local function renderMenyooTab()
                     
                     spawnerSettings.onlyApplyAttachments = ImGui.Checkbox("Only Apply Attachments", spawnerSettings.onlyApplyAttachments)
                     if ImGui.IsItemHovered() then
-                        ImGui.SetTooltip("May break positioning")
+                        ImGui.SetTooltip("May Break Positioning")
                     end
                     
                     spawnerSettings.deleteLastOutfitAttachments = ImGui.Checkbox("Delete Last Outfit Attachments", spawnerSettings.deleteLastOutfitAttachments)
@@ -893,7 +895,7 @@ local function renderMenyooTab()
 
                 if ClickGUI.BeginCustomChildWindow("Debug") then
                     spawnerSettings.printToDebug = ImGui.Checkbox("Print Debug to Console", spawnerSettings.printToDebug)
-                    spawnerSettings.spawnIn000Vehicle = ImGui.Checkbox("Spawn in 0 0 0 Vehicle", spawnerSettings.spawnIn000Vehicle)
+                    spawnerSettings.spawnIn000Vehicle = ImGui.Checkbox("Spawn in Network v1 0 0 0 Vehicle", spawnerSettings.spawnIn000Vehicle)
                     ClickGUI.EndCustomChildWindow()
                 end
 
