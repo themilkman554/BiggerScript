@@ -951,7 +951,8 @@ local function renderMenyooTab()
                     ImGui.Spacing()
 
                     ClickGUI.EndCustomChildWindow()
-                    ImGui.Text("Cherax limits the attachments you can have on your character")
+                    ImGui.Text("Cherax limits the attachments you can have")
+                    ImGui.Text("on your character")
                 end
 
                 ImGui.TableSetColumnIndex(1)
