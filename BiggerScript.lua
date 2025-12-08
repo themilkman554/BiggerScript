@@ -1,5 +1,5 @@
 ---bigger script
-GUI.AddToast("BiggerScriptv5.2", "Added Auto Load Toggle", 10000, 0)
+GUI.AddToast("BiggerScriptv5.2", "Added Currently Loaded Vehicles/Maps Window\n Added Auto Load Toggle", 10000, 0)
 
 if Cherax.GetEdition() == "LE" then
     GUI.AddToast("BiggerScript", "Legacy Version of Cherax breaks vehicles with too many attachments", 10000, 0)
@@ -590,6 +590,41 @@ local function renderMenyooTab()
                     ClickGUI.EndCustomChildWindow()
                 end
 
+                -- Currently Loaded Vehicles (only show if there are spawned vehicles)
+                if #spawnedVehicles > 0 then
+                    if ClickGUI.BeginCustomChildWindow("Currently Loaded Vehicles") then
+                        for i, vehicleData in ipairs(spawnedVehicles) do
+                            local fileName = spawning.get_filename_from_path(vehicleData.filePath or "Unknown")
+                            local displayName = fileName:gsub("%.xml$", ""):gsub("%.ini$", ""):gsub("%.json$", "")
+                            ImGui.Text(displayName)
+                            ImGui.SameLine()
+                            
+                            -- Green Drive button
+                            ImGui.PushStyleColor(ImGuiCol.Button, 0.016, 0.36, 0.157, 1.0)
+                            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.06, 0.46, 0.22, 1.0)
+                            ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.01, 0.26, 0.10, 1.0)
+                            if ImGui.Button("Drive##veh" .. i) then
+                                if vehicleData.vehicle and vehicleData.vehicle ~= 0 then
+                                    spawning.driveVehicle(vehicleData.vehicle)
+                                end
+                            end
+                            ImGui.PopStyleColor(3)
+                            
+                            ImGui.SameLine()
+                            
+                            -- Red Delete button
+                            ImGui.PushStyleColor(ImGuiCol.Button, 0.36, 0.016, 0.016, 1.0)
+                            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.46, 0.06, 0.06, 1.0)
+                            ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.26, 0.01, 0.01, 1.0)
+                            if ImGui.Button("Delete##veh" .. i) then
+                                spawning.deleteVehicleByIndex(i)
+                            end
+                            ImGui.PopStyleColor(3)
+                        end
+                        ClickGUI.EndCustomChildWindow()
+                    end
+                end
+
                 ImGui.TableSetColumnIndex(1)
                 if ClickGUI.BeginCustomChildWindow("Vehicles") then
                     if ImGui.BeginTabBar("VehicleTypeTabs") then
@@ -746,6 +781,50 @@ local function renderMenyooTab()
                     end
 
                     ClickGUI.EndCustomChildWindow()
+                end
+
+                -- Currently Loaded Maps (only show if there are spawned maps)
+                if #spawnedMaps > 0 then
+                    if ClickGUI.BeginCustomChildWindow("Currently Loaded Maps") then
+                        for i, mapData in ipairs(spawnedMaps) do
+                            local fileName = spawning.get_filename_from_path(mapData.filePath or "Unknown")
+                            local displayName = fileName:gsub("%.xml$", ""):gsub("%.ini$", ""):gsub("%.json$", "")
+                            ImGui.Text(displayName)
+                            ImGui.SameLine()
+                            
+                            -- Green Teleport button
+                            ImGui.PushStyleColor(ImGuiCol.Button, 0.016, 0.36, 0.157, 1.0)
+                            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.06, 0.46, 0.22, 1.0)
+                            ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.01, 0.26, 0.10, 1.0)
+                            if ImGui.Button("Teleport##map" .. i) then
+                                if mapData.refCoords then
+                                    spawning.teleportToMapRefCoords(mapData.refCoords)
+                                else
+                                    -- Fallback: teleport to first entity if no refCoords
+                                    if mapData.entities and mapData.entities[1] and ENTITY.DOES_ENTITY_EXIST(mapData.entities[1]) then
+                                        local coords = ENTITY.GET_ENTITY_COORDS(mapData.entities[1], false)
+                                        local playerPed = PLAYER.PLAYER_PED_ID()
+                                        if playerPed and playerPed ~= 0 then
+                                            ENTITY.SET_ENTITY_COORDS(playerPed, coords.x, coords.y, coords.z, false, false, false, true)
+                                        end
+                                    end
+                                end
+                            end
+                            ImGui.PopStyleColor(3)
+                            
+                            ImGui.SameLine()
+                            
+                            -- Red Delete button
+                            ImGui.PushStyleColor(ImGuiCol.Button, 0.36, 0.016, 0.016, 1.0)
+                            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.46, 0.06, 0.06, 1.0)
+                            ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.26, 0.01, 0.01, 1.0)
+                            if ImGui.Button("Delete##map" .. i) then
+                                spawning.deleteMapByIndex(i)
+                            end
+                            ImGui.PopStyleColor(3)
+                        end
+                        ClickGUI.EndCustomChildWindow()
+                    end
                 end
 
                 ImGui.TableSetColumnIndex(1)

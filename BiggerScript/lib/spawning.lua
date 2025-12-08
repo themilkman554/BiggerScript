@@ -1,4 +1,4 @@
-local M = {}
+﻿local M = {}
 local previewUpdateJob = nil
 local isPreviewUpdaterRunning = false
 local lastSpawnedVehiclePath = nil
@@ -1950,6 +1950,68 @@ function M.deleteVehicle(vehicleData)
     end)
 end
 
+-- Delete a specific vehicle by index
+function M.deleteVehicleByIndex(index)
+    if not spawnedVehicles or not spawnedVehicles[index] then return end
+    local vehicleData = spawnedVehicles[index]
+    M.deleteVehicle(vehicleData)
+    table.remove(spawnedVehicles, index)
+end
+
+-- Delete a specific map by index
+function M.deleteMapByIndex(index)
+    if not spawnedMaps or not spawnedMaps[index] then return end
+    local mapData = spawnedMaps[index]
+    Script.QueueJob(function()
+        if mapData.entities then
+            for _, entityHandle in ipairs(mapData.entities) do
+                if entityHandle and entityHandle ~= 0 then
+                    pcall(function()
+                        if ENTITY.DOES_ENTITY_EXIST(entityHandle) then
+                            local ptr = Memory.AllocInt()
+                            local pEntity = GTA.HandleToPointer(entityHandle)
+                            if pEntity and pEntity ~= 0 then
+                                if pEntity.NetObject and pEntity.NetObject ~= 0 then
+                                    NetworkObjectMgr.UnregisterNetworkObject(pEntity.NetObject, 15, true, true)
+                                end
+                                Memory.WriteInt(ptr, entityHandle)
+                                ENTITY.DELETE_ENTITY(ptr)
+                            end
+                        end
+                    end)
+                end
+            end
+        end
+    end)
+    table.remove(spawnedMaps, index)
+end
+
+-- Put player into a vehicle (drive it)
+function M.driveVehicle(vehicleHandle)
+    if not vehicleHandle or vehicleHandle == 0 then return end
+    Script.QueueJob(function()
+        if not ENTITY.DOES_ENTITY_EXIST(vehicleHandle) then
+            pcall(function() GUI.AddToast("Error", "Vehicle no longer exists", 3000, 0) end)
+            return
+        end
+        local playerPed = PLAYER.PLAYER_PED_ID()
+        if playerPed and playerPed ~= 0 then
+            PED.SET_PED_INTO_VEHICLE(playerPed, vehicleHandle, -1)
+        end
+    end)
+end
+
+-- Teleport player to map reference coordinates
+function M.teleportToMapRefCoords(refCoords)
+    if not refCoords then return end
+    Script.QueueJob(function()
+        local playerPed = PLAYER.PLAYER_PED_ID()
+        if playerPed and playerPed ~= 0 then
+            ENTITY.SET_ENTITY_COORDS(playerPed, refCoords.x or 0, refCoords.y or 0, refCoords.z or 0, false, false, false, true)
+        end
+    end)
+end
+
 function M.deleteAllSpawnedVehicles()
     Script.QueueJob(function()
         local vehiclesToDelete = {}
@@ -3375,7 +3437,8 @@ function M.spawnMapFromXML(filePath)
             local mapData = {
                 entities = createdEntities,
                 markers = markers,
-                filePath = filePath
+                filePath = filePath,
+                refCoords = refCoords
             }
             table.insert(spawnedMaps, mapData)
             local filename = M.get_filename_from_path(filePath)
@@ -5074,7 +5137,8 @@ function M.spawnMapFromJSON(filePath, isPreview)
         local mapRecord = {
             entities = spawnedEntities,
             filePath = filePath,
-            markers = {} -- No markers for JSON maps yet
+            markers = {}, -- No markers for JSON maps yet
+            refCoords = refCoords
         }
         table.insert(spawnedMaps, mapRecord)
         
