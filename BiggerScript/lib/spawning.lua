@@ -1,4 +1,4 @@
-﻿local M = {}
+local M = {}
 local previewUpdateJob = nil
 local isPreviewUpdaterRunning = false
 local lastSpawnedVehiclePath = nil
