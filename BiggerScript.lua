@@ -1,5 +1,5 @@
 ---bigger script
-GUI.AddToast("BiggerScriptv5.1", "Fixed JSON Spawner\n Improved Outfit Spawner", 10000, 0)
+GUI.AddToast("BiggerScriptv5.2", "Added Auto Load Toggle", 10000, 0)
 
 if Cherax.GetEdition() == "LE" then
     GUI.AddToast("BiggerScript", "Legacy Version of Cherax breaks vehicles with too many attachments", 10000, 0)
@@ -143,7 +143,8 @@ local spawnerSettings = {
     upsideDownMap = false,
     radioOff = false,
     onlyApplyAttachments = false,
-    deleteLastOutfitAttachments = false
+    deleteLastOutfitAttachments = false,
+    autoLoadScript = false
 }
 
 
@@ -888,6 +889,71 @@ local function renderMenyooTab()
                     spawnerSettings.upsideDownMap = ImGui.Checkbox("Upside Down Map v3", spawnerSettings.upsideDownMap)
                     if spawnerSettings.upsideDownMap ~= oldUpsideDown then
                         upsidedownmap.toggle_upside_down_map(spawnerSettings.upsideDownMap)
+                    end
+
+                    ImGui.Spacing()
+                    local oldAutoLoad = spawnerSettings.autoLoadScript
+                    spawnerSettings.autoLoadScript = ImGui.Checkbox("Auto Load Script", spawnerSettings.autoLoadScript)
+                    if spawnerSettings.autoLoadScript ~= oldAutoLoad then
+                        local startupPath = FileMgr.GetMenuRootPath() .. "\\Lua\\Startup.lua"
+                        local scriptToLoad
+                        if LoadLocalLibraries then
+                            scriptToLoad = "BiggerScript.lua"
+                        else
+                            scriptToLoad = "BiggerScriptLoaderv2.lua"
+                        end
+                        
+                        local executeScriptLine = "Utils.ExecuteScript(\"" .. scriptToLoad .. "\")"
+                        
+                        -- Read current Startup.lua content
+                        local file = io.open(startupPath, "r")
+                        if file then
+                            local content = file:read("*all")
+                            file:close()
+                            
+                            if spawnerSettings.autoLoadScript then
+                                -- Add the line if not already present
+                                if not content:find(executeScriptLine, 1, true) then
+                                    -- Find the line with "-- Utils.ExecuteScript" comment
+                                    local insertPos = content:find("-- Utils%.ExecuteScript%(\"MyScript%.lua\"%)")
+                                    if insertPos then
+                                        -- Insert after the comment line
+                                        local lineEnd = content:find("\n", insertPos)
+                                        if lineEnd then
+                                            content = content:sub(1, lineEnd) .. executeScriptLine .. "\n" .. content:sub(lineEnd + 1)
+                                        end
+                                    else
+                                        -- Fallback: insert before SetShouldUnload()
+                                        local unloadPos = content:find("SetShouldUnload%(%)") or content:find("-- Load Default Feature Settings")
+                                        if unloadPos then
+                                            content = content:sub(1, unloadPos - 1) .. executeScriptLine .. "\n" .. content:sub(unloadPos)
+                                        end
+                                    end
+                                    
+                                    -- Write back to file
+                                    file = io.open(startupPath, "w")
+                                    if file then
+                                        file:write(content)
+                                        file:close()
+                                        GUI.AddToast("BiggerScript", "Added auto-load to Startup.lua: " .. scriptToLoad, 5000, 0)
+                                    end
+                                end
+                            else
+                                -- Remove the line
+                                local pattern = executeScriptLine:gsub("([%(%)%.%%%+%-%*%?%[%]%^%$])", "%%%1")
+                                content = content:gsub(pattern .. "\r?\n?", "")
+                                
+                                -- Write back to file
+                                file = io.open(startupPath, "w")
+                                if file then
+                                    file:write(content)
+                                    file:close()
+                                    GUI.AddToast("BiggerScript", "Removed auto-load from Startup.lua", 5000, 0)
+                                end
+                            end
+                        else
+                            GUI.AddToast("BiggerScript", "Failed to open Startup.lua", 5000, 0)
+                        end
                     end
 
                     ClickGUI.EndCustomChildWindow()
