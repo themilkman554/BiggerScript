@@ -1,4 +1,4 @@
-local M = {}
+﻿local M = {}
 local previewUpdateJob = nil
 local isPreviewUpdaterRunning = false
 local lastSpawnedVehiclePath = nil
@@ -1909,16 +1909,8 @@ function M.deleteVehicle(vehicleData)
                                 return
                             end
                             local ptr = Memory.AllocInt()
-                            local pEntity = GTA.HandleToPointer(attachmentHandle)
-                            if pEntity and pEntity ~= 0 then
-                                if pEntity.NetObject and pEntity.NetObject ~= 0 then
-                                    NetworkObjectMgr.UnregisterNetworkObject(pEntity.NetObject, 15, true, true)
-                                end
-                                Memory.WriteInt(ptr, attachmentHandle)
-                                ENTITY.DELETE_ENTITY(ptr)
-                            else
-                                M.debug_print("[Delete Debug] Warning: Attachment pointer invalid for handle:", tostring(attachmentHandle))
-                            end
+                            Memory.WriteInt(ptr, attachmentHandle)
+                            ENTITY.DELETE_ENTITY(ptr)
                         else
                             M.debug_print("[Delete Debug] Warning: Attachment entity does not exist for handle:", tostring(attachmentHandle))
                         end
@@ -1934,15 +1926,8 @@ function M.deleteVehicle(vehicleData)
                         return
                     end
                     local ptr = Memory.AllocInt()
-                    local pEntity = GTA.HandleToPointer(vehicleData.vehicle)
-                    if pEntity and pEntity ~= 0 then
-                        if pEntity.NetObject and pEntity.NetObject ~= 0 then
-                            NetworkObjectMgr.UnregisterNetworkObject(pEntity.NetObject, 15, true, true)
-                        end
-                        Memory.WriteInt(ptr, vehicleData.vehicle)
-                        ENTITY.DELETE_ENTITY(ptr)
-                    else
-                    end
+                    Memory.WriteInt(ptr, vehicleData.vehicle)
+                    ENTITY.DELETE_ENTITY(ptr)
                 else
                 end
             end)
@@ -1969,14 +1954,8 @@ function M.deleteMapByIndex(index)
                     pcall(function()
                         if ENTITY.DOES_ENTITY_EXIST(entityHandle) then
                             local ptr = Memory.AllocInt()
-                            local pEntity = GTA.HandleToPointer(entityHandle)
-                            if pEntity and pEntity ~= 0 then
-                                if pEntity.NetObject and pEntity.NetObject ~= 0 then
-                                    NetworkObjectMgr.UnregisterNetworkObject(pEntity.NetObject, 15, true, true)
-                                end
-                                Memory.WriteInt(ptr, entityHandle)
-                                ENTITY.DELETE_ENTITY(ptr)
-                            end
+                            Memory.WriteInt(ptr, entityHandle)
+                            ENTITY.DELETE_ENTITY(ptr)
                         end
                     end)
                 end
@@ -2029,16 +2008,8 @@ function M.deleteAllSpawnedVehicles()
                                     return
                                 end
                                 local ptr = Memory.AllocInt()
-                                local pEntity = GTA.HandleToPointer(attachmentHandle)
-                                if pEntity and pEntity ~= 0 then
-                                    if pEntity.NetObject and pEntity.NetObject ~= 0 then
-                                        NetworkObjectMgr.UnregisterNetworkObject(pEntity.NetObject, 15, true, true)
-                                    end
-                                    Memory.WriteInt(ptr, attachmentHandle)
-                                    ENTITY.DELETE_ENTITY(ptr)
-                                else
-                                    M.debug_print("[Delete Debug] Warning: Attachment pointer invalid for handle:", tostring(attachmentHandle))
-                                end
+                                Memory.WriteInt(ptr, attachmentHandle)
+                                ENTITY.DELETE_ENTITY(ptr)
                             else
                                 M.debug_print("[Delete Debug] Warning: Attachment entity does not exist for handle:", tostring(attachmentHandle))
                             end
@@ -2054,15 +2025,8 @@ function M.deleteAllSpawnedVehicles()
                             return
                         end
                         local ptr = Memory.AllocInt()
-                        local pEntity = GTA.HandleToPointer(vehicleData.vehicle)
-                        if pEntity and pEntity ~= 0 then
-                            if pEntity.NetObject and pEntity.NetObject ~= 0 then
-                                NetworkObjectMgr.UnregisterNetworkObject(pEntity.NetObject, 15, true, true)
-                            end
-                            Memory.WriteInt(ptr, vehicleData.vehicle)
-                            ENTITY.DELETE_ENTITY(ptr)
-                        else
-                        end
+                        Memory.WriteInt(ptr, vehicleData.vehicle)
+                        ENTITY.DELETE_ENTITY(ptr)
                     else
                     end
                 end)
@@ -2085,15 +2049,8 @@ function M.deleteAllSpawnedMaps()
                         pcall(function()
                             if ENTITY.DOES_ENTITY_EXIST(entityHandle) then
                                 local ptr = Memory.AllocInt()
-                                local pEntity = GTA.HandleToPointer(entityHandle)
-                                if pEntity and pEntity ~= 0 then
-                                    if pEntity.NetObject and pEntity.NetObject ~= 0 then
-                                        NetworkObjectMgr.UnregisterNetworkObject(pEntity.NetObject, 15, true, true)
-                                    end
-                                    Memory.WriteInt(ptr, entityHandle)
-                                    ENTITY.DELETE_ENTITY(ptr)
-                                else
-                                end
+                                Memory.WriteInt(ptr, entityHandle)
+                                ENTITY.DELETE_ENTITY(ptr)
                             else
                             end
                         end)
@@ -2116,15 +2073,8 @@ function M.deleteAllSpawnedOutfits()
                 pcall(function()
                     if ENTITY and ENTITY.DOES_ENTITY_EXIST(outfitData.spawnedPed) then
                         local ptr = Memory.AllocInt()
-                        local pEntity = GTA.HandleToPointer(outfitData.spawnedPed)
-                        if pEntity and pEntity ~= 0 then
-                            if pEntity.NetObject and pEntity.NetObject ~= 0 then
-                                NetworkObjectMgr.UnregisterNetworkObject(pEntity.NetObject, 15, true, true)
-                            end
-                            Memory.WriteInt(ptr, outfitData.spawnedPed)
-                            ENTITY.DELETE_ENTITY(ptr)
-                        else
-                        end
+                        Memory.WriteInt(ptr, outfitData.spawnedPed)
+                        ENTITY.DELETE_ENTITY(ptr)
                     else
                     end
                 end)
@@ -2135,16 +2085,8 @@ function M.deleteAllSpawnedOutfits()
                         pcall(function()
                             if ENTITY and ENTITY.DOES_ENTITY_EXIST(attachmentHandle) then
                                 local ptr = Memory.AllocInt()
-                                local pEntity = GTA.HandleToPointer(attachmentHandle)
-                                if pEntity and pEntity ~= 0 then
-                                    if pEntity.NetObject and pEntity.NetObject ~= 0 then
-                                        NetworkObjectMgr.UnregisterNetworkObject(pEntity.NetObject, 15, true, true)
-                                    end
-                                    Memory.WriteInt(ptr, attachmentHandle)
-                                    ENTITY.DELETE_ENTITY(ptr)
-                                else
-                                    M.debug_print("[Delete Debug] Warning: Outfit attachment pointer invalid for handle:", tostring(attachmentHandle))
-                                end
+                                Memory.WriteInt(ptr, attachmentHandle)
+                                ENTITY.DELETE_ENTITY(ptr)
                             else
                                 M.debug_print("[Delete Debug] Warning: Outfit attachment entity does not exist for handle:", tostring(attachmentHandle))
                             end
@@ -4726,14 +4668,8 @@ function M.spawnMapFromJSON(filePath, isPreview)
                         pcall(function()
                             if ENTITY.DOES_ENTITY_EXIST(entityHandle) then
                                 local ptr = Memory.AllocInt()
-                                local pEntity = GTA.HandleToPointer(entityHandle)
-                                if pEntity and pEntity ~= 0 then
-                                    if pEntity.NetObject and pEntity.NetObject ~= 0 then
-                                        NetworkObjectMgr.UnregisterNetworkObject(pEntity.NetObject, 15, true, true)
-                                    end
-                                    Memory.WriteInt(ptr, entityHandle)
-                                    ENTITY.DELETE_ENTITY(ptr)
-                                end
+                                Memory.WriteInt(ptr, entityHandle)
+                                ENTITY.DELETE_ENTITY(ptr)
                             end
                         end)
                     end
