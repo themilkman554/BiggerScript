@@ -1,5 +1,5 @@
 ---bigger script
-GUI.AddToast("BiggerScriptv5.2", "Added Currently Loaded Vehicles/Maps Window\n Added Auto Load Toggle", 10000, 0)
+GUI.AddToast("BiggerScriptv5.3", "Added FOV Changer in outfits\n Things should now be deleted for other players", 10000, 0)
 
 if Cherax.GetEdition() == "LE" then
     GUI.AddToast("BiggerScript", "Legacy Version of Cherax breaks vehicles with too many attachments", 10000, 0)
@@ -885,6 +885,54 @@ local function renderMenyooTab()
                     end
                     
                     spawnerSettings.deleteLastOutfitAttachments = ImGui.Checkbox("Delete Last Outfit Attachments", spawnerSettings.deleteLastOutfitAttachments)
+                    
+                    ImGui.Spacing()
+                    
+                    -- Third Person FOV Toggle and Slider
+                    local thirdPersonFOVFeature = FeatureMgr.GetFeatureByName("Third Person FOV")
+                    local thirdPersonAimFOVFeature = FeatureMgr.GetFeatureByName("Third Person Aim FOV")
+                    
+                    if thirdPersonFOVFeature and thirdPersonAimFOVFeature then
+                        -- Initialize the setting if it doesn't exist
+                        if spawnerSettings.thirdPersonFOVEnabled == nil then
+                            spawnerSettings.thirdPersonFOVEnabled = false
+                        end
+                        
+                        -- Toggle to enable/disable FOV
+                        local oldFOVEnabled = spawnerSettings.thirdPersonFOVEnabled
+                        spawnerSettings.thirdPersonFOVEnabled = ImGui.Checkbox("FOV Changer", spawnerSettings.thirdPersonFOVEnabled)
+                        
+                        if spawnerSettings.thirdPersonFOVEnabled ~= oldFOVEnabled then
+                            -- Toggle the Cherax menu feature
+                            thirdPersonFOVFeature:Toggle()
+                            
+                            if spawnerSettings.thirdPersonFOVEnabled then
+                                -- Get current value or default to 50
+                                local currentValue = spawnerSettings.thirdPersonFOVValue or 50
+                                thirdPersonFOVFeature:SetIntValue(currentValue)
+                                thirdPersonAimFOVFeature:SetIntValue(currentValue)
+                            else
+                                -- Reset to 0 when disabled
+                                thirdPersonFOVFeature:SetIntValue(0)
+                                thirdPersonAimFOVFeature:SetIntValue(0)
+                            end
+                        end
+                        
+                        -- Single slider that controls both FOV values
+                        if spawnerSettings.thirdPersonFOVEnabled then
+                            -- Initialize the value if it doesn't exist
+                            if spawnerSettings.thirdPersonFOVValue == nil then
+                                spawnerSettings.thirdPersonFOVValue = 50
+                            end
+                            
+                            local newFOV, changed = ImGui.SliderInt("FOV Value", spawnerSettings.thirdPersonFOVValue, 0, 130)
+                            if changed then
+                                spawnerSettings.thirdPersonFOVValue = newFOV
+                                thirdPersonFOVFeature:SetIntValue(newFOV)
+                                thirdPersonAimFOVFeature:SetIntValue(newFOV)
+                            end
+                        end
+                    end
                     
                     ImGui.Spacing()
 
