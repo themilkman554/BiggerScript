@@ -1,5 +1,5 @@
 ---bigger script
-GUI.AddToast("BiggerScriptv5.3", "Added FOV Changer in outfits\n Things should now be deleted for other players", 10000, 0)
+GUI.AddToast("BiggerScriptv5.4", "Added Logo\n Added PTFX support for JSONS", 10000, 0)
 
 if Cherax.GetEdition() == "LE" then
     GUI.AddToast("BiggerScript", "Legacy Version of Cherax breaks vehicles with too many attachments", 10000, 0)

@@ -282,285 +282,130 @@ function M.execute_task_sequence_item(entityHandle, task)
 end
 
 function M.run_ptfx_task(entityHandle, task)
-    if not task or not (task.EffectName and task.AssetName) then
-        return
-    end
-    if not GRAPHICS then
-        return
-    end
+    if not task or not (task.EffectName and task.AssetName) then return end
+    if not GRAPHICS then return end
     
     Script.QueueJob(function()
         if task.Delay and task.Delay > 0 then Script.Yield(task.Delay) end
         
-
-        if not ENTITY or not ENTITY.DOES_ENTITY_EXIST or not ENTITY.DOES_ENTITY_EXIST(entityHandle) then
-            return
-        end
-        
- 
-        if not ensure_ptfx_asset_loaded(task.AssetName) then
-            M.debug_print("TaskSequence Failed to load PTFX asset:", tostring(task.AssetName))
-            return
-        end
+        if not ENTITY or not ENTITY.DOES_ENTITY_EXIST(entityHandle) then return end
+        if not ensure_ptfx_asset_loaded(task.AssetName) then return end
         
         local pos = task.RelativePosition or { x = 0.0, y = 0.0, z = 0.0 }
         local rot = task.RelativeRotation or { x = 0.0, y = 0.0, z = 0.0 }
         local scale = task.Scale or 1.0
         
+        -- Get color
+        local r, g, b, a = 1.0, 1.0, 1.0, 1.0
+        if task.Colour then
+            r = normalize_colour_component(task.Colour.r, 255)
+            g = normalize_colour_component(task.Colour.g, 255)
+            b = normalize_colour_component(task.Colour.b, 255)
+            a = normalize_colour_component(task.Colour.a, 255)
+        end
+        
+        if GRAPHICS.USE_PARTICLE_FX_ASSET then
+            GRAPHICS.USE_PARTICLE_FX_ASSET(task.AssetName)
+        end
+        
+        local handle = nil
         if task.IsLoopedTask then
-            
-            local handle = nil
-            local ok, err = pcall(function()
-
-                if GRAPHICS.USE_PARTICLE_FX_ASSET then
-                    GRAPHICS.USE_PARTICLE_FX_ASSET(task.AssetName)
-                end
-
-                local r, g, b, a = 1.0, 1.0, 1.0, 1.0
-                if task.Colour then
-                    r = normalize_colour_component(task.Colour.r, 255)
-                    g = normalize_colour_component(task.Colour.g, 255)
-                    b = normalize_colour_component(task.Colour.b, 255)
-                    a = normalize_colour_component(task.Colour.a, 255)
-                end
-
-                if GRAPHICS.START_NETWORKED_PARTICLE_FX_LOOPED_ON_ENTITY_BONE then
-                    handle = GRAPHICS.START_NETWORKED_PARTICLE_FX_LOOPED_ON_ENTITY_BONE(
-                        task.EffectName,
-                        entityHandle,
+            -- Use looped particle FX
+            local startFunc = GRAPHICS.START_PARTICLE_FX_LOOPED_ON_ENTITY or GRAPHICS.START_NETWORKED_PARTICLE_FX_LOOPED_ON_ENTITY
+            if startFunc then
+                pcall(function()
+                    handle = startFunc(
+                        task.EffectName, entityHandle,
                         pos.x or 0.0, pos.y or 0.0, pos.z or 0.0,
                         rot.x or 0.0, rot.y or 0.0, rot.z or 0.0,
-                        0,
-                        scale,
-                        false, false, false,
-                        r, g, b, a
+                        scale, false, false, false
                     )
-                elseif GRAPHICS.START_PARTICLE_FX_LOOPED_ON_ENTITY_BONE then
-                    handle = GRAPHICS.START_PARTICLE_FX_LOOPED_ON_ENTITY_BONE(
-                        task.EffectName,
-                        entityHandle,
-                        pos.x or 0.0, pos.y or 0.0, pos.z or 0.0,
-                        rot.x or 0.0, rot.y or 0.0, rot.z or 0.0,
-                        0,
-                        scale,
-                        false, false, false
-                    )
-                elseif GRAPHICS.START_NETWORKED_PARTICLE_FX_LOOPED_ON_ENTITY then
-                    handle = GRAPHICS.START_NETWORKED_PARTICLE_FX_LOOPED_ON_ENTITY(
-                        task.EffectName,
-                        entityHandle,
-                        pos.x or 0.0, pos.y or 0.0, pos.z or 0.0,
-                        rot.x or 0.0, rot.y or 0.0, rot.z or 0.0,
-                        scale,
-                        false, false, false,
-                        r, g, b, a
-                    )
-                elseif GRAPHICS.START_PARTICLE_FX_LOOPED_ON_ENTITY then
-                    handle = GRAPHICS.START_PARTICLE_FX_LOOPED_ON_ENTITY(
-                        task.EffectName,
-                        entityHandle,
-                        pos.x or 0.0, pos.y or 0.0, pos.z or 0.0,
-                        rot.x or 0.0, rot.y or 0.0, rot.z or 0.0,
-                        scale,
-                        false, false, false
-                    )
-                else
-                end
-            end)
-
-            if not ok then
-                return
+                end)
             end
             
             if handle and handle ~= 0 then
-                
-
-                if task.Colour then
-                    local r = normalize_colour_component(task.Colour.r, 255)
-                    local g = normalize_colour_component(task.Colour.g, 255)
-                    local b = normalize_colour_component(task.Colour.b, 255)
-                    local a = normalize_colour_component(task.Colour.a, 255)
-                    
+                -- Apply color and scale
+                pcall(function()
                     if GRAPHICS.SET_PARTICLE_FX_LOOPED_COLOUR then
-                        pcall(function()
-                            GRAPHICS.SET_PARTICLE_FX_LOOPED_COLOUR(handle, r, g, b, false)
-                        end)
+                        GRAPHICS.SET_PARTICLE_FX_LOOPED_COLOUR(handle, r, g, b, false)
                     end
                     if GRAPHICS.SET_PARTICLE_FX_LOOPED_ALPHA then
-                        pcall(function()
-                            GRAPHICS.SET_PARTICLE_FX_LOOPED_ALPHA(handle, a)
-                        end)
+                        GRAPHICS.SET_PARTICLE_FX_LOOPED_ALPHA(handle, a)
                     end
-                end
-                
-                if GRAPHICS.SET_PARTICLE_FX_LOOPED_SCALE then
-                    pcall(function()
+                    if GRAPHICS.SET_PARTICLE_FX_LOOPED_SCALE then
                         GRAPHICS.SET_PARTICLE_FX_LOOPED_SCALE(handle, scale)
-                    end)
-                end
+                    end
+                end)
                 
-                if task.KeepTaskRunningAfterTime and task.KeepTaskRunningAfterTime < 0 then
-                    local refreshInterval = 150
-                    
-                    Script.QueueJob(function()
-                        while ENTITY and ENTITY.DOES_ENTITY_EXIST and ENTITY.DOES_ENTITY_EXIST(entityHandle) do
-                            Script.Yield(refreshInterval)
-                            
-
-                            if not ENTITY.DOES_ENTITY_EXIST(entityHandle) then
-                                break
-                            end
-                            
-
-                            if GRAPHICS.STOP_PARTICLE_FX_LOOPED then
-                                pcall(function() 
-                                    GRAPHICS.STOP_PARTICLE_FX_LOOPED(handle, false) 
-                                end)
-                            end
-                            
-
-                            if not ensure_ptfx_asset_loaded(task.AssetName) then
-                                break
-                            end
-                            
- 
-                            local newHandle = nil
-                            pcall(function()
-                                if GRAPHICS.USE_PARTICLE_FX_ASSET then
-                                    GRAPHICS.USE_PARTICLE_FX_ASSET(task.AssetName)
-                                end
-                                
-                                local r, g, b, a = 1.0, 1.0, 1.0, 1.0
-                                if task.Colour then
-                                    r = normalize_colour_component(task.Colour.r, 255)
-                                    g = normalize_colour_component(task.Colour.g, 255)
-                                    b = normalize_colour_component(task.Colour.b, 255)
-                                    a = normalize_colour_component(task.Colour.a, 255)
-                                end
-                                
-                                if GRAPHICS.START_NETWORKED_PARTICLE_FX_LOOPED_ON_ENTITY_BONE then
-                                    newHandle = GRAPHICS.START_NETWORKED_PARTICLE_FX_LOOPED_ON_ENTITY_BONE(
-                                        task.EffectName,
-                                        entityHandle,
-                                        pos.x or 0.0, pos.y or 0.0, pos.z or 0.0,
-                                        rot.x or 0.0, rot.y or 0.0, rot.z or 0.0,
-                                        0,
-                                        scale,
-                                        false, false, false,
-                                        r, g, b, a
-                                    )
-                                elseif GRAPHICS.START_PARTICLE_FX_LOOPED_ON_ENTITY_BONE then
-                                    newHandle = GRAPHICS.START_PARTICLE_FX_LOOPED_ON_ENTITY_BONE(
-                                        task.EffectName,
-                                        entityHandle,
-                                        pos.x or 0.0, pos.y or 0.0, pos.z or 0.0,
-                                        rot.x or 0.0, rot.y or 0.0, rot.z or 0.0,
-                                        0,
-                                        scale,
-                                        false, false, false
-                                    )
-                                elseif GRAPHICS.START_NETWORKED_PARTICLE_FX_LOOPED_ON_ENTITY then
-                                    newHandle = GRAPHICS.START_NETWORKED_PARTICLE_FX_LOOPED_ON_ENTITY(
-                                        task.EffectName,
-                                        entityHandle,
-                                        pos.x or 0.0, pos.y or 0.0, pos.z or 0.0,
-                                        rot.x or 0.0, rot.y or 0.0, rot.z or 0.0,
-                                        scale,
-                                        false, false, false,
-                                        r, g, b, a
-                                    )
-                                elseif GRAPHICS.START_PARTICLE_FX_LOOPED_ON_ENTITY then
-                                    newHandle = GRAPHICS.START_PARTICLE_FX_LOOPED_ON_ENTITY(
-                                        task.EffectName,
-                                        entityHandle,
-                                        pos.x or 0.0, pos.y or 0.0, pos.z or 0.0,
-                                        rot.x or 0.0, rot.y or 0.0, rot.z or 0.0,
-                                        scale,
-                                        false, false, false
-                                    )
-                                end
-                            end)
-                            
-                            if newHandle and newHandle ~= 0 then
-                                handle = newHandle
-                                
-
-                                if task.Colour then
-                                    local r = normalize_colour_component(task.Colour.r, 255)
-                                    local g = normalize_colour_component(task.Colour.g, 255)
-                                    local b = normalize_colour_component(task.Colour.b, 255)
-                                    local a = normalize_colour_component(task.Colour.a, 255)
-                                    
-                                    if GRAPHICS.SET_PARTICLE_FX_LOOPED_COLOUR then
-                                        pcall(function()
-                                            GRAPHICS.SET_PARTICLE_FX_LOOPED_COLOUR(handle, r, g, b, false)
-                                        end)
-                                    end
-                                    if GRAPHICS.SET_PARTICLE_FX_LOOPED_ALPHA then
-                                        pcall(function()
-                                            GRAPHICS.SET_PARTICLE_FX_LOOPED_ALPHA(handle, a)
-                                        end)
-                                    end
-                                end
-                                
-                                if GRAPHICS.SET_PARTICLE_FX_LOOPED_SCALE then
-                                    pcall(function()
-                                        GRAPHICS.SET_PARTICLE_FX_LOOPED_SCALE(handle, scale)
-                                    end)
-                                end
-                            else
-                                break
-                            end
+                -- Refresh loop - keep effect alive with 150ms interval
+                Script.QueueJob(function()
+                    while ENTITY and ENTITY.DOES_ENTITY_EXIST(entityHandle) do
+                        Script.Yield(150)
+                        if not ENTITY.DOES_ENTITY_EXIST(entityHandle) then break end
+                        
+                        -- Stop and restart the effect
+                        if GRAPHICS.STOP_PARTICLE_FX_LOOPED then
+                            pcall(function() GRAPHICS.STOP_PARTICLE_FX_LOOPED(handle, false) end)
                         end
                         
-
-                        if GRAPHICS.STOP_PARTICLE_FX_LOOPED and handle then
-                            pcall(function() 
-                                GRAPHICS.STOP_PARTICLE_FX_LOOPED(handle, false) 
+                        if not ensure_ptfx_asset_loaded(task.AssetName) then break end
+                        
+                        if GRAPHICS.USE_PARTICLE_FX_ASSET then
+                            GRAPHICS.USE_PARTICLE_FX_ASSET(task.AssetName)
+                        end
+                        
+                        local newHandle = nil
+                        if startFunc then
+                            pcall(function()
+                                newHandle = startFunc(
+                                    task.EffectName, entityHandle,
+                                    pos.x or 0.0, pos.y or 0.0, pos.z or 0.0,
+                                    rot.x or 0.0, rot.y or 0.0, rot.z or 0.0,
+                                    scale, false, false, false
+                                )
                             end)
                         end
-                    end)
-                elseif task.Duration and task.Duration > 0 then
-                    Script.QueueJob(function()
-                        Script.Yield(task.Duration)
-                        if GRAPHICS.STOP_PARTICLE_FX_LOOPED then
-                            pcall(function() 
-                                GRAPHICS.STOP_PARTICLE_FX_LOOPED(handle, false) 
+                        
+                        if newHandle and newHandle ~= 0 then
+                            handle = newHandle
+                            pcall(function()
+                                if GRAPHICS.SET_PARTICLE_FX_LOOPED_COLOUR then
+                                    GRAPHICS.SET_PARTICLE_FX_LOOPED_COLOUR(handle, r, g, b, false)
+                                end
+                                if GRAPHICS.SET_PARTICLE_FX_LOOPED_ALPHA then
+                                    GRAPHICS.SET_PARTICLE_FX_LOOPED_ALPHA(handle, a)
+                                end
+                                if GRAPHICS.SET_PARTICLE_FX_LOOPED_SCALE then
+                                    GRAPHICS.SET_PARTICLE_FX_LOOPED_SCALE(handle, scale)
+                                end
                             end)
+                        else
+                            break
                         end
-                    end)
-                else
-                end
-            else
+                    end
+                    
+                    -- Cleanup
+                    if GRAPHICS.STOP_PARTICLE_FX_LOOPED and handle then
+                        pcall(function() GRAPHICS.STOP_PARTICLE_FX_LOOPED(handle, false) end)
+                    end
+                end)
             end
         else
+            -- Non-looped particle FX
             if task.Colour and GRAPHICS.SET_PARTICLE_FX_NON_LOOPED_COLOUR then
-                pcall(function()
-                    GRAPHICS.SET_PARTICLE_FX_NON_LOOPED_COLOUR(
-                        normalize_colour_component(task.Colour.r, 255),
-                        normalize_colour_component(task.Colour.g, 255),
-                        normalize_colour_component(task.Colour.b, 255)
-                    )
-                end)
+                pcall(function() GRAPHICS.SET_PARTICLE_FX_NON_LOOPED_COLOUR(r, g, b) end)
             end
             
-            local startNonLooped = GRAPHICS.START_NETWORKED_PARTICLE_FX_NON_LOOPED_ON_ENTITY or GRAPHICS.START_PARTICLE_FX_NON_LOOPED_ON_ENTITY
-            
-            if startNonLooped then
+            local startFunc = GRAPHICS.START_PARTICLE_FX_NON_LOOPED_ON_ENTITY or GRAPHICS.START_NETWORKED_PARTICLE_FX_NON_LOOPED_ON_ENTITY
+            if startFunc then
                 pcall(function()
-                    if GRAPHICS.USE_PARTICLE_FX_ASSET then
-                        GRAPHICS.USE_PARTICLE_FX_ASSET(task.AssetName)
-                    end
-                    startNonLooped(
-                        task.EffectName,
-                        entityHandle,
+                    startFunc(
+                        task.EffectName, entityHandle,
                         pos.x or 0.0, pos.y or 0.0, pos.z or 0.0,
                         rot.x or 0.0, rot.y or 0.0, rot.z or 0.0,
-                        scale,
-                        false, false, false
+                        scale, false, false, false
                     )
                 end)
-            else
             end
         end
     end)
@@ -601,8 +446,8 @@ function M.request_model_load(hashOrName)
     if STREAMING and STREAMING.REQUEST_MODEL and model then
         pcall(function()
             STREAMING.REQUEST_MODEL(model)
-            local t0 = os.time()
-            while not STREAMING.HAS_MODEL_LOADED(model) and os.time() - t0 < 1 do Script.Yield(10) end
+            local t0 = Time.GetEpoche()
+            while not STREAMING.HAS_MODEL_LOADED(model) and Time.GetEpoche() - t0 < 1 do Script.Yield(10) end
         end)
     end
 end
@@ -678,8 +523,8 @@ function M.apply_ped_properties(pedHandle, pedProperties)
         local animName = pedProperties.AnimName
         pcall(function()
             STREAMING.REQUEST_ANIM_DICT(animDict)
-            local t0 = os.time()
-            while not STREAMING.HAS_ANIM_DICT_LOADED(animDict) and os.time() - t0 < 2 do
+            local t0 = Time.GetEpoche()
+            while not STREAMING.HAS_ANIM_DICT_LOADED(animDict) and Time.GetEpoche() - t0 < 2 do
                 Script.Yield(10)
             end
             if STREAMING.HAS_ANIM_DICT_LOADED(animDict) then
@@ -1174,8 +1019,8 @@ function M.spawn_attachments(parsedAttachments, parentHandleMap, fallbackCoords,
         end
         M.request_model_load(model)
         if STREAMING and STREAMING.HAS_MODEL_LOADED then
-            local t0 = os.time()
-            while not pcall(function() return STREAMING.HAS_MODEL_LOADED(M.safe_tonumber(model, model) or model) end) and os.time() - t0 < 1 do
+            local t0 = Time.GetEpoche()
+            while not pcall(function() return STREAMING.HAS_MODEL_LOADED(M.safe_tonumber(model, model) or model) end) and Time.GetEpoche() - t0 < 1 do
                 Script.Yield(10)
             end
             if not pcall(function() return STREAMING.HAS_MODEL_LOADED(M.safe_tonumber(model, model) or model) end) then
@@ -4152,6 +3997,127 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
             depth = depth or 0
             local indent = string.rep("  ", depth)
             
+            -- Check for PARTICLE type FIRST - particles don't have hash/model
+            if child.type == "PARTICLE" then
+                local particleAttrs = child.particle_attributes
+                if particleAttrs and particleAttrs.asset and particleAttrs.effect_name then
+                    local assetName = particleAttrs.asset
+                    local effectName = particleAttrs.effect_name
+                    local scale = particleAttrs.scale or 1.0
+                    
+                    -- Get offset and rotation
+                    local offsetX = child.offset and child.offset.x or 0.0
+                    local offsetY = child.offset and child.offset.y or 0.0
+                    local offsetZ = child.offset and child.offset.z or 0.0
+                    local rotX = child.rotation and child.rotation.x or 0.0
+                    local rotY = child.rotation and child.rotation.y or 0.0
+                    local rotZ = child.rotation and child.rotation.z or 0.0
+                    
+                    -- Get color
+                    local r, g, b, a = 1.0, 1.0, 1.0, 1.0
+                    if particleAttrs.color then
+                        r = particleAttrs.color.r or 1.0
+                        g = particleAttrs.color.g or 1.0
+                        b = particleAttrs.color.b or 1.0
+                        a = particleAttrs.color.a or 1.0
+                    end
+                    
+                    local entityHandle = parentHandle
+                    
+                    Script.QueueJob(function()
+                        if not ENTITY or not ENTITY.DOES_ENTITY_EXIST(entityHandle) then return end
+                        if not GRAPHICS then return end
+                        if not ensure_ptfx_asset_loaded(assetName) then return end
+                        
+                        if GRAPHICS.USE_PARTICLE_FX_ASSET then
+                            GRAPHICS.USE_PARTICLE_FX_ASSET(assetName)
+                        end
+                        
+                        local handle = nil
+                        local startFunc = GRAPHICS.START_PARTICLE_FX_LOOPED_ON_ENTITY or GRAPHICS.START_NETWORKED_PARTICLE_FX_LOOPED_ON_ENTITY
+                        if startFunc then
+                            pcall(function()
+                                handle = startFunc(
+                                    effectName, entityHandle,
+                                    offsetX, offsetY, offsetZ,
+                                    rotX, rotY, rotZ,
+                                    scale, false, false, false
+                                )
+                            end)
+                        end
+                        
+                        if handle and handle ~= 0 then
+                            pcall(function()
+                                if GRAPHICS.SET_PARTICLE_FX_LOOPED_COLOUR then
+                                    GRAPHICS.SET_PARTICLE_FX_LOOPED_COLOUR(handle, r, g, b, false)
+                                end
+                                if GRAPHICS.SET_PARTICLE_FX_LOOPED_ALPHA then
+                                    GRAPHICS.SET_PARTICLE_FX_LOOPED_ALPHA(handle, a)
+                                end
+                                if GRAPHICS.SET_PARTICLE_FX_LOOPED_SCALE then
+                                    GRAPHICS.SET_PARTICLE_FX_LOOPED_SCALE(handle, scale)
+                                end
+                            end)
+                            
+                            -- Refresh loop - keep effect alive with 150ms interval
+                            Script.QueueJob(function()
+                                while ENTITY and ENTITY.DOES_ENTITY_EXIST(entityHandle) do
+                                    Script.Yield(150)
+                                    if not ENTITY.DOES_ENTITY_EXIST(entityHandle) then break end
+                                    
+                                    -- Stop and restart the effect
+                                    if GRAPHICS.STOP_PARTICLE_FX_LOOPED then
+                                        pcall(function() GRAPHICS.STOP_PARTICLE_FX_LOOPED(handle, false) end)
+                                    end
+                                    
+                                    if not ensure_ptfx_asset_loaded(assetName) then break end
+                                    
+                                    if GRAPHICS.USE_PARTICLE_FX_ASSET then
+                                        GRAPHICS.USE_PARTICLE_FX_ASSET(assetName)
+                                    end
+                                    
+                                    local newHandle = nil
+                                    if startFunc then
+                                        pcall(function()
+                                            newHandle = startFunc(
+                                                effectName, entityHandle,
+                                                offsetX, offsetY, offsetZ,
+                                                rotX, rotY, rotZ,
+                                                scale, false, false, false
+                                            )
+                                        end)
+                                    end
+                                    
+                                    if newHandle and newHandle ~= 0 then
+                                        handle = newHandle
+                                        pcall(function()
+                                            if GRAPHICS.SET_PARTICLE_FX_LOOPED_COLOUR then
+                                                GRAPHICS.SET_PARTICLE_FX_LOOPED_COLOUR(handle, r, g, b, false)
+                                            end
+                                            if GRAPHICS.SET_PARTICLE_FX_LOOPED_ALPHA then
+                                                GRAPHICS.SET_PARTICLE_FX_LOOPED_ALPHA(handle, a)
+                                            end
+                                            if GRAPHICS.SET_PARTICLE_FX_LOOPED_SCALE then
+                                                GRAPHICS.SET_PARTICLE_FX_LOOPED_SCALE(handle, scale)
+                                            end
+                                        end)
+                                    else
+                                        break
+                                    end
+                                end
+                                
+                                -- Cleanup
+                                if GRAPHICS.STOP_PARTICLE_FX_LOOPED and handle then
+                                    pcall(function() GRAPHICS.STOP_PARTICLE_FX_LOOPED(handle, false) end)
+                                end
+                            end)
+                        end
+                    end)
+                end
+                return nil
+            end
+            
+            -- For non-PARTICLE types, check for model hash
             local childModel = child.hash or child.model
             if not childModel then
                 return nil
@@ -4444,6 +4410,275 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
                         M.debug_print("[JSON Spawn Debug]" .. indent .. "Failed to spawn child PED, ok:", ok, "handle:", tostring(h))
                     end
                 end
+            elseif child.type == "PARTICLE" then
+                -- Handle PARTICLE type children - spawn particle effect on parent (matching XML approach)
+                local particleAttrs = child.particle_attributes
+                print("[JSON PTFX] Processing PARTICLE child, particle_attributes:", particleAttrs and "found" or "nil")
+                
+                if particleAttrs then
+                    local assetName = particleAttrs.asset
+                    local effectName = particleAttrs.effect_name
+                    local scale = particleAttrs.scale or 1.0
+                    local boneIndex = particleAttrs.bone_index or 0
+                    
+                    print("[JSON PTFX] Asset:", tostring(assetName), "Effect:", tostring(effectName), "Scale:", scale, "Bone:", boneIndex)
+                    
+                    if assetName and effectName then
+                        -- Get offset from child
+                        local offsetX = child.offset and child.offset.x or 0.0
+                        local offsetY = child.offset and child.offset.y or 0.0
+                        local offsetZ = child.offset and child.offset.z or 0.0
+                        
+                        -- Get rotation from child
+                        local rotX = child.rotation and child.rotation.x or 0.0
+                        local rotY = child.rotation and child.rotation.y or 0.0
+                        local rotZ = child.rotation and child.rotation.z or 0.0
+                        
+                        print("[JSON PTFX] Offset:", offsetX, offsetY, offsetZ, "Rotation:", rotX, rotY, rotZ)
+                        
+                        -- Get color from particle_attributes (JSON uses 0-1 range like XML after normalization)
+                        local r, g, b, a = 1.0, 1.0, 1.0, 1.0
+                        if particleAttrs.color then
+                            r = particleAttrs.color.r or 1.0
+                            g = particleAttrs.color.g or 1.0
+                            b = particleAttrs.color.b or 1.0
+                            a = particleAttrs.color.a or 1.0
+                        end
+                        print("[JSON PTFX] Color RGBA:", r, g, b, a)
+                        
+                        -- Store the parent handle for the queued job
+                        local entityHandle = parentHandle
+                        
+                        -- Use Script.QueueJob exactly like XML does
+                        Script.QueueJob(function()
+                            print("[JSON PTFX] Queued job started for:", effectName)
+                            
+                            -- Check if entity still exists (like XML does)
+                            if not ENTITY or not ENTITY.DOES_ENTITY_EXIST or not ENTITY.DOES_ENTITY_EXIST(entityHandle) then
+                                print("[JSON PTFX] ERROR: Entity does not exist!")
+                                return
+                            end
+                            print("[JSON PTFX] Entity exists, handle:", entityHandle)
+                            
+                            -- Check if GRAPHICS is available
+                            if not GRAPHICS then
+                                print("[JSON PTFX] ERROR: GRAPHICS not available!")
+                                return
+                            end
+                            print("[JSON PTFX] GRAPHICS available")
+                            
+                            -- Load the PTFX asset (like XML does)
+                            print("[JSON PTFX] Loading PTFX asset:", assetName)
+                            local ptfxLoaded = ensure_ptfx_asset_loaded(assetName)
+                            print("[JSON PTFX] Asset loaded:", ptfxLoaded)
+                            
+                            if not ptfxLoaded then
+                                print("[JSON PTFX] ERROR: Failed to load PTFX asset:", assetName)
+                                M.debug_print("[JSON PTFX] Failed to load PTFX asset:", tostring(assetName))
+                                return
+                            end
+                            
+                            -- Start the particle effect (matching XML's looped task approach)
+                            local handle = nil
+                            local ok, err = pcall(function()
+                                print("[JSON PTFX] Calling USE_PARTICLE_FX_ASSET")
+                                if GRAPHICS.USE_PARTICLE_FX_ASSET then
+                                    GRAPHICS.USE_PARTICLE_FX_ASSET(assetName)
+                                end
+                                
+                                print("[JSON PTFX] Attempting to start particle FX...")
+                                print("[JSON PTFX] START_NETWORKED_PARTICLE_FX_LOOPED_ON_ENTITY_BONE:", GRAPHICS.START_NETWORKED_PARTICLE_FX_LOOPED_ON_ENTITY_BONE and "available" or "nil")
+                                print("[JSON PTFX] START_PARTICLE_FX_LOOPED_ON_ENTITY_BONE:", GRAPHICS.START_PARTICLE_FX_LOOPED_ON_ENTITY_BONE and "available" or "nil")
+                                print("[JSON PTFX] START_NETWORKED_PARTICLE_FX_LOOPED_ON_ENTITY:", GRAPHICS.START_NETWORKED_PARTICLE_FX_LOOPED_ON_ENTITY and "available" or "nil")
+                                print("[JSON PTFX] START_PARTICLE_FX_LOOPED_ON_ENTITY:", GRAPHICS.START_PARTICLE_FX_LOOPED_ON_ENTITY and "available" or "nil")
+                                
+                                -- Try each method in order (same as XML)
+                                if GRAPHICS.START_NETWORKED_PARTICLE_FX_LOOPED_ON_ENTITY_BONE then
+                                    print("[JSON PTFX] Using START_NETWORKED_PARTICLE_FX_LOOPED_ON_ENTITY_BONE")
+                                    handle = GRAPHICS.START_NETWORKED_PARTICLE_FX_LOOPED_ON_ENTITY_BONE(
+                                        effectName,
+                                        entityHandle,
+                                        offsetX, offsetY, offsetZ,
+                                        rotX, rotY, rotZ,
+                                        boneIndex,
+                                        scale,
+                                        false, false, false,
+                                        r, g, b, a
+                                    )
+                                    print("[JSON PTFX] Result handle:", handle)
+                                elseif GRAPHICS.START_PARTICLE_FX_LOOPED_ON_ENTITY_BONE then
+                                    print("[JSON PTFX] Using START_PARTICLE_FX_LOOPED_ON_ENTITY_BONE")
+                                    handle = GRAPHICS.START_PARTICLE_FX_LOOPED_ON_ENTITY_BONE(
+                                        effectName,
+                                        entityHandle,
+                                        offsetX, offsetY, offsetZ,
+                                        rotX, rotY, rotZ,
+                                        boneIndex,
+                                        scale,
+                                        false, false, false
+                                    )
+                                    print("[JSON PTFX] Result handle:", handle)
+                                elseif GRAPHICS.START_NETWORKED_PARTICLE_FX_LOOPED_ON_ENTITY then
+                                    print("[JSON PTFX] Using START_NETWORKED_PARTICLE_FX_LOOPED_ON_ENTITY")
+                                    handle = GRAPHICS.START_NETWORKED_PARTICLE_FX_LOOPED_ON_ENTITY(
+                                        effectName,
+                                        entityHandle,
+                                        offsetX, offsetY, offsetZ,
+                                        rotX, rotY, rotZ,
+                                        scale,
+                                        false, false, false,
+                                        r, g, b, a
+                                    )
+                                    print("[JSON PTFX] Result handle:", handle)
+                                elseif GRAPHICS.START_PARTICLE_FX_LOOPED_ON_ENTITY then
+                                    print("[JSON PTFX] Using START_PARTICLE_FX_LOOPED_ON_ENTITY")
+                                    handle = GRAPHICS.START_PARTICLE_FX_LOOPED_ON_ENTITY(
+                                        effectName,
+                                        entityHandle,
+                                        offsetX, offsetY, offsetZ,
+                                        rotX, rotY, rotZ,
+                                        scale,
+                                        false, false, false
+                                    )
+                                    print("[JSON PTFX] Result handle:", handle)
+                                else
+                                    print("[JSON PTFX] ERROR: No suitable PARTICLE_FX function available!")
+                                end
+                            end)
+                            
+                            if not ok then
+                                print("[JSON PTFX] ERROR: pcall failed:", tostring(err))
+                                return
+                            end
+                            
+                            if handle and handle ~= 0 then
+                                print("[JSON PTFX] SUCCESS! PTFX handle:", handle)
+                                M.debug_print("[JSON PTFX] Spawned PARTICLE:", effectName, "from asset:", assetName, "handle:", handle)
+                                
+                                -- Apply color and scale (like XML does)
+                                if GRAPHICS.SET_PARTICLE_FX_LOOPED_COLOUR then
+                                    pcall(function()
+                                        GRAPHICS.SET_PARTICLE_FX_LOOPED_COLOUR(handle, r, g, b, false)
+                                        print("[JSON PTFX] Applied color")
+                                    end)
+                                end
+                                if GRAPHICS.SET_PARTICLE_FX_LOOPED_ALPHA then
+                                    pcall(function()
+                                        GRAPHICS.SET_PARTICLE_FX_LOOPED_ALPHA(handle, a)
+                                        print("[JSON PTFX] Applied alpha")
+                                    end)
+                                end
+                                if GRAPHICS.SET_PARTICLE_FX_LOOPED_SCALE then
+                                    pcall(function()
+                                        GRAPHICS.SET_PARTICLE_FX_LOOPED_SCALE(handle, scale)
+                                        print("[JSON PTFX] Applied scale")
+                                    end)
+                                end
+                                
+                                -- Keep the effect running (like XML's KeepTaskRunningAfterTime = -1)
+                                -- Refresh the particle effect periodically to keep it alive
+                                local refreshInterval = 150
+                                Script.QueueJob(function()
+                                    print("[JSON PTFX] Starting refresh loop for:", effectName)
+                                    while ENTITY and ENTITY.DOES_ENTITY_EXIST and ENTITY.DOES_ENTITY_EXIST(entityHandle) do
+                                        Script.Yield(refreshInterval)
+                                        
+                                        if not ENTITY.DOES_ENTITY_EXIST(entityHandle) then
+                                            print("[JSON PTFX] Entity no longer exists, stopping refresh")
+                                            break
+                                        end
+                                        
+                                        -- Stop and restart to keep effect visible
+                                        if GRAPHICS.STOP_PARTICLE_FX_LOOPED then
+                                            pcall(function() GRAPHICS.STOP_PARTICLE_FX_LOOPED(handle, false) end)
+                                        end
+                                        
+                                        if not ensure_ptfx_asset_loaded(assetName) then
+                                            print("[JSON PTFX] Asset no longer loaded, breaking")
+                                            break
+                                        end
+                                        
+                                        local newHandle = nil
+                                        pcall(function()
+                                            if GRAPHICS.USE_PARTICLE_FX_ASSET then
+                                                GRAPHICS.USE_PARTICLE_FX_ASSET(assetName)
+                                            end
+                                            
+                                            if GRAPHICS.START_NETWORKED_PARTICLE_FX_LOOPED_ON_ENTITY_BONE then
+                                                newHandle = GRAPHICS.START_NETWORKED_PARTICLE_FX_LOOPED_ON_ENTITY_BONE(
+                                                    effectName, entityHandle,
+                                                    offsetX, offsetY, offsetZ,
+                                                    rotX, rotY, rotZ,
+                                                    boneIndex, scale,
+                                                    false, false, false,
+                                                    r, g, b, a
+                                                )
+                                            elseif GRAPHICS.START_PARTICLE_FX_LOOPED_ON_ENTITY_BONE then
+                                                newHandle = GRAPHICS.START_PARTICLE_FX_LOOPED_ON_ENTITY_BONE(
+                                                    effectName, entityHandle,
+                                                    offsetX, offsetY, offsetZ,
+                                                    rotX, rotY, rotZ,
+                                                    boneIndex, scale,
+                                                    false, false, false
+                                                )
+                                            elseif GRAPHICS.START_NETWORKED_PARTICLE_FX_LOOPED_ON_ENTITY then
+                                                newHandle = GRAPHICS.START_NETWORKED_PARTICLE_FX_LOOPED_ON_ENTITY(
+                                                    effectName, entityHandle,
+                                                    offsetX, offsetY, offsetZ,
+                                                    rotX, rotY, rotZ,
+                                                    scale,
+                                                    false, false, false,
+                                                    r, g, b, a
+                                                )
+                                            elseif GRAPHICS.START_PARTICLE_FX_LOOPED_ON_ENTITY then
+                                                newHandle = GRAPHICS.START_PARTICLE_FX_LOOPED_ON_ENTITY(
+                                                    effectName, entityHandle,
+                                                    offsetX, offsetY, offsetZ,
+                                                    rotX, rotY, rotZ,
+                                                    scale,
+                                                    false, false, false
+                                                )
+                                            end
+                                        end)
+                                        
+                                        if newHandle and newHandle ~= 0 then
+                                            handle = newHandle
+                                            
+                                            if GRAPHICS.SET_PARTICLE_FX_LOOPED_COLOUR then
+                                                pcall(function() GRAPHICS.SET_PARTICLE_FX_LOOPED_COLOUR(handle, r, g, b, false) end)
+                                            end
+                                            if GRAPHICS.SET_PARTICLE_FX_LOOPED_ALPHA then
+                                                pcall(function() GRAPHICS.SET_PARTICLE_FX_LOOPED_ALPHA(handle, a) end)
+                                            end
+                                            if GRAPHICS.SET_PARTICLE_FX_LOOPED_SCALE then
+                                                pcall(function() GRAPHICS.SET_PARTICLE_FX_LOOPED_SCALE(handle, scale) end)
+                                            end
+                                        else
+                                            print("[JSON PTFX] Refresh failed, breaking loop")
+                                            break
+                                        end
+                                    end
+                                    
+                                    -- Cleanup
+                                    print("[JSON PTFX] Cleaning up particle effect:", effectName)
+                                    if GRAPHICS.STOP_PARTICLE_FX_LOOPED and handle then
+                                        pcall(function() GRAPHICS.STOP_PARTICLE_FX_LOOPED(handle, false) end)
+                                    end
+                                end)
+                            else
+                                print("[JSON PTFX] FAILED: handle is nil or 0")
+                                M.debug_print("[JSON PTFX] Failed to start PARTICLE effect:", effectName)
+                            end
+                        end)
+                    else
+                        print("[JSON PTFX] ERROR: Missing asset or effect_name")
+                    end
+                else
+                    print("[JSON PTFX] ERROR: No particle_attributes found")
+                end
+                
+                -- Particles don't create entity handles, so skip to next child
+                return nil
             else
                 -- It's an object - try multiple methods
                 
