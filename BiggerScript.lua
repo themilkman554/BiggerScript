@@ -530,7 +530,65 @@ end
 
 Script.QueueJob(Initialize)
 
+local logoState = {
+    textureId = nil,
+    alpha = 0,
+    fadeInDuration = 1500,
+    displayDuration = 3000,
+    fadeOutDuration = 1500,
+    startTime = nil,
+    active = false
+}
 
+local logoPath = biggerScriptRootPath .. "\\logo.png"
+if FileMgr.DoesFileExist(logoPath) then
+    logoState.textureId = Texture.LoadTexture(logoPath)
+    if logoState.textureId and logoState.textureId ~= 0 then
+        logoState.startTime = Time.GetEpocheMs()
+        logoState.active = true
+    end
+end
+
+local function renderLogoFadeIn()
+    if not logoState.active or not logoState.textureId or logoState.textureId == 0 then
+        return
+    end
+    
+    if not Texture.IsTextureValid(logoState.textureId) then
+        return
+    end
+    
+    local elapsed = Time.GetEpocheMs() - logoState.startTime
+    local totalDuration = logoState.fadeInDuration + logoState.displayDuration + logoState.fadeOutDuration
+    
+    if elapsed < logoState.fadeInDuration then
+        logoState.alpha = (elapsed / logoState.fadeInDuration) * 255
+    elseif elapsed < (logoState.fadeInDuration + logoState.displayDuration) then
+        logoState.alpha = 255
+    elseif elapsed < totalDuration then
+        local fadeOutElapsed = elapsed - (logoState.fadeInDuration + logoState.displayDuration)
+        logoState.alpha = (1 - (fadeOutElapsed / logoState.fadeOutDuration)) * 255
+    else
+        logoState.active = false
+        return
+    end
+    
+    local screenWidth, screenHeight = ImGui.GetDisplaySize()
+    local d3dTexture = Texture.GetTexture(logoState.textureId)
+    local textureID = d3dTexture:GetCurrent()
+    local texWidth = d3dTexture:GetWidth()
+    local texHeight = d3dTexture:GetHeight()
+    local maxSize = 900
+    local scale = maxSize / math.max(texWidth, texHeight)
+    local logoWidth = texWidth * scale
+    local logoHeight = texHeight * scale
+    local centerX = screenWidth / 2
+    local centerY = screenHeight / 2
+    
+    ImGui.BgAddImageRotated(textureID, centerX, centerY, logoWidth, logoHeight, 0.0, math.floor(logoState.alpha))
+end
+
+EventMgr.RegisterHandler(eLuaEvent.ON_PRESENT, renderLogoFadeIn)
 
 local function renderMenyooTab()
     if not initialized then
