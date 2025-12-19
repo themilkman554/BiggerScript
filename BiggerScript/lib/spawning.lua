@@ -4,7 +4,7 @@ local isPreviewUpdaterRunning = false
 local lastSpawnedVehiclePath = nil
 
 -- Context variables to be initialized by the main script
-local upsidedownmap_module, spawnerSettings, debug_print, spawnedVehicles, spawnedMaps, spawnedOutfits, previewEntities, currentPreviewFile, constructor_lib, parse_ini_file, get_xml_element_content, get_xml_element, to_boolean, safe_tonumber, trim, split_str, request_model_load, xmlVehiclesFolder, iniVehiclesFolder, jsonVehiclesFolder, xmlMapsFolder, jsonMapsFolder, xmlOutfitsFolder, jsonOutfitsFolder, previewRotation, spawnedProps, currentSelectedVehicleXml, currentSelectedVehicleIni
+local upsidedownmap_module, spawnerSettings, debug_print, spawnedVehicles, spawnedMaps, spawnedOutfits, previewEntities, currentPreviewFile, constructor_lib, parse_ini_file, get_xml_element_content, get_xml_element, to_boolean, safe_tonumber, trim, split_str, request_model_load, xmlVehiclesFolder, iniVehiclesFolder, jsonVehiclesFolder, xmlMapsFolder, jsonMapsFolder, xmlOutfitsFolder, jsonOutfitsFolder, previewRotation, spawnedProps, currentSelectedVehicleXml, currentSelectedVehicleIni, chrxVehiclesFolder, chrxOutfitsFolder
 
 -- Preview Feature
 local previewRotation = { z = 0.0 }
@@ -60,10 +60,11 @@ function M.init(context)
     jsonMapsFolder = context.jsonMapsFolder
     xmlOutfitsFolder = context.xmlOutfitsFolder
     jsonOutfitsFolder = context.jsonOutfitsFolder
-    -- previewRotation = context.previewRotation -- Removed as it's now local to spawning.lua
     spawnedProps = context.spawnedProps
     currentSelectedVehicleXml = context.currentSelectedVehicleXml
     currentSelectedVehicleIni = context.currentSelectedVehicleIni
+    chrxVehiclesFolder = context.chrxVehiclesFolder
+    chrxOutfitsFolder = context.chrxOutfitsFolder
 
     upsidedownmap_module.init({
         spawnerSettings = spawnerSettings,
@@ -936,49 +937,30 @@ function M.create_by_type(model, typ, coords)
     local mnum = M.safe_tonumber(model, model)
     M.request_model_load(mnum)
     if typ == "1" or typ == 1 then
-        if GTA and GTA.CreatePed then
-            local ok, h = pcall(function() return GTA.CreatePed(mnum, 26, coords.x, coords.y, coords.z, 0, true, true) end)
-            if ok and h and h ~= 0 then return h end
-        end
-        if GTA and GTA.CreateRandomPed then
-            local ok, h = pcall(function() return GTA.CreateRandomPed(coords.x, coords.y, coords.z) end)
-            if ok and h and h ~= 0 then return h end
-        end
+        local ok, h = pcall(function() return GTA.CreatePed(mnum, 26, coords.x, coords.y, coords.z, 0, true, true) end)
+        if ok and h and h ~= 0 then return h end
+        ok, h = pcall(function() return GTA.CreateRandomPed(coords.x, coords.y, coords.z) end)
+        if ok and h and h ~= 0 then return h end
         return 0
     end
     if typ == "2" or typ == 2 then
-        if GTA and GTA.SpawnVehicle then
-            local ok, h = pcall(function() return GTA.SpawnVehicle(mnum, coords.x, coords.y, coords.z, 0, true, true) end)
-            if ok and h and h ~= 0 then return h end
-        end
+        local ok, h = pcall(function() return GTA.SpawnVehicle(mnum, coords.x, coords.y, coords.z, 0, true, true) end)
+        if ok and h and h ~= 0 then return h end
         return 0
     end
     if typ == "3" or typ == 3 then
-        if GTA and GTA.CreateObject then
-            local ok, h = pcall(function() return GTA.CreateObject(mnum, coords.x, coords.y, coords.z, true, true) end)
-            if ok and h and h ~= 0 then
-                pcall(function() if ENTITY and ENTITY.SET_ENTITY_COORDS then ENTITY.SET_ENTITY_COORDS(h, coords.x, coords.y, coords.z, false, false, false, true) end end)
-                return h
-            end
+        local ok, h = pcall(function() return GTA.CreateObject(mnum, coords.x, coords.y, coords.z, true, true) end)
+        if ok and h and h ~= 0 then
+            pcall(function() if ENTITY and ENTITY.SET_ENTITY_COORDS then ENTITY.SET_ENTITY_COORDS(h, coords.x, coords.y, coords.z, false, false, false, true) end end)
+            return h
         end
-        if GTA and GTA.CreateWorldObject then
-            local ok, h = pcall(function() return GTA.CreateWorldObject(mnum, coords.x, coords.y, coords.z, true, true) end)
-            if ok and h and h ~= 0 then
-                pcall(function() if ENTITY and ENTITY.SET_ENTITY_COORDS then ENTITY.SET_ENTITY_COORDS(h, coords.x, coords.y, coords.z, false, false, false, true) end end)
-                return h
-            end
+        ok, h = pcall(function() return GTA.CreateWorldObject(mnum, coords.x, coords.y, coords.z, true, true) end)
+        if ok and h and h ~= 0 then
+            pcall(function() if ENTITY and ENTITY.SET_ENTITY_COORDS then ENTITY.SET_ENTITY_COORDS(h, coords.x, coords.y, coords.z, false, false, false, true) end end)
+            return h
         end
-        if OBJECT and OBJECT.CREATE_OBJECT then
-            local ok, h = pcall(function() return OBJECT.CREATE_OBJECT(mnum, coords.x, coords.y, coords.z, true, false, false) end)
-            if ok and h and h ~= 0 then
-                pcall(function() if ENTITY and ENTITY.SET_ENTITY_COORDS then ENTITY.SET_ENTITY_COORDS(h, coords.x, coords.y, coords.z, false, false, false, true) end end)
-                return h
-            end
-        end
-        if GTA and GTA.SpawnVehicle then
-            local ok, h = pcall(function() return GTA.SpawnVehicle(mnum, coords.x, coords.y, coords.z, 0, true, true) end)
-            if ok and h and h ~= 0 then return h end
-        end
+        ok, h = pcall(function() return GTA.SpawnVehicle(mnum, coords.x, coords.y, coords.z, 0, true, true) end)
+        if ok and h and h ~= 0 then return h end
         return 0
     end
     return 0
@@ -2021,10 +2003,8 @@ function M.spawnVehicleFromINI(filePath, isPreview)
                 if ok and h and h ~= 0 then vehicleHandle = h end
             end
         else -- isPreview
-            if GTA and GTA.SpawnVehicleForPlayer then
-                local ok, h = pcall(function() return GTA.SpawnVehicleForPlayer(modelHash, playerID, forwardOffset) end)
-                if ok and h and h ~= 0 then vehicleHandle = h end
-            end
+            local ok, h = pcall(function() return GTA.SpawnVehicleForPlayer(modelHash, playerID, forwardOffset) end)
+            if ok and h and h ~= 0 then vehicleHandle = h end
         end
 
         if isPreview and vehicleHandle and vehicleHandle ~= 0 then
@@ -2288,10 +2268,8 @@ function M.spawnVehicleFromXML(filePath, isPreview)
                 if ok and h and h ~= 0 then vehicleHandle = h end
             end
         else -- isPreview
-            if GTA and GTA.SpawnVehicleForPlayer then
-                local ok, h = pcall(function() return GTA.SpawnVehicleForPlayer(modelHash, playerID, forwardOffset) end)
-                if ok and h and h ~= 0 then vehicleHandle = h end
-            end
+            local ok, h = pcall(function() return GTA.SpawnVehicleForPlayer(modelHash, playerID, forwardOffset) end)
+            if ok and h and h ~= 0 then vehicleHandle = h end
         end
 
         if isPreview and vehicleHandle and vehicleHandle ~= 0 then
@@ -2515,10 +2493,8 @@ function M.spawnMenyooAttackerFromXML(filePath, targetPlayerIndex)
         end)
         M.request_model_load(modelHash)
         local vehicleHandle = nil
-        if GTA and GTA.SpawnVehicle then
-            local ok, h = pcall(function() return GTA.SpawnVehicle(modelHash, spawnCoords.x, spawnCoords.y, spawnCoords.z, 0, true, true) end)
-            if ok and h and h ~= 0 then vehicleHandle = h end
-        end
+        local ok, h = pcall(function() return GTA.SpawnVehicle(modelHash, spawnCoords.x, spawnCoords.y, spawnCoords.z, 0, true, true) end)
+        if ok and h and h ~= 0 then vehicleHandle = h end
         if not vehicleHandle and entities and entities.create_vehicle then
             local ok, h = pcall(function() return entities.create_vehicle(modelHash, spawnCoords, 0) end)
             if ok and h and h ~= 0 then vehicleHandle = h end
@@ -2530,10 +2506,8 @@ function M.spawnMenyooAttackerFromXML(filePath, targetPlayerIndex)
         local attackerModel = M.safe_tonumber(M.get_xml_element_content(xmlContent, "AttackerModelHash"), 71929310)
         M.request_model_load(attackerModel)
         local attacker = nil
-        if GTA and GTA.CreatePed then
-            local ok, h = pcall(function() return GTA.CreatePed(attackerModel, 26, spawnCoords.x, spawnCoords.y, spawnCoords.z, 0, true, true) end)
-            if ok and h and h ~= 0 then attacker = h end
-        end
+        local ok2, h2 = pcall(function() return GTA.CreatePed(attackerModel, 26, spawnCoords.x, spawnCoords.y, spawnCoords.z, 0, true, true) end)
+        if ok2 and h2 and h2 ~= 0 then attacker = h2 end
         if not attacker or attacker == 0 then
             M.debug_print("[Spawn Debug] Error: Failed to spawn attacker ped for model:", tostring(attackerModel))
             return
@@ -2629,10 +2603,8 @@ function M.spawnMenyooAttackerFromINI(filePath, targetPlayerIndex)
         end)
         M.request_model_load(modelHash)
         local vehicleHandle = nil
-        if GTA and GTA.SpawnVehicle then
-            local ok, h = pcall(function() return GTA.SpawnVehicle(modelHash, spawnCoords.x, spawnCoords.y, spawnCoords.z, 0, true, true) end)
-            if ok and h and h ~= 0 then vehicleHandle = h end
-        end
+        local ok, h = pcall(function() return GTA.SpawnVehicle(modelHash, spawnCoords.x, spawnCoords.y, spawnCoords.z, 0, true, true) end)
+        if ok and h and h ~= 0 then vehicleHandle = h end
         if not vehicleHandle and entities and entities.create_vehicle then
             local ok, h = pcall(function() return entities.create_vehicle(modelHash, spawnCoords, 0) end)
             if ok and h and h ~= 0 then vehicleHandle = h end
@@ -2645,10 +2617,8 @@ function M.spawnMenyooAttackerFromINI(filePath, targetPlayerIndex)
         local attackerModel = M.safe_tonumber(mainVehicleSection.AttackerModelHash, 71929310)
         M.request_model_load(attackerModel)
         local attacker = nil
-        if GTA and GTA.CreatePed then
-            local ok, h = pcall(function() return GTA.CreatePed(attackerModel, 26, spawnCoords.x, spawnCoords.y, spawnCoords.z, 0, true, true) end)
-            if ok and h and h ~= 0 then attacker = h end
-        end
+        local ok2, h2 = pcall(function() return GTA.CreatePed(attackerModel, 26, spawnCoords.x, spawnCoords.y, spawnCoords.z, 0, true, true) end)
+        if ok2 and h2 and h2 ~= 0 then attacker = h2 end
         if not attacker or attacker == 0 then
             M.debug_print("[Spawn Debug] Error: Failed to spawn attacker ped for model:", tostring(attackerModel))
             spawnerSettings.inVehicle = originalInVehicle
@@ -2781,7 +2751,7 @@ function M.spawnMenyooAttackerFromJSON(filePath, targetPlayerIndex)
         end
         
         -- Calculate spawn coordinates (behind target)
-        print("[JSON Attacker] Calculating spawn position...")
+        M.debug_print("[JSON Attacker] Calculating spawn position...")
         local spawnCoords = { x = 0.0, y = 0.0, z = 0.0 }
         pcall(function()
             local off = ENTITY.GET_OFFSET_FROM_ENTITY_IN_WORLD_COORDS(targetPed, 0, -10.0, 0)
@@ -2793,44 +2763,40 @@ function M.spawnMenyooAttackerFromJSON(filePath, targetPlayerIndex)
         end)
         
         -- Spawn the vehicle
-        print("[JSON Attacker] Spawning vehicle...")
+        M.debug_print("[JSON Attacker] Spawning vehicle...")
         M.request_model_load(modelHash)
         local vehicleHandle = nil
-        if GTA and GTA.SpawnVehicle then
-            local ok, h = pcall(function() return GTA.SpawnVehicle(modelHash, spawnCoords.x, spawnCoords.y, spawnCoords.z, 0, true, true) end)
-            if ok and h and h ~= 0 then vehicleHandle = h end
-        end
+        local ok, h = pcall(function() return GTA.SpawnVehicle(modelHash, spawnCoords.x, spawnCoords.y, spawnCoords.z, 0, true, true) end)
+        if ok and h and h ~= 0 then vehicleHandle = h end
         if not vehicleHandle and entities and entities.create_vehicle then
             local ok, h = pcall(function() return entities.create_vehicle(modelHash, spawnCoords, 0) end)
             if ok and h and h ~= 0 then vehicleHandle = h end
         end
         if not vehicleHandle or vehicleHandle == 0 then
-            print("[JSON Attacker] Error: Failed to spawn vehicle")
+            M.debug_print("[JSON Attacker] Error: Failed to spawn vehicle")
             M.debug_print("[Spawn Debug] Error: Failed to spawn main attacker vehicle for model hash:", modelHash, "from:", filePath)
             spawnerSettings.inVehicle = originalInVehicle
             return
         end
-        print("[JSON Attacker] Vehicle spawned, handle:", vehicleHandle)
+        M.debug_print("[JSON Attacker] Vehicle spawned, handle:", vehicleHandle)
         
         -- Spawn attacker ped
-        print("[JSON Attacker] Spawning attacker ped...")
+        M.debug_print("[JSON Attacker] Spawning attacker ped...")
         local attackerModel = 71929310  -- Default attacker model
         M.request_model_load(attackerModel)
         local attacker = nil
-        if GTA and GTA.CreatePed then
-            local ok, h = pcall(function() return GTA.CreatePed(attackerModel, 26, spawnCoords.x, spawnCoords.y, spawnCoords.z, 0, true, true) end)
-            if ok and h and h ~= 0 then attacker = h end
-        end
+        local ok2, h2 = pcall(function() return GTA.CreatePed(attackerModel, 26, spawnCoords.x, spawnCoords.y, spawnCoords.z, 0, true, true) end)
+        if ok2 and h2 and h2 ~= 0 then attacker = h2 end
         if not attacker or attacker == 0 then
             print("[JSON Attacker] Error: Failed to spawn attacker ped")
             M.debug_print("[Spawn Debug] Error: Failed to spawn attacker ped for model:", tostring(attackerModel))
             spawnerSettings.inVehicle = originalInVehicle
             return
         end
-        print("[JSON Attacker] Attacker ped spawned, handle:", attacker)
+        M.debug_print("[JSON Attacker] Attacker ped spawned, handle:", attacker)
         
         -- Configure attacker
-        print("[JSON Attacker] Configuring attacker...")
+        M.debug_print("[JSON Attacker] Configuring attacker...")
         pcall(function()
             PED.SET_PED_INTO_VEHICLE(attacker, vehicleHandle, -1)
             ENTITY.SET_ENTITY_AS_MISSION_ENTITY(attacker, true, true)
@@ -2848,10 +2814,10 @@ function M.spawnMenyooAttackerFromJSON(filePath, targetPlayerIndex)
         end)
         
         -- Spawn and attach children objects
-        print("[JSON Attacker] Spawning attachments...")
+        M.debug_print("[JSON Attacker] Spawning attachments...")
         local attachedObjects = {}
         if jsonData.children and #jsonData.children > 0 then
-            print("[JSON Attacker] Found", #jsonData.children, "children to spawn")
+            M.debug_print("[JSON Attacker] Found", #jsonData.children, "children to spawn")
             
             for i, child in ipairs(jsonData.children) do
                 local childModel = child.hash or child.model
@@ -2861,30 +2827,18 @@ function M.spawnMenyooAttackerFromJSON(filePath, targetPlayerIndex)
                     
                     local objectHandle
                     if child.type == "VEHICLE" then
-                        if GTA and GTA.SpawnVehicle then
-                            local ok2, h2 = pcall(function()
-                                return GTA.SpawnVehicle(childModel, spawnCoords.x, spawnCoords.y, spawnCoords.z, 0, true, true)
-                            end)
-                            if ok2 and h2 and h2 ~= 0 then
-                                objectHandle = h2
-                            end
+                        local ok2, h2 = pcall(function()
+                            return GTA.SpawnVehicle(childModel, spawnCoords.x, spawnCoords.y, spawnCoords.z, 0, true, true)
+                        end)
+                        if ok2 and h2 and h2 ~= 0 then
+                            objectHandle = h2
                         end
                     else
-                        if GTA and GTA.CreateObject then
-                            local ok2, h2 = pcall(function()
-                                return GTA.CreateObject(childModel, spawnCoords.x, spawnCoords.y, spawnCoords.z, true, true)
-                            end)
-                            if ok2 and h2 and h2 ~= 0 then
-                                objectHandle = h2
-                            end
-                        end
-                        if not objectHandle or objectHandle == 0 then
-                            local ok2, h2 = pcall(function()
-                                return OBJECT.CREATE_OBJECT(childModel, spawnCoords.x, spawnCoords.y, spawnCoords.z, true, false, false)
-                            end)
-                            if ok2 and h2 and h2 ~= 0 then
-                                objectHandle = h2
-                            end
+                        local ok2, h2 = pcall(function()
+                            return GTA.CreateObject(childModel, spawnCoords.x, spawnCoords.y, spawnCoords.z, true, true)
+                        end)
+                        if ok2 and h2 and h2 ~= 0 then
+                            objectHandle = h2
                         end
                     end
                     
@@ -2936,7 +2890,7 @@ function M.spawnMenyooAttackerFromJSON(filePath, targetPlayerIndex)
             table.insert(attachments, h)
         end
         table.insert(spawnedVehicles, { vehicle = vehicleHandle, attachments = attachments })
-        print("[JSON Attacker] Spawn complete!")
+        M.debug_print("[JSON Attacker] Spawn complete!")
         spawnerSettings.inVehicle = originalInVehicle
     end)
 end
@@ -3345,10 +3299,6 @@ function M.spawnOutfitFromXML(filePath, isPreview)
             M.request_model_load(modelHash)
             spawnedPed = M.create_by_type(modelHash, 1, spawnCoords)
             if not spawnedPed or spawnedPed == 0 then
-                local ok, h = pcall(function() return PED.CREATE_PED(4, modelHash, spawnCoords.x, spawnCoords.y, spawnCoords.z, 0.0, false, false) end)
-                if ok and h and h ~= 0 then spawnedPed = h end
-            end
-            if not spawnedPed or spawnedPed == 0 then
                 M.debug_print("[Spawn Debug] Error: Failed to spawn main ped for outfit model hash:", modelHash, "from:", filePath)
                 return
             end
@@ -3655,37 +3605,23 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
         local forwardOffset = 5.0
         
         -- Use GTA.SpawnVehicleForPlayer like INI spawning does
-        if GTA and GTA.SpawnVehicleForPlayer then
-            local spawnSuccess, spawnResult = pcall(function()
-                return GTA.SpawnVehicleForPlayer(modelHash, playerID, forwardOffset)
-            end)
-            
-            if spawnSuccess and spawnResult and spawnResult ~= 0 then
-                vehicleHandle = spawnResult
-            else
-            end
+        local spawnSuccess, spawnResult = pcall(function()
+            return GTA.SpawnVehicleForPlayer(modelHash, playerID, forwardOffset)
+        end)
+        
+        if spawnSuccess and spawnResult and spawnResult ~= 0 then
+            vehicleHandle = spawnResult
+        else
         end
         
         -- Fallback to GTA.SpawnVehicle if SpawnVehicleForPlayer failed
         if not vehicleHandle or vehicleHandle == 0 then
-            if GTA and GTA.SpawnVehicle then
-                local spawnSuccess, spawnResult = pcall(function()
-                    return GTA.SpawnVehicle(modelHash, spawnCoords.x, spawnCoords.y, spawnCoords.z, playerHeading, true, true)
-                end)
-                
-                if spawnSuccess and spawnResult and spawnResult ~= 0 then
-                    vehicleHandle = spawnResult
-                end
-            end
-        end
-        
-        -- Final fallback to native if both Cherax APIs failed
-        if not vehicleHandle or vehicleHandle == 0 then
-            local ok, h = pcall(function()
-                return VEHICLE.CREATE_VEHICLE(modelHash, spawnCoords.x, spawnCoords.y, spawnCoords.z, playerHeading, true, true)
+            local spawnSuccess2, spawnResult2 = pcall(function()
+                return GTA.SpawnVehicle(modelHash, spawnCoords.x, spawnCoords.y, spawnCoords.z, playerHeading, true, true)
             end)
-            if ok and h and h ~= 0 then
-                vehicleHandle = h
+            
+            if spawnSuccess2 and spawnResult2 and spawnResult2 ~= 0 then
+                vehicleHandle = spawnResult2
             end
         end
         
@@ -4129,10 +4065,9 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
             local childHandle
             if child.type == "VEHICLE" then
                 -- Use Cherax API for vehicle spawning
-                if GTA and GTA.SpawnVehicle then
-                    local ok, h = pcall(function()
-                        return GTA.SpawnVehicle(childModel, spawnCoords.x, spawnCoords.y, spawnCoords.z, 0, true, true)
-                    end)
+                local ok, h = pcall(function()
+                    return GTA.SpawnVehicle(childModel, spawnCoords.x, spawnCoords.y, spawnCoords.z, 0, true, true)
+                end)
                     if ok and h and h ~= 0 then 
                         childHandle = h 
                         
@@ -4319,26 +4254,12 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
                     else
                         M.debug_print("[JSON Spawn Debug]" .. indent .. "Failed to spawn child VEHICLE with GTA.SpawnVehicle, ok:", ok, "handle:", tostring(h))
                     end
-                end
-                
-                -- Fallback to native if Cherax API failed
-                if not childHandle or childHandle == 0 then
-                    local ok, h = pcall(function()
-                        return VEHICLE.CREATE_VEHICLE(childModel, spawnCoords.x, spawnCoords.y, spawnCoords.z, 0, true, true)
-                    end)
-                    if ok and h and h ~= 0 then 
-                        childHandle = h 
-                    else
-                        M.debug_print("[JSON Spawn Debug]" .. indent .. "Failed to spawn child VEHICLE, ok:", ok, "handle:", tostring(h))
-                    end
-                end
             elseif child.type == "PED" then
                 -- Use Cherax API for ped spawning
-                if GTA and GTA.CreatePed then
-                    local ok, h = pcall(function()
-                        return GTA.CreatePed(childModel, 26, spawnCoords.x, spawnCoords.y, spawnCoords.z, 0, true, true)
-                    end)
-                    if ok and h and h ~= 0 then 
+                local ok, h = pcall(function()
+                    return GTA.CreatePed(childModel, 26, spawnCoords.x, spawnCoords.y, spawnCoords.z, 0, true, true)
+                end)
+                if ok and h and h ~= 0 then 
                         childHandle = h 
                         
                         -- Apply ped attributes
@@ -4394,21 +4315,8 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
                                 pcall(function() PED.SET_PED_KEEP_TASK(h, true) end)
                             end
                         end
-                    else
-                        M.debug_print("[JSON Spawn Debug]" .. indent .. "Failed to spawn child PED with GTA.CreatePed, ok:", ok, "handle:", tostring(h))
-                    end
-                end
-                
-                -- Fallback to native if Cherax API failed
-                if not childHandle or childHandle == 0 then
-                    local ok, h = pcall(function()
-                        return PED.CREATE_PED(4, childModel, spawnCoords.x, spawnCoords.y, spawnCoords.z, 0, true, true)
-                    end)
-                    if ok and h and h ~= 0 then 
-                        childHandle = h 
-                    else
-                        M.debug_print("[JSON Spawn Debug]" .. indent .. "Failed to spawn child PED, ok:", ok, "handle:", tostring(h))
-                    end
+                else
+                    M.debug_print("[JSON Spawn Debug]" .. indent .. "Failed to spawn child PED with GTA.CreatePed, ok:", ok, "handle:", tostring(h))
                 end
             elseif child.type == "PARTICLE" then
                 -- Handle PARTICLE type children - spawn particle effect on parent (matching XML approach)
@@ -4683,36 +4591,20 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
                 -- It's an object - try multiple methods
                 
                 -- Try GTA.CreateObject first (preferred method)
-                if GTA and GTA.CreateObject then
-                    local ok, h = pcall(function()
-                        return GTA.CreateObject(childModel, spawnCoords.x, spawnCoords.y, spawnCoords.z, true, true)
-                    end)
-                    if ok and h and h ~= 0 then
-                        childHandle = h
-                    end
+                local ok, h = pcall(function()
+                    return GTA.CreateObject(childModel, spawnCoords.x, spawnCoords.y, spawnCoords.z, true, true)
+                end)
+                if ok and h and h ~= 0 then
+                    childHandle = h
                 end
                 
                 -- Try GTA.CreateWorldObject if first method failed
                 if not childHandle or childHandle == 0 then
-                    if GTA and GTA.CreateWorldObject then
-                        local ok, h = pcall(function()
-                            return GTA.CreateWorldObject(childModel, spawnCoords.x, spawnCoords.y, spawnCoords.z, true, true)
-                        end)
-                        if ok and h and h ~= 0 then
-                            childHandle = h
-                        end
-                    end
-                end
-                
-                -- Try OBJECT.CREATE_OBJECT as final fallback
-                if not childHandle or childHandle == 0 then
-                    local ok, h = pcall(function()
-                        return OBJECT.CREATE_OBJECT(childModel, spawnCoords.x, spawnCoords.y, spawnCoords.z, true, false, false)
+                    ok, h = pcall(function()
+                        return GTA.CreateWorldObject(childModel, spawnCoords.x, spawnCoords.y, spawnCoords.z, true, true)
                     end)
                     if ok and h and h ~= 0 then
                         childHandle = h
-                    else
-                        M.debug_print("[JSON Spawn Debug]" .. indent .. "Failed to spawn child OBJECT with all methods, ok:", ok, "handle:", tostring(h))
                     end
                 end
             end
@@ -4990,113 +4882,77 @@ function M.spawnMapFromJSON(filePath, isPreview)
             if child.type == "VEHICLE" then
                 local rotData = child.world_rotation or child.rotation
                 -- Use Cherax API for vehicle spawning
-                if GTA and GTA.SpawnVehicle then
-                    local ok, h = pcall(function()
-                        return GTA.SpawnVehicle(childModel, spawnPos.x, spawnPos.y, spawnPos.z, rotData and rotData.z or 0, true, true)
-                    end)
-                    if ok and h and h ~= 0 then 
-                        entityHandle = h 
-                    end
-                end
-                
-                -- Fallback to native if Cherax API failed
-                if not entityHandle or entityHandle == 0 then
-                    local ok, h = pcall(function()
-                        return VEHICLE.CREATE_VEHICLE(childModel, spawnPos.x, spawnPos.y, spawnPos.z, rotData and rotData.z or 0, true, true)
-                    end)
-                    if ok and h and h ~= 0 then 
-                        entityHandle = h 
-                    end
+                local ok, h = pcall(function()
+                    return GTA.SpawnVehicle(childModel, spawnPos.x, spawnPos.y, spawnPos.z, rotData and rotData.z or 0, true, true)
+                end)
+                if ok and h and h ~= 0 then 
+                    entityHandle = h 
                 end
             elseif child.type == "PED" then
                 local rotData = child.world_rotation or child.rotation
                 -- Use Cherax API for ped spawning
-                if GTA and GTA.CreatePed then
-                    local ok, h = pcall(function()
-                        return GTA.CreatePed(childModel, 26, spawnPos.x, spawnPos.y, spawnPos.z, rotData and rotData.z or 0, true, true)
-                    end)
-                    if ok and h and h ~= 0 then 
-                        entityHandle = h 
-                        
-                        -- Apply ped attributes
-                        if child.ped_attributes then
-                            local attrs = child.ped_attributes
-                            if attrs.animation and attrs.animation.dictionary and attrs.animation.clip then
-                                Script.Yield(100)
-                                pcall(function()
-                                    STREAMING.REQUEST_ANIM_DICT(attrs.animation.dictionary)
-                                    local timeout = 0
-                                    while not STREAMING.HAS_ANIM_DICT_LOADED(attrs.animation.dictionary) and timeout < 50 do
-                                        Script.Yield(10)
-                                        timeout = timeout + 1
-                                    end
-                                    if STREAMING.HAS_ANIM_DICT_LOADED(attrs.animation.dictionary) then
-                                        TASK.TASK_PLAY_ANIM(h, attrs.animation.dictionary, attrs.animation.clip, 8.0, -8.0, -1, attrs.animation.loop and 1 or 0, 0, false, false, false)
-                                    end
-                                end)
-                            end
-                            if attrs.components then
-                                for compKey, compData in pairs(attrs.components) do
-                                    local compId = tonumber(compKey:match("_(%d+)"))
-                                    if compId and compData.drawable_variation then
-                                        pcall(function()
-                                            PED.SET_PED_COMPONENT_VARIATION(h, compId, compData.drawable_variation, compData.texture_variation or 0, compData.palette_variation or 0)
-                                        end)
-                                    end
+                local ok, h = pcall(function()
+                    return GTA.CreatePed(childModel, 26, spawnPos.x, spawnPos.y, spawnPos.z, rotData and rotData.z or 0, true, true)
+                end)
+                if ok and h and h ~= 0 then 
+                    entityHandle = h 
+                    
+                    -- Apply ped attributes
+                    if child.ped_attributes then
+                        local attrs = child.ped_attributes
+                        if attrs.animation and attrs.animation.dictionary and attrs.animation.clip then
+                            Script.Yield(100)
+                            pcall(function()
+                                STREAMING.REQUEST_ANIM_DICT(attrs.animation.dictionary)
+                                local timeout = 0
+                                while not STREAMING.HAS_ANIM_DICT_LOADED(attrs.animation.dictionary) and timeout < 50 do
+                                    Script.Yield(10)
+                                    timeout = timeout + 1
                                 end
-                            end
-                            if attrs.props then
-                                for propKey, propData in pairs(attrs.props) do
-                                    local propId = tonumber(propKey:match("_(%d+)"))
-                                    if propId and propData.drawable_variation and propData.drawable_variation ~= -1 then
-                                        pcall(function()
-                                            PED.SET_PED_PROP_INDEX(h, propId, propData.drawable_variation, propData.texture_variation or 0, true)
-                                        end)
-                                    end
+                                if STREAMING.HAS_ANIM_DICT_LOADED(attrs.animation.dictionary) then
+                                    TASK.TASK_PLAY_ANIM(h, attrs.animation.dictionary, attrs.animation.clip, 8.0, -8.0, -1, attrs.animation.loop and 1 or 0, 0, false, false, false)
                                 end
-                            end
-                            if attrs.ignore_events then
-                                pcall(function() PED.SET_PED_CONFIG_FLAG(h, 208, true) end)
-                            end
-                            if attrs.keep_on_task then
-                                pcall(function() PED.SET_PED_KEEP_TASK(h, true) end)
+                            end)
+                        end
+                        if attrs.components then
+                            for compKey, compData in pairs(attrs.components) do
+                                local compId = tonumber(compKey:match("_(%d+)"))
+                                if compId and compData.drawable_variation then
+                                    pcall(function()
+                                        PED.SET_PED_COMPONENT_VARIATION(h, compId, compData.drawable_variation, compData.texture_variation or 0, compData.palette_variation or 0)
+                                    end)
+                                end
                             end
                         end
-                    end
-                end
-                
-                -- Fallback to native if Cherax API failed
-                if not entityHandle or entityHandle == 0 then
-                    local ok, h = pcall(function()
-                        return PED.CREATE_PED(4, childModel, spawnPos.x, spawnPos.y, spawnPos.z, rotData and rotData.z or 0, true, true)
-                    end)
-                    if ok and h and h ~= 0 then 
-                        entityHandle = h 
+                        if attrs.props then
+                            for propKey, propData in pairs(attrs.props) do
+                                local propId = tonumber(propKey:match("_(%d+)"))
+                                if propId and propData.drawable_variation and propData.drawable_variation ~= -1 then
+                                    pcall(function()
+                                        PED.SET_PED_PROP_INDEX(h, propId, propData.drawable_variation, propData.texture_variation or 0, true)
+                                    end)
+                                end
+                            end
+                        end
+                        if attrs.ignore_events then
+                            pcall(function() PED.SET_PED_CONFIG_FLAG(h, 208, true) end)
+                        end
+                        if attrs.keep_on_task then
+                            pcall(function() PED.SET_PED_KEEP_TASK(h, true) end)
+                        end
                     end
                 end
             else
                 -- It's an object
-                if GTA and GTA.CreateObject then
-                    local ok, h = pcall(function()
-                        return GTA.CreateObject(childModel, spawnPos.x, spawnPos.y, spawnPos.z, true, true)
-                    end)
-                    if ok and h and h ~= 0 then
-                        entityHandle = h
-                    end
+                local ok, h = pcall(function()
+                    return GTA.CreateObject(childModel, spawnPos.x, spawnPos.y, spawnPos.z, true, true)
+                end)
+                if ok and h and h ~= 0 then
+                    entityHandle = h
                 end
                 if not entityHandle or entityHandle == 0 then
-                    if GTA and GTA.CreateWorldObject then
-                        local ok, h = pcall(function()
-                            return GTA.CreateWorldObject(childModel, spawnPos.x, spawnPos.y, spawnPos.z, true, true)
-                        end)
-                        if ok and h and h ~= 0 then
-                            entityHandle = h
-                        end
-                    end
-                end
-                if not entityHandle or entityHandle == 0 then
-                    local ok, h = pcall(function()
-                        return OBJECT.CREATE_OBJECT(childModel, spawnPos.x, spawnPos.y, spawnPos.z, true, false, false)
+                    ok, h = pcall(function()
+                        return GTA.CreateWorldObject(childModel, spawnPos.x, spawnPos.y, spawnPos.z, true, true)
                     end)
                     if ok and h and h ~= 0 then
                         entityHandle = h
@@ -5199,55 +5055,25 @@ function M.spawnMapFromJSON(filePath, isPreview)
             
             if jsonData.type == "VEHICLE" then
                 -- Use Cherax API for vehicle spawning
-                if GTA and GTA.SpawnVehicle then
-                    local ok, h = pcall(function()
-                        return GTA.SpawnVehicle(mainModel, mainPos.x, mainPos.y, mainPos.z, jsonData.rotation and jsonData.rotation.z or 0, true, true)
-                    end)
-                    if ok and h and h ~= 0 then mainParentHandle = h end
-                end
-                
-                -- Fallback to native if Cherax API failed
-                if not mainParentHandle or mainParentHandle == 0 then
-                    local ok, h = pcall(function()
-                        return VEHICLE.CREATE_VEHICLE(mainModel, mainPos.x, mainPos.y, mainPos.z, jsonData.rotation and jsonData.rotation.z or 0, true, true)
-                    end)
-                    if ok and h and h ~= 0 then mainParentHandle = h end
-                end
+                local ok, h = pcall(function()
+                    return GTA.SpawnVehicle(mainModel, mainPos.x, mainPos.y, mainPos.z, jsonData.rotation and jsonData.rotation.z or 0, true, true)
+                end)
+                if ok and h and h ~= 0 then mainParentHandle = h end
             elseif jsonData.type == "PED" then
                 -- Use Cherax API for ped spawning
-                if GTA and GTA.CreatePed then
-                    local ok, h = pcall(function()
-                        return GTA.CreatePed(mainModel, 26, mainPos.x, mainPos.y, mainPos.z, jsonData.rotation and jsonData.rotation.z or 0, true, true)
-                    end)
-                    if ok and h and h ~= 0 then mainParentHandle = h end
-                end
-                
-                -- Fallback to native if Cherax API failed
-                if not mainParentHandle or mainParentHandle == 0 then
-                    local ok, h = pcall(function()
-                        return PED.CREATE_PED(4, mainModel, mainPos.x, mainPos.y, mainPos.z, jsonData.rotation and jsonData.rotation.z or 0, true, true)
-                    end)
-                    if ok and h and h ~= 0 then mainParentHandle = h end
-                end
+                local ok, h = pcall(function()
+                    return GTA.CreatePed(mainModel, 26, mainPos.x, mainPos.y, mainPos.z, jsonData.rotation and jsonData.rotation.z or 0, true, true)
+                end)
+                if ok and h and h ~= 0 then mainParentHandle = h end
             else
                 -- It's an object
-                if GTA and GTA.CreateObject then
-                    local ok, h = pcall(function()
-                        return GTA.CreateObject(mainModel, mainPos.x, mainPos.y, mainPos.z, true, true)
-                    end)
-                    if ok and h and h ~= 0 then mainParentHandle = h end
-                end
+                local ok, h = pcall(function()
+                    return GTA.CreateObject(mainModel, mainPos.x, mainPos.y, mainPos.z, true, true)
+                end)
+                if ok and h and h ~= 0 then mainParentHandle = h end
                 if not mainParentHandle or mainParentHandle == 0 then
-                    if GTA and GTA.CreateWorldObject then
-                        local ok, h = pcall(function()
-                            return GTA.CreateWorldObject(mainModel, mainPos.x, mainPos.y, mainPos.z, true, true)
-                        end)
-                        if ok and h and h ~= 0 then mainParentHandle = h end
-                    end
-                end
-                if not mainParentHandle or mainParentHandle == 0 then
-                    local ok, h = pcall(function()
-                        return OBJECT.CREATE_OBJECT(mainModel, mainPos.x, mainPos.y, mainPos.z, true, false, false)
+                    ok, h = pcall(function()
+                        return GTA.CreateWorldObject(mainModel, mainPos.x, mainPos.y, mainPos.z, true, true)
                     end)
                     if ok and h and h ~= 0 then mainParentHandle = h end
                 end
@@ -5477,23 +5303,11 @@ function M.spawnOutfitFromJSON(filePath, isPreview)
             Script.Yield(200)
             
             -- Use Cherax API for ped spawning
-            if GTA and GTA.CreatePed then
-                local ok, h = pcall(function()
-                    return GTA.CreatePed(modelHash, 26, spawnCoords.x, spawnCoords.y, spawnCoords.z, heading, false, false)
-                end)
-                if ok and h and h ~= 0 then
-                    spawnedPed = h
-                end
-            end
-            
-            -- Fallback to native if Cherax API failed
-            if not spawnedPed or spawnedPed == 0 then
-                local ok, h = pcall(function()
-                    return PED.CREATE_PED(4, modelHash, spawnCoords.x, spawnCoords.y, spawnCoords.z, heading, false, false)
-                end)
-                if ok and h and h ~= 0 then
-                    spawnedPed = h
-                end
+            local ok, h = pcall(function()
+                return GTA.CreatePed(modelHash, 26, spawnCoords.x, spawnCoords.y, spawnCoords.z, heading, false, false)
+            end)
+            if ok and h and h ~= 0 then
+                spawnedPed = h
             end
             
             if not spawnedPed or spawnedPed == 0 then
@@ -5613,23 +5427,11 @@ function M.spawnOutfitFromJSON(filePath, isPreview)
                     
                     local objectHandle
                     -- Use Cherax API for object spawning
-                    if GTA and GTA.CreateObject then
-                        local ok2, h2 = pcall(function()
-                            return GTA.CreateObject(childModel, spawnCoords.x, spawnCoords.y, spawnCoords.z, true, true)
-                        end)
-                        if ok2 and h2 and h2 ~= 0 then
-                            objectHandle = h2
-                        end
-                    end
-                    
-                    -- Fallback to native if Cherax API failed
-                    if not objectHandle or objectHandle == 0 then
-                        local ok2, h2 = pcall(function()
-                            return OBJECT.CREATE_OBJECT(childModel, spawnCoords.x, spawnCoords.y, spawnCoords.z, true, false, false)
-                        end)
-                        if ok2 and h2 and h2 ~= 0 then
-                            objectHandle = h2
-                        end
+                    local ok2, h2 = pcall(function()
+                        return GTA.CreateObject(childModel, spawnCoords.x, spawnCoords.y, spawnCoords.z, true, true)
+                    end)
+                    if ok2 and h2 and h2 ~= 0 then
+                        objectHandle = h2
                     end
                     
                     if objectHandle and objectHandle ~= 0 then
@@ -5714,6 +5516,26 @@ function M.spawnOutfitFromJSON(filePath, isPreview)
             end)
         end
     end)
+end
+
+function M.spawnVehicleFromCHRX(path, index)
+    if not path or not index then return end
+    
+    local filename = M.get_filename_from_path(path)
+    local name = filename:match("(.+)%.%w+$") or filename
+    
+    FeatureMgr.SetFeatureListIndex(514776905, index)
+    FeatureMgr.GetFeatureByName("Load Vehicle"):TriggerCallback()
+end
+
+function M.spawnOutfitFromCHRX(path, index)
+    if not path or not index then return end
+    
+    local filename = M.get_filename_from_path(path)
+    local name = filename:match("(.+)%.%w+$") or filename
+    
+    FeatureMgr.SetFeatureListIndex(2384691091, index)
+    FeatureMgr.GetFeatureByName("Load Outfit"):TriggerCallback()
 end
 
 return M

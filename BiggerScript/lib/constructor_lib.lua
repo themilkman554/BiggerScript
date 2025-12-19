@@ -14,7 +14,7 @@ M.constantize_network_id = function(attachment)
     local net_id <const> = NETWORK.NETWORK_GET_NETWORK_ID_FROM_ENTITY(attachment.handle)
     -- network.set_network_id_can_migrate(net_id, false) -- Caused players unable to drive vehicles
     NETWORK.SET_NETWORK_ID_EXISTS_ON_ALL_MACHINES(net_id, true)
-    NETWORK.SET_NETWORK_ID_ALWAYS_EXISTS_FOR_PLAYER(net_id, players.user(), true)
+    NETWORK.SET_NETWORK_ID_ALWAYS_EXISTS_FOR_PLAYER(net_id, PLAYER.PLAYER_ID(), true)
     return net_id
 end
 

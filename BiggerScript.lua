@@ -6,110 +6,13 @@ if Cherax.GetEdition() == "LE" then
 end
 package.path = FileMgr.GetMenuRootPath() .. "\\Lua\\?.lua;"
 
-local function IsLoadedFromFile()
-    if debug and debug.getinfo then
-        local info = debug.getinfo(1, "S")
-        if info and info.source then
-            local source = info.source
-            if string.sub(source, 1, 1) == "@" then
-                source = string.sub(source, 2)
-            end
-            if string.find(source, "\\") or string.find(source, "/") then
-                return true
-            end
-        end
-    end
-    return false
-end
-
-local LoadLocalLibraries = IsLoadedFromFile()
-if LoadLocalLibraries then
-    print("BiggerScript: Detected local execution, using local libraries.")
-else
-    print("BiggerScript: Detected remote execution, using GitHub libraries.")
-end
-
-local GITHUB_RAW_BASE_URL = "https://raw.githubusercontent.com/themilkman554/BiggerScript/main/"
-
-local function curl_get_content(url)
-    print("Fetching: " .. url)
-    local curlObject = Curl.Easy()
-
-    curlObject:Setopt(10002, url)
-    curlObject:Perform()
-
-    while not curlObject:GetFinished() do
-        Script.Yield(10)
-    end
-
-    local code, response = curlObject:GetResponse()
-
-
-    if code == 0 then
-        return response
-    else
-        print("Curl error for " .. url .. ": " .. tostring(code))
-        return nil
-    end
-end
-
-if not LoadLocalLibraries then
-    Script.QueueJob(function()
-        local menuRoot = FileMgr.GetMenuRootPath()
-        local oldLoaderPath = menuRoot .. "\\Lua\\BiggerScriptLoader.lua"
-        if FileMgr.DoesFileExist(oldLoaderPath) then
-            GUI.AddToast("BiggerScript", "Downloading New Loader please restart Script/refrest files for loaderv2", 10000, 0)
-            FileMgr.DeleteFile(oldLoaderPath)
-            
-            local newLoaderUrl = "https://raw.githubusercontent.com/themilkman554/BiggerScript/refs/heads/main/BiggerScriptLoaderv2.lua"
-            local content = curl_get_content(newLoaderUrl)
-            
-            if content then
-                local newLoaderPath = menuRoot .. "\\Lua\\BiggerScriptLoaderv2.lua"
-                local file = io.open(newLoaderPath, "w")
-                if file then
-                    file:write(content)
-                    file:close()
-
-                    if Script.SetShouldUnload then
-                        Script.SetShouldUnload(true)
-                    end
-                    return
-                else
-                    print("BiggerScript: Failed to save new loader to " .. newLoaderPath)
-                end
-            else
-                print("BiggerScript: Failed to download new loader from " .. newLoaderUrl)
-            end
-        end
-    end)
-end
-
-local function load_from_github(path)
-    local url = GITHUB_RAW_BASE_URL .. path
-    local content = curl_get_content(url)
-    if content then
-        local chunk, err = load(content, "@" .. path)
-        if chunk then
-            local success, result = pcall(chunk)
-            if success then
-                return result
-            else
-                print("Error executing script from " .. url .. ": " .. tostring(result))
-            end
-        else
-            print("Error loading script from " .. url .. ": " .. err)
-        end
-    end
-    return nil
-end
-
--- Load libraries
-local upsidedownmap, spawning, robot, constructor_lib, vehicle_fly
-
-
-
-require("BiggerScript/natives/natives")
+local upsidedownmap = require("BiggerScript/lib/upsidedownmap")
+local spawning = require("BiggerScript/lib/spawning")
+local robot = require("BiggerScript/lib/robot")
+local constructor_lib = require("BiggerScript/lib/constructor_lib")
+local vehicle_fly = require("BiggerScript/lib/vehicle_fly")
+local spooner = require("BiggerScript/lib/spooner")
+local asset_loader = require("BiggerScript/lib/asset_loader")
 
 local menuRootPath = FileMgr.GetMenuRootPath()
 local biggerScriptRootPath = menuRootPath .. "\\Lua\\BiggerScript"
@@ -120,6 +23,8 @@ local xmlMapsFolder = biggerScriptRootPath .. "\\XML Maps"
 local jsonMapsFolder = biggerScriptRootPath .. "\\JSON Maps"
 local xmlOutfitsFolder = biggerScriptRootPath .. "\\XML Outfits"
 local jsonOutfitsFolder = biggerScriptRootPath .. "\\JSON Outfits"
+local chrxVehiclesFolder = FileMgr.GetMenuRootPath() .. "\\Vehicles"
+local chrxOutfitsFolder = FileMgr.GetMenuRootPath() .. "\\Outfits"
 
 
 local spawnerSettings = {
@@ -144,8 +49,12 @@ local spawnerSettings = {
     radioOff = false,
     onlyApplyAttachments = false,
     deleteLastOutfitAttachments = false,
-    autoLoadScript = false
+    enableSpooner = false,
+    enableGizmo = true, 
+    showSpoonerControls = true,
+    deletePhotoCache = false,
 }
+local lastSpoonerState = false
 
 
 local previewEntities = {}
@@ -300,6 +209,37 @@ local function refreshJsonOutfits()
     end
 end
 
+local cachedChrxVehicles = nil
+local cachedChrxOutfits = nil
+
+local function refreshChrxVehicles()
+    local files = FileMgr.FindFiles(chrxVehiclesFolder, ".json", false) 
+    if not files or #files == 0 then
+        cachedChrxVehicles = { folders = {}, files = {} }
+    else
+        cachedChrxVehicles = buildFolderStructure(files, chrxVehiclesFolder)
+    end
+end
+
+local function refreshChrxOutfits()
+    local files = FileMgr.FindFiles(chrxOutfitsFolder, ".json", false)
+    if not files or #files == 0 then
+        cachedChrxOutfits = { folders = {}, files = {} }
+    else
+        cachedChrxOutfits = buildFolderStructure(files, chrxOutfitsFolder)
+    end
+end
+
+local function getChrxVehicles()
+    if not cachedChrxVehicles then refreshChrxVehicles() end
+    return cachedChrxVehicles
+end
+
+local function getChrxOutfits()
+    if not cachedChrxOutfits then refreshChrxOutfits() end
+    return cachedChrxOutfits
+end
+
 local function getJsonOutfits()
     if not cachedJsonOutfits then refreshJsonOutfits() end
     return cachedJsonOutfits
@@ -368,24 +308,28 @@ local function renderFolder(folderName, folderData, spawnFunction, filterText, p
     if isOpen then
         local subFolders = {}
         for subFolderName, subFolderData in pairs(folderData.folders) do table.insert(subFolders, {name = subFolderName, data = subFolderData}) end
-        table.sort(subFolders, function(a, b) return a.name < b.name end)
+        table.sort(subFolders, function(a, b) return a.name:lower() < b.name:lower() end)
         for _, subFolder in ipairs(subFolders) do renderFolder(subFolder.name, subFolder.data, spawnFunction, filterText, currentPath, searchId, itemType, hoverCallback) end
 
         local sortedFiles = {}
         for _, fileData in ipairs(folderData.files) do table.insert(sortedFiles, fileData) end
-        table.sort(sortedFiles, function(a, b) return a.name < b.name end)
-        for _, fileData in ipairs(sortedFiles) do
+        table.sort(sortedFiles, function(a, b) return a.name:lower() < b.name:lower() end)
+        for i, fileData in ipairs(sortedFiles) do
             if not filterText or filterText == "" or string.find(fileData.name:lower(), filterText:lower()) then
                 if ImGui.Selectable(fileData.name) then
                     local selectedPath = fileData.fullPath
                     local norm = selectedPath:gsub("\\", "/")
                     local baseNorm = xmlVehiclesFolder:gsub("\\", "/")
                     if norm:sub(1, #baseNorm) == baseNorm then currentSelectedVehicleXml = selectedPath end
-                    spawning.debug_print("[UI Debug] Selected XML vehicle:", selectedPath)
+                    spawning.debug_print("[UI Debug] Selected XML vehicle:", selectedPath, "Index:", i-1)
                     if spawnFunction then
                         if spawnFunction == iniAttackerSelectFunction then
                             spawnFunction(selectedPath)
+                        elseif spawnFunction == spawning.spawnVehicleFromCHRX or spawnFunction == spawning.spawnOutfitFromCHRX then
+                            -- CHRX functions need the index parameter
+                            Script.QueueJob(function() spawnFunction(selectedPath, i-1) end)
                         else
+                            -- Other spawn functions don't need the index
                             Script.QueueJob(function() spawnFunction(selectedPath) end)
                         end
                     end
@@ -409,7 +353,7 @@ local function renderFolderContents(folderData, spawnFunction, filterText, searc
     for folderName, folderDataChild in pairs(folderData.folders) do
         table.insert(subFolders, {name = folderName, data = folderDataChild})
     end
-    table.sort(subFolders, function(a, b) return a.name < b.name end)
+    table.sort(subFolders, function(a, b) return a.name:lower() < b.name:lower() end)
     for _, sub in ipairs(subFolders) do
         renderFolder(sub.name, sub.data, spawnFunction, filterText, nil, searchId, itemType, hoverCallback)
     end
@@ -417,15 +361,21 @@ local function renderFolderContents(folderData, spawnFunction, filterText, searc
 
     local files = {}
     for _, f in ipairs(folderData.files) do table.insert(files, f) end
-    table.sort(files, function(a, b) return a.name < b.name end)
-    for _, fileData in ipairs(files) do
+    table.sort(files, function(a, b) return a.name:lower() < b.name:lower() end)
+    for i, fileData in ipairs(files) do
         if not filterText or string.find(fileData.name:lower(), filterText:lower()) then
             if ImGui.Selectable(fileData.name) then
                 local selectedPath = fileData.fullPath
-                spawning.debug_print("[UI Debug] Selected " .. (itemType or "item") .. ":", selectedPath)
+                spawning.debug_print("[UI Debug] Selected " .. (itemType or "item") .. ":", selectedPath, "Index:", i-1)
                 currentSelectedVehicleXml = selectedPath
                 if spawnFunction then
-                    Script.QueueJob(function() spawnFunction(selectedPath) end)
+                    if spawnFunction == spawning.spawnVehicleFromCHRX or spawnFunction == spawning.spawnOutfitFromCHRX then
+                        -- CHRX functions need the index parameter
+                        Script.QueueJob(function() spawnFunction(selectedPath, i-1) end)
+                    else
+                        -- Other spawn functions don't need the index
+                        Script.QueueJob(function() spawnFunction(selectedPath) end)
+                    end
                 end
             end
             if ImGui.IsItemHovered() and hoverCallback then
@@ -449,83 +399,134 @@ local spawnedProps = {}
 local searchXmlVehicles = ""
 local searchIniVehicles = ""
 local searchJsonVehicles = ""
+local searchXmlVehicles = ""
+local searchIniVehicles = ""
+local searchJsonVehicles = ""
+local searchChrxVehicles = ""
 local searchXmlMaps = ""
 local searchJsonMaps = ""
 local searchXmlOutfits = ""
+local searchXmlOutfits = ""
 local searchJsonOutfits = ""
+local searchChrxOutfits = ""
 
 local initialized = false
 
 local function Initialize()
-    if LoadLocalLibraries then
-        upsidedownmap = require("BiggerScript/lib/upsidedownmap")
-        spawning = require("BiggerScript/lib/spawning")
-        robot = require("BiggerScript/lib/robot")
-        constructor_lib = require("BiggerScript/lib/constructor_lib")
-        vehicle_fly = require("BiggerScript/lib/vehicle_fly")
-    else
-        upsidedownmap = load_from_github("BiggerScript/lib/upsidedownmap.lua")
-        if not upsidedownmap then print("Failed to load upsidedownmap.lua"); return end
+    local function ContinueInit()
+        local status, result = pcall(require, "BiggerScript/natives/natives")
+        if not status then
+            GUI.AddToast("BiggerScript", "Failed to load natives: " .. tostring(result), 10000, 0)
+        else
+        end
 
-        spawning = load_from_github("BiggerScript/lib/spawning.lua")
-        if not spawning then print("Failed to load spawning.lua"); return end
+        spawning.init({
+            upsidedownmap_module = upsidedownmap,
+            spawnerSettings = spawnerSettings,
+            debug_print = spawning.debug_print,
+            spawnedVehicles = spawnedVehicles,
+            spawnedMaps = spawnedMaps,
+            spawnedOutfits = spawnedOutfits,
+            previewEntities = previewEntities,
+            currentPreviewFile = currentPreviewFile,
+            constructor_lib = constructor_lib,
+            parse_ini_file = spawning.parse_ini_file,
+            get_xml_element_content = spawning.get_xml_element_content,
+            get_xml_element = spawning.get_xml_element,
+            to_boolean = spawning.to_boolean,
+            safe_tonumber = spawning.safe_tonumber,
+            trim = spawning.trim,
+            split_str = spawning.split_str,
+            request_model_load = spawning.request_model_load,
+            xmlVehiclesFolder = xmlVehiclesFolder,
+            iniVehiclesFolder = iniVehiclesFolder,
+            jsonVehiclesFolder = jsonVehiclesFolder,
+            xmlMapsFolder = xmlMapsFolder,
+            jsonMapsFolder = jsonMapsFolder,
+            xmlOutfitsFolder = xmlOutfitsFolder,
+            jsonOutfitsFolder = jsonOutfitsFolder,
+            spawnedProps = spawnedProps,
+            currentSelectedVehicleXml = currentSelectedVehicleXml,
+            currentSelectedVehicleXml = currentSelectedVehicleXml,
+            currentSelectedVehicleIni = currentSelectedVehicleIni,
+            chrxVehiclesFolder = chrxVehiclesFolder,
+            chrxOutfitsFolder = chrxOutfitsFolder
+        })
 
-        robot = load_from_github("BiggerScript/lib/robot.lua")
-        if not robot then print("Failed to load robot.lua"); return end
+        robot.init({
+            spawnerSettings = spawnerSettings,
+            debug_print = spawning.debug_print,
+            spawnedVehicles = spawnedVehicles,
+            moveableLegs = moveableLegs,
+            legAnimationJob = legAnimationJob,
+            robot_objects = robot_objects,
+            request_model_load = spawning.request_model_load,
+            safe_tonumber = spawning.safe_tonumber
+        })
 
-        constructor_lib = load_from_github("BiggerScript/lib/constructor_lib.lua")
-        if not constructor_lib then print("Failed to load constructor_lib.lua"); return end
+        vehicle_fly.init({
+            spawnerSettings = spawnerSettings
+        })
 
-        vehicle_fly = load_from_github("BiggerScript/lib/vehicle_fly.lua")
-        if not vehicle_fly then print("Failed to load vehicle_fly.lua"); return end
+        spooner.init({
+            spawnerSettings = spawnerSettings,
+            rootPath = biggerScriptRootPath
+        })
+
+        -- Register spooner's onPresent handler
+        EventMgr.RegisterHandler(eLuaEvent.ON_PRESENT, function()
+            if spooner.isEnabled() then
+                spooner.onPresent()
+                -- Render the crosshair for free cam mode
+                spooner.renderCrosshair()
+            end
+            -- Always render sub-windows (they can be opened independently without full Spooner mode)
+            spooner.renderGtaHashBrowserWindow()
+            spooner.renderSubWindows()
+        end)
+        
+        -- Register cleanup on unload
+        EventMgr.RegisterHandler(eLuaEvent.ON_UNLOAD, function()
+            if spooner then
+                spooner.setEnabled(false)
+            end
+
+            -- Delete Photo Cache if enabled
+            if spawnerSettings.deletePhotoCache then
+                local cachePath = biggerScriptRootPath .. "\\SpoonerAssets\\gtahashru\\objects"
+                local extensions = {".png", ".jpg", ".jpeg", ".bmp"}
+                for _, ext in ipairs(extensions) do
+                    local files = FileMgr.FindFiles(cachePath, ext, true)
+                    if files then
+                        for _, file in ipairs(files) do
+                            FileMgr.DeleteFile(file)
+                        end
+                    end
+                end
+            end
+
+            GUI.AddToast("BiggerScript", "Unloaded successfully", 3000, 0)
+        end)
+
+        initialized = true
     end
 
-    spawning.init({
-        upsidedownmap_module = upsidedownmap,
-        spawnerSettings = spawnerSettings,
-        debug_print = spawning.debug_print,
-        spawnedVehicles = spawnedVehicles,
-        spawnedMaps = spawnedMaps,
-        spawnedOutfits = spawnedOutfits,
-        previewEntities = previewEntities,
-        currentPreviewFile = currentPreviewFile,
-        constructor_lib = constructor_lib,
-        parse_ini_file = spawning.parse_ini_file,
-        get_xml_element_content = spawning.get_xml_element_content,
-        get_xml_element = spawning.get_xml_element,
-        to_boolean = spawning.to_boolean,
-        safe_tonumber = spawning.safe_tonumber,
-        trim = spawning.trim,
-        split_str = spawning.split_str,
-        request_model_load = spawning.request_model_load,
-        xmlVehiclesFolder = xmlVehiclesFolder,
-        iniVehiclesFolder = iniVehiclesFolder,
-        jsonVehiclesFolder = jsonVehiclesFolder,
-        xmlMapsFolder = xmlMapsFolder,
-        jsonMapsFolder = jsonMapsFolder,
-        xmlOutfitsFolder = xmlOutfitsFolder,
-        jsonOutfitsFolder = jsonOutfitsFolder,
-        spawnedProps = spawnedProps,
-        currentSelectedVehicleXml = currentSelectedVehicleXml,
-        currentSelectedVehicleIni = currentSelectedVehicleIni
-    })
+    -- Perform Asset Check/Update
+    local config = asset_loader.getBiggerScriptAssetsConfig()
+    
+    -- Check if natives exist to decide if we should force a check or just notify
+    local nativesPath = FileMgr.GetMenuRootPath() .. "\\Lua\\BiggerScript\\natives\\natives.lua"
+    if not FileMgr.DoesFileExist(nativesPath) then
+        GUI.AddToast("BiggerScript", "Missing Assets. Downloading...", 5000, 0)
+    end
 
-    robot.init({
-        spawnerSettings = spawnerSettings,
-        debug_print = spawning.debug_print,
-        spawnedVehicles = spawnedVehicles,
-        moveableLegs = moveableLegs,
-        legAnimationJob = legAnimationJob,
-        robot_objects = robot_objects,
-        request_model_load = spawning.request_model_load,
-        safe_tonumber = spawning.safe_tonumber
-    })
-
-    vehicle_fly.init({
-        spawnerSettings = spawnerSettings
-    })
-
-    initialized = true
+    asset_loader.checkAndUpdate(config, function(updateType, success, message, files)
+        if not success then
+            GUI.AddToast("BiggerScript Error", "Asset update failed: " .. tostring(message), 10000, 0)
+            -- Try to continue anyway? If natives are missing, it will fail in ContinueInit
+        end
+        ContinueInit()
+    end)
 end
 
 Script.QueueJob(Initialize)
@@ -723,6 +724,19 @@ local function renderMenyooTab()
 
                             local jsonStructure = getJsonVehicles()
                             renderFolderContents(jsonStructure, spawning.spawnVehicleFromJSON, searchJsonVehicles, "jsonVehicles", "vehicle", hoverCallback)
+                            ImGui.EndTabItem()
+                        end
+
+                        if ImGui.BeginTabItem("CHRX") then
+                            searchChrxVehicles, _ = ImGui.InputText("##searchChrxVehicles", searchChrxVehicles, 256)
+                            ImGui.SameLine()
+                            if ImGui.Button("Refresh##chrxVeh") then
+                                refreshChrxVehicles()
+                            end
+                            ImGui.Spacing()
+
+                            local chrxStructure = getChrxVehicles()
+                            renderFolderContents(chrxStructure, spawning.spawnVehicleFromCHRX, searchChrxVehicles, "chrxVehicles", "vehicle", hoverCallback)
                             ImGui.EndTabItem()
                         end
 
@@ -1043,6 +1057,19 @@ local function renderMenyooTab()
                             ImGui.EndTabItem()
                         end
 
+                        if ImGui.BeginTabItem("CHRX") then
+                            searchChrxOutfits, _ = ImGui.InputText("##searchChrxOutfits", searchChrxOutfits, 256)
+                            ImGui.SameLine()
+                            if ImGui.Button("Refresh##chrxOutfits") then
+                                refreshChrxOutfits()
+                            end
+                            ImGui.Spacing()
+
+                            local chrxStructure = getChrxOutfits()
+                            renderFolderContents(chrxStructure, spawning.spawnOutfitFromCHRX, searchChrxOutfits, "chrxOutfits", "outfit", hoverCallback)
+                            ImGui.EndTabItem()
+                        end
+
                         ImGui.EndTabBar()
                     end
                     ClickGUI.EndCustomChildWindow()
@@ -1078,70 +1105,7 @@ local function renderMenyooTab()
                         upsidedownmap.toggle_upside_down_map(spawnerSettings.upsideDownMap)
                     end
 
-                    ImGui.Spacing()
-                    local oldAutoLoad = spawnerSettings.autoLoadScript
-                    spawnerSettings.autoLoadScript = ImGui.Checkbox("Auto Load Script", spawnerSettings.autoLoadScript)
-                    if spawnerSettings.autoLoadScript ~= oldAutoLoad then
-                        local startupPath = FileMgr.GetMenuRootPath() .. "\\Lua\\Startup.lua"
-                        local scriptToLoad
-                        if LoadLocalLibraries then
-                            scriptToLoad = "BiggerScript.lua"
-                        else
-                            scriptToLoad = "BiggerScriptLoaderv2.lua"
-                        end
-                        
-                        local executeScriptLine = "Utils.ExecuteScript(\"" .. scriptToLoad .. "\")"
-                        
-                        -- Read current Startup.lua content
-                        local file = io.open(startupPath, "r")
-                        if file then
-                            local content = file:read("*all")
-                            file:close()
-                            
-                            if spawnerSettings.autoLoadScript then
-                                -- Add the line if not already present
-                                if not content:find(executeScriptLine, 1, true) then
-                                    -- Find the line with "-- Utils.ExecuteScript" comment
-                                    local insertPos = content:find("-- Utils%.ExecuteScript%(\"MyScript%.lua\"%)")
-                                    if insertPos then
-                                        -- Insert after the comment line
-                                        local lineEnd = content:find("\n", insertPos)
-                                        if lineEnd then
-                                            content = content:sub(1, lineEnd) .. executeScriptLine .. "\n" .. content:sub(lineEnd + 1)
-                                        end
-                                    else
-                                        -- Fallback: insert before SetShouldUnload()
-                                        local unloadPos = content:find("SetShouldUnload%(%)") or content:find("-- Load Default Feature Settings")
-                                        if unloadPos then
-                                            content = content:sub(1, unloadPos - 1) .. executeScriptLine .. "\n" .. content:sub(unloadPos)
-                                        end
-                                    end
-                                    
-                                    -- Write back to file
-                                    file = io.open(startupPath, "w")
-                                    if file then
-                                        file:write(content)
-                                        file:close()
-                                        GUI.AddToast("BiggerScript", "Added auto-load to Startup.lua: " .. scriptToLoad, 5000, 0)
-                                    end
-                                end
-                            else
-                                -- Remove the line
-                                local pattern = executeScriptLine:gsub("([%(%)%.%%%+%-%*%?%[%]%^%$])", "%%%1")
-                                content = content:gsub(pattern .. "\r?\n?", "")
-                                
-                                -- Write back to file
-                                file = io.open(startupPath, "w")
-                                if file then
-                                    file:write(content)
-                                    file:close()
-                                    GUI.AddToast("BiggerScript", "Removed auto-load from Startup.lua", 5000, 0)
-                                end
-                            end
-                        else
-                            GUI.AddToast("BiggerScript", "Failed to open Startup.lua", 5000, 0)
-                        end
-                    end
+
 
                     ClickGUI.EndCustomChildWindow()
                 end
@@ -1159,8 +1123,195 @@ local function renderMenyooTab()
                     ImGui.Text("Lance Spooner")
                     ImGui.Text("Kek's Lua")
                     ImGui.Text("2take1script")
+                    ImGui.Text("YimMenu")
+                    ImGui.Text("anonymous50000")
+                    ImGui.Text("Prisuhm")
                     ImGui.Text("Everyone who made and shared their creations")
                     ImGui.Text("Ai Free Usage")
+                    ClickGUI.EndCustomChildWindow()
+                end
+                
+                ImGui.EndTable()
+            end
+            ImGui.EndTabItem()
+        end
+
+        -- SPOONER TAB
+        if ImGui.BeginTabItem("Spooner") then
+            local columns = 2
+            if ImGui.BeginTable("SpoonerTable", columns, ImGuiTableFlags.SizingStretchSame) then
+                ImGui.TableNextRow()
+                
+                -- LEFT COLUMN: Spooner Settings (toggles)
+                ImGui.TableSetColumnIndex(0)
+                if ClickGUI.BeginCustomChildWindow("Spooner Settings") then
+                    ImGui.SetWindowFontScale(1.0)
+                    ImGui.Spacing()
+                    
+                    spawnerSettings.enableGizmo = ImGui.Checkbox("Enable Gizmo Arrows", spawnerSettings.enableGizmo)
+                    if ImGui.IsItemHovered() then
+                        ImGui.SetTooltip("Show 3D gizmo arrows on selected entities for positioning")
+                    end
+                    
+                    spawnerSettings.showSpoonerControls = ImGui.Checkbox("Show Controls", spawnerSettings.showSpoonerControls)
+                    if ImGui.IsItemHovered() then
+                        ImGui.SetTooltip("Show the Spooner Controls info window in the bottom right")
+                    end
+                    
+
+                    spawnerSettings.deletePhotoCache = ImGui.Checkbox("Delete Photo Cache After Exit", spawnerSettings.deletePhotoCache)
+                    if ImGui.IsItemHovered() then
+                        ImGui.SetTooltip("When enabled, deletes all files in BiggerScript\\SpoonerAssets\\gtahashru\\objects and subfolders when script unloads")
+                    end
+                    
+                    ImGui.Spacing()
+                    ClickGUI.EndCustomChildWindow()
+                end
+                
+                -- RIGHT COLUMN: Sub Windows with toggle buttons
+                ImGui.TableSetColumnIndex(1)
+                if ClickGUI.BeginCustomChildWindow("Spooner") then
+                    ImGui.SetWindowFontScale(1.0)
+                    ImGui.Spacing()
+                    
+                    -- Spooner toggle button (green when off = ready to launch, red when on = exit)
+                    local spoonerEnabled = spawnerSettings.enableSpooner
+                    local spoonerButtonText = spoonerEnabled and "Exit Spooner" or "Launch Spooner"
+                    if spoonerEnabled then
+                        -- Red when enabled (exit)
+                        ImGui.PushStyleColor(ImGuiCol.Button, 0.5, 0.1, 0.1, 1.0)
+                        ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.6, 0.15, 0.15, 1.0)
+                        ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.45, 0.08, 0.08, 1.0)
+                    else
+                        -- Green when disabled (launch)
+                        ImGui.PushStyleColor(ImGuiCol.Button, 0.1, 0.5, 0.15, 1.0)
+                        ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.15, 0.6, 0.2, 1.0)
+                        ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.08, 0.45, 0.12, 1.0)
+                    end
+                    
+                    if ImGui.Button(spoonerButtonText, -1, 30) then
+                        spawnerSettings.enableSpooner = not spawnerSettings.enableSpooner
+                        if spawnerSettings.enableSpooner then
+                            spooner.startDetectionLoop()
+                            -- Close PED/Vehicle customization windows and open Browser when Spooner mode is enabled
+                            spooner.setPedCustomsVisible(false)
+                            spooner.setVehicleCustomsVisible(false)
+                            spooner.openBrowserExpanded()
+                        else
+                            spooner.stopDetectionLoop()
+                            -- Close all sub-windows when Spooner mode is disabled
+                            spooner.closeAllSubWindows()
+                        end
+                    end
+                    ImGui.PopStyleColor(3)
+                    
+                    if ImGui.IsItemHovered() then
+                        ImGui.SetTooltip("Enable entity detection and management (Free Cam mode)")
+                    end
+                    
+                    ImGui.Spacing()
+                    ImGui.Separator()
+                    ImGui.Spacing()
+                    
+                    ImGui.PushStyleColor(ImGuiCol.Text, 0.9, 0.7, 1.0, 1.0)
+                    ImGui.Text("Sub Modules")
+                    ImGui.PopStyleColor()
+                    
+                    ImGui.Spacing()
+                    
+                    -- Only show Sub Windows if Spooner Mode is NOT active
+                    if not spoonerEnabled then
+                        -- Browser button (dark blue when off, light blue when on)
+                        local browserVisible = spooner.getBrowserVisible()
+                        if browserVisible then
+                            -- Light blue when on
+                            ImGui.PushStyleColor(ImGuiCol.Button, 0.2, 0.6, 0.9, 1.0)
+                            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.3, 0.7, 1.0, 1.0)
+                            ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.15, 0.55, 0.85, 1.0)
+                        else
+                            -- Dark blue when off
+                            ImGui.PushStyleColor(ImGuiCol.Button, 0.1, 0.2, 0.4, 1.0)
+                            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.15, 0.3, 0.5, 1.0)
+                            ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.08, 0.18, 0.35, 1.0)
+                        end
+                        
+                        if ImGui.Button("Browser", -1, 30) then
+                            if browserVisible then
+                                -- Toggle off
+                                spooner.setBrowserVisible(false)
+                            else
+                                -- Close other windows first (mutual exclusivity)
+                                spooner.closeAllSubWindows()
+                                spooner.setBrowserVisible(true)
+                            end
+                        end
+                        ImGui.PopStyleColor(3)
+                        
+                        ImGui.Spacing()
+                        
+                        -- PED Customizations button (dark blue when off, light blue when on)
+                        local pedCustomsVisible = spooner.getPedCustomsVisible()
+                        if pedCustomsVisible then
+                            -- Light blue when on
+                            ImGui.PushStyleColor(ImGuiCol.Button, 0.2, 0.6, 0.9, 1.0)
+                            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.3, 0.7, 1.0, 1.0)
+                            ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.15, 0.55, 0.85, 1.0)
+                        else
+                            -- Dark blue when off
+                            ImGui.PushStyleColor(ImGuiCol.Button, 0.1, 0.2, 0.4, 1.0)
+                            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.15, 0.3, 0.5, 1.0)
+                            ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.08, 0.18, 0.35, 1.0)
+                        end
+                        
+                        if ImGui.Button("PED Customizations", -1, 30) then
+                            if pedCustomsVisible then
+                                -- Toggle off
+                                spooner.setPedCustomsVisible(false)
+                            else
+                                -- Close other windows first (mutual exclusivity)
+                                spooner.closeAllSubWindows()
+                                -- Open ped customizations with player's ped
+                                spooner.openPlayerPedCustomizations()
+                            end
+                        end
+                        ImGui.PopStyleColor(3)
+                    
+                        ImGui.Spacing()
+                        
+                        -- Vehicle Customizations button (dark blue when off, light blue when on)
+                        local vehicleCustomsVisible = spooner.getVehicleCustomsVisible()
+                        if vehicleCustomsVisible then
+                            -- Light blue when on
+                            ImGui.PushStyleColor(ImGuiCol.Button, 0.2, 0.6, 0.9, 1.0)
+                            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.3, 0.7, 1.0, 1.0)
+                            ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.15, 0.55, 0.85, 1.0)
+                        else
+                            -- Dark blue when off
+                            ImGui.PushStyleColor(ImGuiCol.Button, 0.1, 0.2, 0.4, 1.0)
+                            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.15, 0.3, 0.5, 1.0)
+                            ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.08, 0.18, 0.35, 1.0)
+                        end
+                        
+                        if ImGui.Button("Vehicle Customizations", -1, 30) then
+                            if vehicleCustomsVisible then
+                                -- Toggle off
+                                spooner.setVehicleCustomsVisible(false)
+                            else
+                                -- Close other windows first (mutual exclusivity)
+                                spooner.closeAllSubWindows()
+                                -- Try to open vehicle customizations
+                                local success, errorMsg = spooner.openPlayerVehicleCustomizations()
+                                if not success then
+                                    GUI.AddToast("Spooner", errorMsg or "You need to be in a vehicle", 2000, 0)
+                                end
+                            end
+                        end
+                        ImGui.PopStyleColor(3)
+                    else
+                        ImGui.TextDisabled("Available when Spooner is OFF")
+                    end
+                    
+                    ImGui.Spacing()
                     ClickGUI.EndCustomChildWindow()
                 end
                 
