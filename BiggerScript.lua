@@ -1,5 +1,5 @@
 ---bigger script
-GUI.AddToast("BiggerScriptv6", "Added Spooner", 10000, 0)
+GUI.AddToast("BiggerScriptv6.01", "Added Spooner\n Fixed Entities being frozen", 10000, 0)
 
 if Cherax.GetEdition() == "LE" then
     GUI.AddToast("BiggerScript", "Legacy Version of Cherax breaks vehicles with too many attachments", 10000, 0)
