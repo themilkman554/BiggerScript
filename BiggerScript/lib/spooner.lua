@@ -71,6 +71,9 @@ local toggleStates = {
     database = false
 }
 
+-- Track if user manually enabled freeze (so we know not to unfreeze on deselect)
+local userEnabledFreeze = false
+
 -- Cache for entity properties that don't have native getters
 -- Key: entity handle, Value: {invincible, dynamic, gravity, fireproof}
 local entityPropertyCache = {}
@@ -696,6 +699,7 @@ function M.startDetectionLoop()
                         if hoveredEntity ~= 0 and ENTITY.DOES_ENTITY_EXIST(hoveredEntity) then
                             selectedEntity = hoveredEntity
                             selectedEntityType = hoveredEntityType
+                            userEnabledFreeze = false -- Reset when selecting new entity
                             checkEntityAttachments(hoveredEntity)
                             updateToggleStatesForEntity(hoveredEntity)
                             GUI.AddToast("Spooner", "Selected " .. (hoveredEntityType or "entity"), 1500, 0)
@@ -797,6 +801,7 @@ function M.stopDetectionLoop()
     hoveredEntityType = nil
     selectedEntity = 0
     selectedEntityType = nil
+    userEnabledFreeze = false
     nearbyEntities = { vehicles = {}, peds = {}, objects = {} }
     
     -- Clean up free cam
@@ -862,6 +867,7 @@ end
 function M.clearSelection()
     selectedEntity = 0
     selectedEntityType = nil
+    userEnabledFreeze = false
 end
 
 -- Get the list of nearby entities (for GUI)
@@ -4612,6 +4618,11 @@ local function performSave()
                 -- For vehicles: always warp player into driver's seat first, then save
                 local playerPed = PLAYER.PLAYER_PED_ID()
                 
+                -- Unfreeze the vehicle before sitting in it
+                if ENTITY.DOES_ENTITY_EXIST(entToSave) then
+                    ENTITY.FREEZE_ENTITY_POSITION(entToSave, false)
+                end
+                
                 -- Always warp player into the driver's seat (-1) of the selected vehicle
                 PED.SET_PED_INTO_VEHICLE(playerPed, entToSave, -1)
                 Script.Yield(500)
@@ -5127,6 +5138,12 @@ local function renderEntityOptionsWindow()
         -- Clickable toggle: Frozen In Place (full row clickable)
         if ImGui.Selectable("Frozen In Place", false, 0, windowWidth - 20, 0) then
             toggleStates.frozen = not toggleStates.frozen
+            -- Track if user manually enabled freeze
+            if toggleStates.frozen then
+                userEnabledFreeze = true
+            else
+                userEnabledFreeze = false
+            end
             pcall(function()
                 ENTITY.FREEZE_ENTITY_POSITION(selectedEntity, toggleStates.frozen)
             end)
@@ -5237,8 +5254,17 @@ local function renderEntityOptionsWindow()
         ImGui.Text("Deselect")
         ImGui.PopStyleColor()
         if ImGui.IsItemClicked() then
+            -- Unfreeze the entity if user didn't manually enable freeze
+            if not userEnabledFreeze and selectedEntity ~= 0 then
+                pcall(function()
+                    if ENTITY.DOES_ENTITY_EXIST(selectedEntity) then
+                        ENTITY.FREEZE_ENTITY_POSITION(selectedEntity, false)
+                    end
+                end)
+            end
             selectedEntity = 0
             selectedEntityType = nil
+            userEnabledFreeze = false
         end
     end
     ImGui.End()
@@ -5357,6 +5383,8 @@ end
 function M.setSelectedEntity(entity, entityType)
     selectedEntity = entity or 0
     selectedEntityType = entityType
+    -- Reset user freeze flag when selecting new entity
+    userEnabledFreeze = false
     -- Check attachments for the new selected entity
     checkEntityAttachments(entity)
     -- Update toggle states based on actual entity properties
