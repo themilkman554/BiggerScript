@@ -13,6 +13,7 @@ local constructor_lib = require("BiggerScript/lib/constructor_lib")
 local vehicle_fly = require("BiggerScript/lib/vehicle_fly")
 local spooner = require("BiggerScript/lib/spooner")
 local asset_loader = require("BiggerScript/lib/asset_loader")
+local iplloader = require("BiggerScript/lib/iplloader")
 
 local menuRootPath = FileMgr.GetMenuRootPath()
 local biggerScriptRootPath = menuRootPath .. "\\Lua\\BiggerScript"
@@ -54,6 +55,7 @@ local spawnerSettings = {
     showSpoonerControls = true,
     deletePhotoCache = false,
     contextPreview = false,
+    unloadLastIPL = false,
 }
 local lastSpoonerState = false
 
@@ -471,6 +473,10 @@ local function Initialize()
 
         spooner.init({
             spawnerSettings = spawnerSettings,
+            rootPath = biggerScriptRootPath
+        })
+
+        iplloader.init({
             rootPath = biggerScriptRootPath
         })
 
@@ -1098,6 +1104,241 @@ local function renderMenyooTab()
                     ClickGUI.EndCustomChildWindow()
                 end
 
+                ImGui.EndTable()
+            end
+            ImGui.EndTabItem()
+        end
+
+        -- IPL LOADER TAB
+        if ImGui.BeginTabItem("IPL Loader") then
+            local columns = 2
+            if ImGui.BeginTable("IPLTable", columns, ImGuiTableFlags.SizingStretchSame) then
+                ImGui.TableNextRow()
+                ImGui.TableSetColumnIndex(0)
+                
+                -- IPL Settings (left column)
+                if ClickGUI.BeginCustomChildWindow("IPL Settings") then
+                    ImGui.SetWindowFontScale(1.0)
+                    ImGui.Spacing()
+                    
+                    spawnerSettings.unloadLastIPL = ImGui.Checkbox("Unload Last IPL", spawnerSettings.unloadLastIPL)
+                    if ImGui.IsItemHovered() then
+                        ImGui.SetTooltip("Unload the previously loaded IPL group when loading a new one")
+                    end
+                    
+                    ImGui.Spacing()
+                    
+                    -- Unload All button
+                    ImGui.PushStyleColor(ImGuiCol.Button, 0.36, 0.016, 0.157, 1.0)
+                    ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.46, 0.06, 0.22, 1.0)
+                    ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.26, 0.01, 0.10, 1.0)
+                    if ImGui.Button("Unload All IPLs") then
+                        iplloader.unloadAllGroups()
+                    end
+                    ImGui.PopStyleColor(3)
+                    
+                    if ImGui.IsItemHovered() then
+                        ImGui.SetTooltip("Unload all currently loaded IPL groups")
+                    end
+                    
+                    ImGui.Spacing()
+                    ClickGUI.EndCustomChildWindow()
+                end
+                
+                -- Currently Loaded IPLs (only show if there are loaded groups)
+                local loadedIPLGroups = iplloader.getLoadedGroups()
+                if #loadedIPLGroups > 0 then
+                    if ClickGUI.BeginCustomChildWindow("Currently Loaded IPLs") then
+                        for i, groupData in ipairs(loadedIPLGroups) do
+                            -- Use TreeNode to make it expandable
+                            local nodeOpen = ImGui.TreeNode(groupData.displayName .. " (" .. groupData.iplCount .. ")##loaded" .. i)
+                            
+                            -- Main teleport and unload buttons on the same line
+                            ImGui.SameLine()
+                            
+                            -- Green Teleport button
+                            ImGui.PushStyleColor(ImGuiCol.Button, 0.016, 0.36, 0.157, 1.0)
+                            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.06, 0.46, 0.22, 1.0)
+                            ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.01, 0.26, 0.10, 1.0)
+                            if ImGui.Button("TP##ipl" .. i) then
+                                iplloader.teleportToGroup(groupData.key)
+                            end
+                            ImGui.PopStyleColor(3)
+                            
+                            ImGui.SameLine()
+                            
+                            -- Red Unload button
+                            ImGui.PushStyleColor(ImGuiCol.Button, 0.36, 0.016, 0.016, 1.0)
+                            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.46, 0.06, 0.06, 1.0)
+                            ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.26, 0.01, 0.01, 1.0)
+                            if ImGui.Button("Unload##ipl" .. i) then
+                                iplloader.unloadIPLGroup(groupData.key)
+                            end
+                            ImGui.PopStyleColor(3)
+                            
+                            -- Show individual IPL teleports when expanded
+                            if nodeOpen then
+                                if groupData.ipls and #groupData.ipls > 0 then
+                                    for j, iplData in ipairs(groupData.ipls) do
+                                        ImGui.PushStyleColor(ImGuiCol.Button, 0.1, 0.3, 0.5, 1.0)
+                                        ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.15, 0.4, 0.6, 1.0)
+                                        ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.08, 0.25, 0.45, 1.0)
+                                        if ImGui.Button(iplData.displayName .. "##ipltp" .. i .. "_" .. j, -1, 0) then
+                                            iplloader.teleportToPosition(iplData.position)
+                                        end
+                                        ImGui.PopStyleColor(3)
+                                    end
+                                else
+                                    ImGui.TextDisabled("No teleport locations available")
+                                end
+                                ImGui.TreePop()
+                            end
+                        end
+                        ClickGUI.EndCustomChildWindow()
+                    end
+                end
+                
+                -- Right column: IPL List
+                ImGui.TableSetColumnIndex(1)
+                if ClickGUI.BeginCustomChildWindow("IPL Groups") then
+                    ImGui.SetWindowFontScale(1.0)
+                    ImGui.Spacing()
+                    
+                    -- Filter Dropdown (includes Main + DLCs)
+                    ImGui.Text("Filter:")
+                    ImGui.SameLine()
+                    local dlcNames = iplloader.getDlcNames()
+                    local currentFilter = iplloader.getDlcFilter()
+                    local previewText = currentFilter or "Main"
+                    
+                    local comboOpen = ImGui.BeginCombo("##iplFilter", previewText)
+                    if comboOpen then
+                        -- "Main" option (curated locations)
+                        if ImGui.Selectable("Main##filterMain", currentFilter == nil) then
+                            if currentFilter ~= nil then
+                                iplloader.setDlcFilter(nil)
+                            end
+                        end
+                        
+                        ImGui.Separator()
+                        
+                        -- "All DLCs" option
+                        if ImGui.Selectable("All DLCs##filterAll", currentFilter == "__all__") then
+                            if currentFilter ~= "__all__" then
+                                iplloader.setDlcFilter("__all__")
+                            end
+                        end
+                        
+                        -- DLC options
+                        for idx, dlcName in ipairs(dlcNames) do
+                            local isSelected = (currentFilter == dlcName)
+                            if ImGui.Selectable(dlcName .. "##dlc" .. idx, isSelected) then
+                                if currentFilter ~= dlcName then
+                                    iplloader.setDlcFilter(dlcName)
+                                end
+                            end
+                        end
+                        ImGui.EndCombo()
+                    end
+                    
+                    ImGui.Spacing()
+                    ImGui.Separator()
+                    ImGui.Spacing()
+                    
+                    -- Content based on filter
+                    if currentFilter == nil then
+                        -- Main: Show curated locations
+                        local curatedLocs = iplloader.curatedLocations
+                        for idx, loc in ipairs(curatedLocs) do
+                            local isLoaded = iplloader.isCuratedLocationLoaded(idx)
+                            
+                            if isLoaded then
+                                -- Green when loaded
+                                ImGui.PushStyleColor(ImGuiCol.Button, 0.1, 0.5, 0.15, 1.0)
+                                ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.15, 0.6, 0.2, 1.0)
+                                ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.08, 0.45, 0.12, 1.0)
+                            else
+                                -- Purple for curated
+                                ImGui.PushStyleColor(ImGuiCol.Button, 0.3, 0.1, 0.4, 1.0)
+                                ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.4, 0.15, 0.5, 1.0)
+                                ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.25, 0.08, 0.35, 1.0)
+                            end
+                            
+                            if ImGui.Button(loc.name .. "##curated" .. idx, -1, 0) then
+                                if isLoaded then
+                                    iplloader.unloadCuratedLocation(idx)
+                                else
+                                    iplloader.loadCuratedLocation(idx, true)
+                                end
+                            end
+                            ImGui.PopStyleColor(3)
+                            
+                            if ImGui.IsItemHovered() then
+                                ImGui.SetTooltip(loc.description)
+                            end
+                        end
+                        
+                        -- Separator before main groups
+                        ImGui.Spacing()
+                        ImGui.Separator()
+                        ImGui.Spacing()
+                        
+                        -- Main groups: All groups with capital letter names
+                        local mainGroups = iplloader.getMainGroups()
+                        for _, group in ipairs(mainGroups) do
+                            local isLoaded = iplloader.isGroupLoaded(group.key)
+                            
+                            if isLoaded then
+                                -- Green when loaded
+                                ImGui.PushStyleColor(ImGuiCol.Button, 0.1, 0.5, 0.15, 1.0)
+                                ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.15, 0.6, 0.2, 1.0)
+                                ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.08, 0.45, 0.12, 1.0)
+                            else
+                                -- Default dark blue when not loaded
+                                ImGui.PushStyleColor(ImGuiCol.Button, 0.1, 0.2, 0.4, 1.0)
+                                ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.15, 0.3, 0.5, 1.0)
+                                ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.08, 0.18, 0.35, 1.0)
+                            end
+                            
+                            if ImGui.Button(group.display .. "##main" .. group.key, -1, 0) then
+                                iplloader.toggleGroup(group.key, spawnerSettings.unloadLastIPL)
+                            end
+                            ImGui.PopStyleColor(3)
+                        end
+                    else
+                        -- DLC filter: Show group names
+                        local groupNames = iplloader.getGroupNames()
+                        
+                        if #groupNames == 0 then
+                            ImGui.TextDisabled("No groups found for this filter")
+                        else
+                            for _, group in ipairs(groupNames) do
+                                local isLoaded = iplloader.isGroupLoaded(group.key)
+                                
+                                if isLoaded then
+                                    -- Green when loaded
+                                    ImGui.PushStyleColor(ImGuiCol.Button, 0.1, 0.5, 0.15, 1.0)
+                                    ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.15, 0.6, 0.2, 1.0)
+                                    ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.08, 0.45, 0.12, 1.0)
+                                else
+                                    -- Default dark blue when not loaded
+                                    ImGui.PushStyleColor(ImGuiCol.Button, 0.1, 0.2, 0.4, 1.0)
+                                    ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.15, 0.3, 0.5, 1.0)
+                                    ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.08, 0.18, 0.35, 1.0)
+                                end
+                                
+                                if ImGui.Button(group.display .. "##" .. group.key, -1, 0) then
+                                    iplloader.toggleGroup(group.key, spawnerSettings.unloadLastIPL)
+                                end
+                                ImGui.PopStyleColor(3)
+                            end
+                        end
+                    end
+                    
+                    ImGui.Spacing()
+                    ClickGUI.EndCustomChildWindow()
+                end
+                
                 ImGui.EndTable()
             end
             ImGui.EndTabItem()
