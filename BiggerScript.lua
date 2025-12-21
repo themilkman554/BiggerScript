@@ -53,6 +53,7 @@ local spawnerSettings = {
     enableGizmo = true, 
     showSpoonerControls = true,
     deletePhotoCache = false,
+    contextPreview = false,
 }
 local lastSpoonerState = false
 
@@ -599,6 +600,10 @@ local function renderMenyooTab()
     local hoveredFileThisFrame = nil
     local function hoverCallback(file)
         hoveredFileThisFrame = file
+        -- Call context preview handler if enabled
+        if spawnerSettings.contextPreview and spawning then
+            spawning.handleContextPreviewHover(file)
+        end
     end
 
     if ImGui.BeginTabBar("MenyooTabs") then
@@ -611,6 +616,12 @@ local function renderMenyooTab()
                 if ClickGUI.BeginCustomChildWindow("Vehicle Settings") then
                     ImGui.SetWindowFontScale(1.3)
                     ImGui.SetWindowFontScale(1.0)
+                    ImGui.Spacing()
+
+                    spawnerSettings.contextPreview = ImGui.Checkbox("Context Preview", spawnerSettings.contextPreview)
+                    if ImGui.IsItemHovered() then
+                        ImGui.SetTooltip("Show file info when hovering over vehicle files")
+                    end
                     ImGui.Spacing()
 
                     spawnerSettings.previewVehicle = ImGui.Checkbox("Preview Vehicle", spawnerSettings.previewVehicle)
@@ -769,6 +780,12 @@ local function renderMenyooTab()
                     ImGui.SetWindowFontScale(1.0)
                     ImGui.Spacing()
 
+                    spawnerSettings.contextPreview = ImGui.Checkbox("Context Preview", spawnerSettings.contextPreview)
+                    if ImGui.IsItemHovered() then
+                        ImGui.SetTooltip("Show file info when hovering over map files")
+                    end
+                    ImGui.Spacing()
+
                     spawnerSettings.teleportToMap = ImGui.Checkbox("Teleport to Map", spawnerSettings.teleportToMap)
                     if ImGui.IsItemHovered() then
                         ImGui.SetTooltip("Teleport to the map's reference coordinates when spawning (if available)")
@@ -912,7 +929,7 @@ local function renderMenyooTab()
                             ImGui.Spacing()
 
                             local xmlStructure = getXmlMaps()
-                            renderFolderContents(xmlStructure, spawning.spawnMapFromXML, searchXmlMaps, "xmlMaps", "map", function() end)
+                            renderFolderContents(xmlStructure, spawning.spawnMapFromXML, searchXmlMaps, "xmlMaps", "map", hoverCallback)
                             ImGui.EndTabItem()
                         end
 
@@ -925,7 +942,7 @@ local function renderMenyooTab()
                             ImGui.Spacing()
 
                             local jsonStructure = getJsonMaps()
-                            renderFolderContents(jsonStructure, spawning.spawnMapFromJSON, searchJsonMaps, "jsonMaps", "map", function() end)
+                            renderFolderContents(jsonStructure, spawning.spawnMapFromJSON, searchJsonMaps, "jsonMaps", "map", hoverCallback)
                             ImGui.EndTabItem()
                         end
 
@@ -948,6 +965,12 @@ local function renderMenyooTab()
                 if ClickGUI.BeginCustomChildWindow("Outfit Settings") then
                     ImGui.SetWindowFontScale(1.3)
                     ImGui.SetWindowFontScale(1.0)
+                    ImGui.Spacing()
+
+                    spawnerSettings.contextPreview = ImGui.Checkbox("Context Preview", spawnerSettings.contextPreview)
+                    if ImGui.IsItemHovered() then
+                        ImGui.SetTooltip("Show file info when hovering over outfit files")
+                    end
                     ImGui.Spacing()
 
                     spawnerSettings.previewOutfit = ImGui.Checkbox("Preview Outfit", spawnerSettings.previewOutfit)

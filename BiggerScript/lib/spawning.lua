@@ -92,6 +92,326 @@ function M.debug_print(...)
     end
 end
 
+-- ============================================================================
+-- Context Preview Functions
+-- ============================================================================
+
+-- Context Preview state
+local contextPreviewCache = {} -- Cache for file metadata: path -> {modelName, attachmentCount, entityCount, fileType, lastModified}
+
+-- Helper function to get element content from XML (local for context preview)
+local function getXmlElementContentLocal(xml, tagName)
+    if not xml or not tagName then return nil end
+    local pattern = "<%s*" .. tagName .. "[^>]*>(.-)</%s*" .. tagName .. "%s*>"
+    local content = xml:match(pattern)
+    if content then return content end
+    return nil
+end
+
+-- Helper function to count attachments in XML content
+local function countXmlAttachments(xmlContent)
+    local count = 0
+    local spoonerSection = xmlContent:match("<SpoonerAttachments[^>]*>(.-)</SpoonerAttachments>")
+    if spoonerSection then
+        for _ in spoonerSection:gmatch("<Attachment[^>]*>") do
+            count = count + 1
+        end
+    end
+    return count
+end
+
+-- Helper function to count placements in map XML
+local function countMapPlacements(xmlContent)
+    local count = 0
+    for _ in xmlContent:gmatch("<Placement[^>]*>") do
+        count = count + 1
+    end
+    return count
+end
+
+-- Helper function to count children in JSON data
+local function countJsonChildren(jsonData)
+    if not jsonData then return 0 end
+    if jsonData.children and type(jsonData.children) == "table" then
+        return #jsonData.children
+    end
+    if jsonData.objects and type(jsonData.objects) == "table" then
+        local count = #jsonData.objects
+        if jsonData.vehicles and type(jsonData.vehicles) == "table" then
+            count = count + #jsonData.vehicles
+        end
+        return count
+    end
+    return 0
+end
+
+-- Parse JSON file to Lua table (simple parser for context preview)
+local function parseJsonForPreview(jsonContent)
+    if not jsonContent or jsonContent == "" then return nil end
+    local success, result = pcall(function()
+        local luaCode = jsonContent
+        luaCode = luaCode:gsub("%[", "{")
+        luaCode = luaCode:gsub("%]", "}")
+        luaCode = luaCode:gsub(":null", ":nil")
+        luaCode = luaCode:gsub(",null", ",nil")
+        luaCode = luaCode:gsub("{null", "{nil")
+        luaCode = luaCode:gsub('"([^"]+)"%s*:%s*', function(key)
+            if key:match("^[%a_][%w_]*$") then
+                return key .. "="
+            else
+                return '["' .. key .. '"]='
+            end
+        end)
+        luaCode = "return " .. luaCode
+        local func, err = load(luaCode)
+        if not func then return nil end
+        return func()
+    end)
+    if success and result then return result end
+    return nil
+end
+
+-- Get model name from hash based on entity type
+local function getModelNameFromHashForPreview(hash, entityType)
+    if not hash then return nil end
+    local hashNum = tonumber(hash)
+    if not hashNum then return tostring(hash) end
+    
+    local name = nil
+    
+    if entityType == "vehicle" then
+        pcall(function()
+            local displayName = GTA.GetDisplayNameFromHash(hashNum)
+            if displayName and displayName ~= "" and displayName ~= "null" then
+                name = displayName
+            end
+        end)
+    elseif entityType == "outfit" or entityType == "ped" then
+        pcall(function()
+            local modelName = GTA.GetModelNameFromHash(hashNum)
+            if modelName and modelName ~= "" and modelName ~= "null" then
+                name = modelName
+            end
+        end)
+    else
+        pcall(function()
+            local displayName = GTA.GetDisplayNameFromHash(hashNum)
+            if displayName and displayName ~= "" and displayName ~= "null" then
+                name = displayName
+            end
+        end)
+        if not name then
+            pcall(function()
+                local modelName = GTA.GetModelNameFromHash(hashNum)
+                if modelName and modelName ~= "" and modelName ~= "null" then
+                    name = modelName
+                end
+            end)
+        end
+    end
+    
+    return name or string.format("0x%X", hashNum)
+end
+
+-- Parse file metadata for context preview
+local function parseFileMetadata(filePath, fileType)
+    if not filePath or not FileMgr.DoesFileExist(filePath) then
+        return nil
+    end
+    
+    if contextPreviewCache[filePath] then
+        return contextPreviewCache[filePath]
+    end
+    
+    local metadata = {
+        modelName = nil,
+        modelHash = nil,
+        attachmentCount = 0,
+        entityCount = 0,
+        fileType = fileType,
+        itemType = nil
+    }
+    
+    local content = FileMgr.ReadFileContent(filePath)
+    if not content or content == "" then
+        return nil
+    end
+    
+    local ext = filePath:lower():match("%.([^%.]+)$")
+    
+    if ext == "xml" then
+        local hasMapPlacements = content:find("<Placement[^>]*>") ~= nil
+        local hasSpoonerAttachments = content:find("<SpoonerAttachments") ~= nil
+        local isMapFile = hasMapPlacements and not hasSpoonerAttachments
+        
+        if isMapFile then
+            metadata.itemType = "map"
+            metadata.entityCount = countMapPlacements(content)
+        else
+            local modelHash = getXmlElementContentLocal(content, "ModelHash")
+            if modelHash then
+                metadata.modelHash = modelHash
+            end
+            
+            local hashName = getXmlElementContentLocal(content, "HashName")
+            metadata.attachmentCount = countXmlAttachments(content)
+            
+            local typeStr = getXmlElementContentLocal(content, "Type")
+            if typeStr == "1" then
+                metadata.itemType = "outfit"
+            elseif typeStr == "2" then
+                metadata.itemType = "vehicle"
+            else
+                if filePath:lower():find("outfit") then
+                    metadata.itemType = "outfit"
+                elseif filePath:lower():find("vehicle") then
+                    metadata.itemType = "vehicle"
+                else
+                    metadata.itemType = "vehicle"
+                end
+            end
+            
+            if metadata.modelHash then
+                metadata.modelName = getModelNameFromHashForPreview(metadata.modelHash, metadata.itemType)
+            end
+            if not metadata.modelName and hashName then
+                metadata.modelName = hashName
+            end
+        end
+    elseif ext == "ini" then
+        metadata.itemType = "vehicle"
+        
+        local vehicleSection = content:match("%[Vehicle%](.-)%[") or content:match("%[Vehicle0%](.-)%[") or content:match("%[Vehicle%](.*)$") or content:match("%[Vehicle0%](.*)$")
+        if vehicleSection then
+            local hash = vehicleSection:match("Hash%s*=%s*([^\r\n]+)")
+                      or vehicleSection:match("ModelHash%s*=%s*([^\r\n]+)")
+                      or vehicleSection:match("Model%s*=%s*([^\r\n]+)")
+            if hash then
+                hash = hash:match("^%s*(.-)%s*$")
+                metadata.modelHash = hash
+                metadata.modelName = getModelNameFromHashForPreview(hash, "vehicle")
+            end
+        end
+        
+        local attachCount = 0
+        for sectionName in content:gmatch("%[([^%]]+)%]") do
+            if sectionName:match("^%d+$") or sectionName:match("^Attached Object %d+$") or sectionName:match("^Object%d+$") then
+                attachCount = attachCount + 1
+            end
+        end
+        for num in content:gmatch("%[Vehicle(%d+)%]") do
+            if tonumber(num) > 0 then
+                attachCount = attachCount + 1
+            end
+        end
+        
+        metadata.attachmentCount = attachCount
+    elseif ext == "json" then
+        local jsonData = parseJsonForPreview(content)
+        if jsonData then
+            local modelHash = jsonData.hash or jsonData.model
+            if not modelHash and jsonData.base then
+                modelHash = jsonData.base.model or (jsonData.base.data and jsonData.base.data.model)
+            end
+            
+            if modelHash then
+                metadata.modelHash = modelHash
+            end
+            
+            metadata.attachmentCount = countJsonChildren(jsonData)
+            
+            local typeStr = jsonData.type
+            if typeStr == "VEHICLE" then
+                metadata.itemType = "vehicle"
+            elseif typeStr == "PED" then
+                metadata.itemType = "outfit"
+            elseif typeStr == "OBJECT" or typeStr == "MAP" then
+                metadata.itemType = "map"
+                metadata.entityCount = 1 + metadata.attachmentCount
+            else
+                if jsonData.base then
+                    metadata.itemType = "vehicle"
+                else
+                    if filePath:lower():find("map") then
+                        metadata.itemType = "map"
+                        metadata.entityCount = 1 + metadata.attachmentCount
+                    elseif filePath:lower():find("outfit") then
+                        metadata.itemType = "outfit"
+                    else
+                        metadata.itemType = "vehicle"
+                    end
+                end
+            end
+            
+            if metadata.modelHash then
+                metadata.modelName = getModelNameFromHashForPreview(metadata.modelHash, metadata.itemType)
+            end
+        end
+    end
+    
+    contextPreviewCache[filePath] = metadata
+    
+    return metadata
+end
+
+-- Render context preview tooltip
+local function renderContextPreviewTooltip(filePath, itemType)
+    if not spawnerSettings or not spawnerSettings.contextPreview then return end
+    if not filePath then return end
+    
+    local metadata = parseFileMetadata(filePath, itemType)
+    if not metadata then return end
+    
+    ImGui.BeginTooltip()
+    
+    ImGui.PushStyleColor(ImGuiCol.Text, 0.9, 0.7, 1.0, 1.0)
+    
+    if metadata.itemType == "map" then
+        ImGui.SetWindowFontScale(1.1)
+        ImGui.Text("Entities: " .. tostring(metadata.entityCount))
+        ImGui.SetWindowFontScale(1.0)
+    else
+        if metadata.modelName then
+            ImGui.SetWindowFontScale(1.1)
+            ImGui.Text(metadata.modelName)
+            ImGui.SetWindowFontScale(1.0)
+        elseif metadata.modelHash then
+            ImGui.SetWindowFontScale(1.1)
+            ImGui.Text(tostring(metadata.modelHash))
+            ImGui.SetWindowFontScale(1.0)
+        end
+        
+        ImGui.PopStyleColor()
+        
+        ImGui.Separator()
+        
+        ImGui.PushStyleColor(ImGuiCol.Text, 0.7, 0.7, 0.8, 1.0)
+        
+        if metadata.itemType == "vehicle" then
+            ImGui.Text("Attachments: " .. tostring(metadata.attachmentCount))
+        elseif metadata.itemType == "outfit" then
+            ImGui.Text("Attachments: " .. tostring(metadata.attachmentCount))
+        end
+    end
+    
+    ImGui.PopStyleColor()
+    
+    ImGui.EndTooltip()
+end
+
+-- Public function to handle hover callback for context preview
+function M.handleContextPreviewHover(fileInfo)
+    if not spawnerSettings or not spawnerSettings.contextPreview then return end
+    if not fileInfo or not fileInfo.path then return end
+    
+    renderContextPreviewTooltip(fileInfo.path, fileInfo.type)
+end
+
+-- ============================================================================
+-- End Context Preview Functions
+-- ============================================================================
+
+
 function M.trim(s)
     if not s then return s end
     return (s:gsub("^%s+", ""):gsub("%s+$", ""))
@@ -5141,8 +5461,8 @@ function M.spawnMapFromJSON(filePath, isPreview)
         
         pcall(function()
             local fileName = M.get_filename_from_path(filePath)
-            GUI.AddToast("Map Spawned", "Spawned " .. fileName .. " with " .. #spawnedEntities .. " entity" .. (#spawnedEntities == 1 and "" or "entities"), 5000, 0)
-            print("Map Spawned", "Spawned " .. fileName .. " with " .. #spawnedEntities .. " entity" .. (#spawnedEntities == 1 and "" or "entities"))
+            GUI.AddToast("Map Spawned", "Spawned " .. fileName .. " with " .. #spawnedEntities .. " " .. (#spawnedEntities == 1 and "entity" or "entities"), 5000, 0)
+            print("Map Spawned", "Spawned " .. fileName .. " with " .. #spawnedEntities .. " " .. (#spawnedEntities == 1 and "entity" or "entities"))
         end)
     end)
 end
