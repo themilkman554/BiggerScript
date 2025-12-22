@@ -68,6 +68,7 @@ function M.init(context)
 
     upsidedownmap_module.init({
         spawnerSettings = spawnerSettings,
+        debug_print = M.debug_print,
         spawnedMaps = spawnedMaps,
         xmlMapsFolder = xmlMapsFolder,
         constructor_lib = constructor_lib,
@@ -88,7 +89,7 @@ end
 
 function M.debug_print(...)
     if spawnerSettings.printToDebug then
-        print(...)
+        Logger.LogInfo(...)
     end
 end
 
@@ -108,25 +109,60 @@ local function getXmlElementContentLocal(xml, tagName)
     return nil
 end
 
--- Helper function to count attachments in XML content
-local function countXmlAttachments(xmlContent)
-    local count = 0
+-- Helper function to count attachments in XML content by type
+-- Returns: { objects = n, vehicles = n, peds = n, total = n }
+local function countXmlAttachmentsByType(xmlContent)
+    local counts = { objects = 0, vehicles = 0, peds = 0, total = 0 }
     local spoonerSection = xmlContent:match("<SpoonerAttachments[^>]*>(.-)</SpoonerAttachments>")
     if spoonerSection then
-        for _ in spoonerSection:gmatch("<Attachment[^>]*>") do
-            count = count + 1
+        -- Match each Attachment block and extract its Type
+        for attachmentBlock in spoonerSection:gmatch("<Attachment[^>]*>(.-)</Attachment>") do
+            local typeStr = getXmlElementContentLocal(attachmentBlock, "Type")
+            local typeNum = tonumber(typeStr) or 3 -- Default to object if unknown
+            
+            if typeNum == 1 then
+                counts.peds = counts.peds + 1
+            elseif typeNum == 2 then
+                counts.vehicles = counts.vehicles + 1
+            else
+                counts.objects = counts.objects + 1
+            end
+            counts.total = counts.total + 1
         end
     end
-    return count
+    return counts
 end
 
--- Helper function to count placements in map XML
-local function countMapPlacements(xmlContent)
-    local count = 0
-    for _ in xmlContent:gmatch("<Placement[^>]*>") do
-        count = count + 1
+-- Helper function to count attachments in XML content (legacy, still used)
+local function countXmlAttachments(xmlContent)
+    local counts = countXmlAttachmentsByType(xmlContent)
+    return counts.total
+end
+
+-- Helper function to count placements in map XML by type
+-- Returns: { objects = n, vehicles = n, peds = n, total = n }
+local function countMapPlacementsByType(xmlContent)
+    local counts = { objects = 0, vehicles = 0, peds = 0, total = 0 }
+    for placementBlock in xmlContent:gmatch("<Placement[^>]*>(.-)</Placement>") do
+        local typeStr = getXmlElementContentLocal(placementBlock, "Type")
+        local typeNum = tonumber(typeStr) or 3 -- Default to object if unknown
+        
+        if typeNum == 1 then
+            counts.peds = counts.peds + 1
+        elseif typeNum == 2 then
+            counts.vehicles = counts.vehicles + 1
+        else
+            counts.objects = counts.objects + 1
+        end
+        counts.total = counts.total + 1
     end
-    return count
+    return counts
+end
+
+-- Helper function to count placements in map XML (legacy)
+local function countMapPlacements(xmlContent)
+    local counts = countMapPlacementsByType(xmlContent)
+    return counts.total
 end
 
 -- Helper function to count children in JSON data
@@ -228,6 +264,9 @@ local function parseFileMetadata(filePath, fileType)
         modelHash = nil,
         attachmentCount = 0,
         entityCount = 0,
+        objectCount = 0,
+        vehicleCount = 0,
+        pedCount = 0,
         fileType = fileType,
         itemType = nil
     }
@@ -246,7 +285,11 @@ local function parseFileMetadata(filePath, fileType)
         
         if isMapFile then
             metadata.itemType = "map"
-            metadata.entityCount = countMapPlacements(content)
+            local counts = countMapPlacementsByType(content)
+            metadata.entityCount = counts.total
+            metadata.objectCount = counts.objects
+            metadata.vehicleCount = counts.vehicles
+            metadata.pedCount = counts.peds
         else
             local modelHash = getXmlElementContentLocal(content, "ModelHash")
             if modelHash then
@@ -254,20 +297,30 @@ local function parseFileMetadata(filePath, fileType)
             end
             
             local hashName = getXmlElementContentLocal(content, "HashName")
-            metadata.attachmentCount = countXmlAttachments(content)
+            local counts = countXmlAttachmentsByType(content)
+            metadata.attachmentCount = counts.total
+            metadata.objectCount = counts.objects
+            metadata.vehicleCount = counts.vehicles
+            metadata.pedCount = counts.peds
             
+            -- Determine base entity type
             local typeStr = getXmlElementContentLocal(content, "Type")
             if typeStr == "1" then
                 metadata.itemType = "outfit"
+                metadata.pedCount = metadata.pedCount + 1 -- Add base ped
             elseif typeStr == "2" then
                 metadata.itemType = "vehicle"
+                metadata.vehicleCount = metadata.vehicleCount + 1 -- Add base vehicle
             else
                 if filePath:lower():find("outfit") then
                     metadata.itemType = "outfit"
+                    metadata.pedCount = metadata.pedCount + 1
                 elseif filePath:lower():find("vehicle") then
                     metadata.itemType = "vehicle"
+                    metadata.vehicleCount = metadata.vehicleCount + 1
                 else
                     metadata.itemType = "vehicle"
+                    metadata.vehicleCount = metadata.vehicleCount + 1
                 end
             end
             
@@ -293,19 +346,26 @@ local function parseFileMetadata(filePath, fileType)
             end
         end
         
+        -- Count attached objects (all considered objects in INI format)
         local attachCount = 0
         for sectionName in content:gmatch("%[([^%]]+)%]") do
             if sectionName:match("^%d+$") or sectionName:match("^Attached Object %d+$") or sectionName:match("^Object%d+$") then
                 attachCount = attachCount + 1
             end
         end
+        
+        -- Count additional vehicles
+        local extraVehicles = 0
         for num in content:gmatch("%[Vehicle(%d+)%]") do
             if tonumber(num) > 0 then
-                attachCount = attachCount + 1
+                extraVehicles = extraVehicles + 1
             end
         end
         
-        metadata.attachmentCount = attachCount
+        metadata.attachmentCount = attachCount + extraVehicles
+        metadata.objectCount = attachCount
+        metadata.vehicleCount = 1 + extraVehicles -- Base vehicle + attached vehicles
+        metadata.pedCount = 0
     elseif ext == "json" then
         local jsonData = parseJsonForPreview(content)
         if jsonData then
@@ -319,26 +379,37 @@ local function parseFileMetadata(filePath, fileType)
             end
             
             metadata.attachmentCount = countJsonChildren(jsonData)
+            -- For JSON, we can't easily determine type breakdown, assume all objects for now
+            metadata.objectCount = metadata.attachmentCount
             
             local typeStr = jsonData.type
             if typeStr == "VEHICLE" then
                 metadata.itemType = "vehicle"
+                metadata.vehicleCount = 1
+                metadata.objectCount = metadata.attachmentCount
             elseif typeStr == "PED" then
                 metadata.itemType = "outfit"
+                metadata.pedCount = 1
+                metadata.objectCount = metadata.attachmentCount
             elseif typeStr == "OBJECT" or typeStr == "MAP" then
                 metadata.itemType = "map"
                 metadata.entityCount = 1 + metadata.attachmentCount
+                metadata.objectCount = 1 + metadata.attachmentCount
             else
                 if jsonData.base then
                     metadata.itemType = "vehicle"
+                    metadata.vehicleCount = 1
                 else
                     if filePath:lower():find("map") then
                         metadata.itemType = "map"
                         metadata.entityCount = 1 + metadata.attachmentCount
+                        metadata.objectCount = 1 + metadata.attachmentCount
                     elseif filePath:lower():find("outfit") then
                         metadata.itemType = "outfit"
+                        metadata.pedCount = 1
                     else
                         metadata.itemType = "vehicle"
+                        metadata.vehicleCount = 1
                     end
                 end
             end
@@ -362,39 +433,97 @@ local function renderContextPreviewTooltip(filePath, itemType)
     local metadata = parseFileMetadata(filePath, itemType)
     if not metadata then return end
     
+    -- Get network limits using natives
+    local maxObjects = 0
+    local maxVehicles = 0
+    local maxPeds = 0
+    
+    pcall(function()
+        if NETWORK and NETWORK.GET_MAX_NUM_NETWORK_OBJECTS then
+            maxObjects = NETWORK.GET_MAX_NUM_NETWORK_OBJECTS()
+        end
+    end)
+    pcall(function()
+        if NETWORK and NETWORK.GET_MAX_NUM_NETWORK_VEHICLES then
+            maxVehicles = NETWORK.GET_MAX_NUM_NETWORK_VEHICLES()
+        end
+    end)
+    pcall(function()
+        if NETWORK and NETWORK.GET_MAX_NUM_NETWORK_PEDS then
+            maxPeds = NETWORK.GET_MAX_NUM_NETWORK_PEDS()
+        end
+    end)
+    
+    -- Helper to determine if count is under limit
+    local function isUnderLimit(count, limit)
+        if limit <= 0 then return true end -- If we can't get the limit, assume ok
+        return count < limit
+    end
+    
     ImGui.BeginTooltip()
     
-    ImGui.PushStyleColor(ImGuiCol.Text, 0.9, 0.7, 1.0, 1.0)
-    
-    if metadata.itemType == "map" then
-        ImGui.SetWindowFontScale(1.1)
-        ImGui.Text("Entities: " .. tostring(metadata.entityCount))
-        ImGui.SetWindowFontScale(1.0)
-    else
+    -- Display model name for vehicles/outfits
+    if metadata.itemType ~= "map" then
         if metadata.modelName then
+            ImGui.PushStyleColor(ImGuiCol.Text, 0.9, 0.7, 1.0, 1.0)
             ImGui.SetWindowFontScale(1.1)
             ImGui.Text(metadata.modelName)
             ImGui.SetWindowFontScale(1.0)
+            ImGui.PopStyleColor()
         elseif metadata.modelHash then
+            ImGui.PushStyleColor(ImGuiCol.Text, 0.9, 0.7, 1.0, 1.0)
             ImGui.SetWindowFontScale(1.1)
             ImGui.Text(tostring(metadata.modelHash))
             ImGui.SetWindowFontScale(1.0)
+            ImGui.PopStyleColor()
         end
-        
-        ImGui.PopStyleColor()
         
         ImGui.Separator()
-        
-        ImGui.PushStyleColor(ImGuiCol.Text, 0.7, 0.7, 0.8, 1.0)
-        
-        if metadata.itemType == "vehicle" then
-            ImGui.Text("Attachments: " .. tostring(metadata.attachmentCount))
-        elseif metadata.itemType == "outfit" then
-            ImGui.Text("Attachments: " .. tostring(metadata.attachmentCount))
-        end
     end
     
-    ImGui.PopStyleColor()
+    -- Display Objects count with color based on limit
+    local objectCount = metadata.objectCount or 0
+    if objectCount > 0 then
+        if isUnderLimit(objectCount, maxObjects) then
+            ImGui.PushStyleColor(ImGuiCol.Text, 0.4, 0.8, 1.0, 1.0) -- Light blue
+        else
+            ImGui.PushStyleColor(ImGuiCol.Text, 1.0, 0.6, 0.2, 1.0) -- Orange
+        end
+        ImGui.Text("Objects: " .. tostring(objectCount))
+        ImGui.PopStyleColor()
+    end
+    
+    -- Display Vehicles count with color based on limit
+    local vehicleCount = metadata.vehicleCount or 0
+    if vehicleCount > 0 then
+        if isUnderLimit(vehicleCount, maxVehicles) then
+            ImGui.PushStyleColor(ImGuiCol.Text, 0.4, 0.8, 1.0, 1.0) -- Light blue
+        else
+            ImGui.PushStyleColor(ImGuiCol.Text, 1.0, 0.6, 0.2, 1.0) -- Orange
+        end
+        ImGui.Text("Vehicles: " .. tostring(vehicleCount))
+        ImGui.PopStyleColor()
+    end
+    
+    -- Display Peds count with color based on limit
+    local pedCount = metadata.pedCount or 0
+    if pedCount > 0 then
+        if isUnderLimit(pedCount, maxPeds) then
+            ImGui.PushStyleColor(ImGuiCol.Text, 0.4, 0.8, 1.0, 1.0) -- Light blue
+        else
+            ImGui.PushStyleColor(ImGuiCol.Text, 1.0, 0.6, 0.2, 1.0) -- Orange
+        end
+        ImGui.Text("Peds: " .. tostring(pedCount))
+        ImGui.PopStyleColor()
+    end
+    
+    -- If all counts are 0 for a map, show total entity count
+    if metadata.itemType == "map" and objectCount == 0 and vehicleCount == 0 and pedCount == 0 then
+        local totalEntities = metadata.entityCount or 0
+        ImGui.PushStyleColor(ImGuiCol.Text, 0.7, 0.7, 0.8, 1.0)
+        ImGui.Text("Entities: " .. tostring(totalEntities))
+        ImGui.PopStyleColor()
+    end
     
     ImGui.EndTooltip()
 end
@@ -765,11 +894,7 @@ function M.request_model_load(hashOrName)
     if not hashOrName then return end
     local model = M.safe_tonumber(hashOrName, nil) or hashOrName
     if STREAMING and STREAMING.REQUEST_MODEL and model then
-        pcall(function()
-            STREAMING.REQUEST_MODEL(model)
-            local t0 = Time.GetEpoche()
-            while not STREAMING.HAS_MODEL_LOADED(model) and Time.GetEpoche() - t0 < 1 do Script.Yield(10) end
-        end)
+        pcall(function() STREAMING.REQUEST_MODEL(model) end)
     end
 end
 
@@ -1297,8 +1422,9 @@ function M.spawn_attachments(parsedAttachments, parentHandleMap, fallbackCoords,
     end)
     for i, att in ipairs(parsedAttachments) do
         local model = att.ModelHash or att.HashName
+        local attachmentName = att.HashName or tostring(model) or "Unknown"
         if not model then
-            M.debug_print("[Spawn Debug] Warning: Attachment", i, "has no model hash or name. Skipping.")
+            M.debug_print("[Spawn] Warning: Attachment #" .. i .. " has no model hash or name. Skipping.")
             goto continue
         end
         local spawnCoords = { x = 0.0, y = 0.0, z = 0.0 }
@@ -1322,22 +1448,24 @@ function M.spawn_attachments(parsedAttachments, parentHandleMap, fallbackCoords,
         M.request_model_load(model)
         if STREAMING and STREAMING.HAS_MODEL_LOADED then
             local t0 = Time.GetEpoche()
-            while not pcall(function() return STREAMING.HAS_MODEL_LOADED(M.safe_tonumber(model, model) or model) end) and Time.GetEpoche() - t0 < 1 do
+            while not pcall(function() return STREAMING.HAS_MODEL_LOADED(M.safe_tonumber(model, model) or model) end) and Time.GetEpoche() - t0 < 0.3 do
                 Script.Yield(10)
             end
             if not pcall(function() return STREAMING.HAS_MODEL_LOADED(M.safe_tonumber(model, model) or model) end) then
-                M.debug_print("[Spawn Debug] Error: Model failed to load for attachment", i, ":", tostring(model))
+                Logger.LogError("[Spawn] Model failed to load: '" .. attachmentName .. "' (hash: " .. tostring(model) .. ")")
             end
         else
-            Script.Yield(50)
+            Script.Yield(30)
         end
         local h = M.create_by_type(model, att.Type, spawnCoords)
         if not h or h == 0 then
             pcall(function() GUI.AddToast("Spawn Error", "Failed to spawn " .. (att.HashName or tostring(att.ModelHash)), 5000, 0) end)
-            M.debug_print("[Spawn Debug] Error: Failed to create entity for attachment", i, "model:", tostring(model))
+            Logger.LogError("[Spawn] Failed to create '" .. attachmentName .. "' (model: " .. tostring(model) .. ")")
             goto continue
         end
-        M.debug_print("[Spawn Debug] Successfully created entity for attachment", i, "with handle:", tostring(h), "Model:", tostring(model), "Type:", tostring(att.Type))
+        local typeNames = {["1"] = "Ped", ["2"] = "Vehicle", ["3"] = "Object", [1] = "Ped", [2] = "Vehicle", [3] = "Object"}
+        local typeName = typeNames[att.Type] or tostring(att.Type)
+        M.debug_print("[Spawn] Created '" .. attachmentName .. "' [" .. typeName .. "] (handle: " .. tostring(h) .. ")")
         table.insert(created, h)
         if att.InitialHandle then
             local ihNum = M.safe_tonumber(att.InitialHandle, nil)
@@ -1547,7 +1675,9 @@ end)
         end
         local meta = {
             created = h,
+            name = attachmentName,
             attachedto = nil,
+            parentName = nil,
             bone = 0,
             x = 0.0, y = 0.0, z = 0.0,
             pitch = 0.0, yaw = 0.0, roll = 0.0,
@@ -1563,7 +1693,15 @@ end)
             meta.pitch = M.safe_tonumber(att.Attachment.Pitch, nil)
             meta.roll = M.safe_tonumber(att.Attachment.Roll, nil)
             meta.yaw = M.safe_tonumber(att.Attachment.Yaw, nil)
-            M.debug_print("[Spawn Debug] Attachment", i, "attachment meta - AttachedTo:", tostring(meta.attachedto), "BoneIndex:", tostring(meta.bone), "Coords:", meta.x, meta.y, meta.z, "Rot:", meta.pitch, meta.roll, meta.yaw)
+            -- Find parent name from parsed attachments
+            for _, parentAtt in ipairs(parsedAttachments) do
+                local parentInitHandle = parentAtt.InitialHandle
+                if parentInitHandle and (tostring(parentInitHandle) == tostring(meta.attachedto) or M.safe_tonumber(parentInitHandle) == M.safe_tonumber(meta.attachedto)) then
+                    meta.parentName = parentAtt.HashName or tostring(parentAtt.ModelHash) or "Unknown Parent"
+                    break
+                end
+            end
+            M.debug_print("[Spawn] '" .. attachmentName .. "' will attach to '" .. (meta.parentName or tostring(meta.attachedto)) .. "' (bone: " .. tostring(meta.bone) .. ")")
             if att.AttachmentRaw then
                 if meta.x == nil then meta.x = M.safe_tonumber(M.get_xml_element_content(att.AttachmentRaw, "X"), 0.0) end
                 if meta.y == nil then meta.y = M.safe_tonumber(M.get_xml_element_content(att.AttachmentRaw, "Y"), 0.0) end
@@ -1599,7 +1737,7 @@ end)
     local phdbg = {}
     for k, v in pairs(parentHandleMap) do phdbg[#phdbg+1] = tostring(k) .. "->" .. tostring(v) end
     for _, m in ipairs(attachMeta) do
-        M.debug_print("[Spawn Debug] Processing attachment meta for entity:", tostring(m.created), "AttachedTo:", tostring(m.attachedto), "Bone:", tostring(m.bone), "Offsets:", m.x, m.y, m.z, "Rot:", m.pitch, m.roll, m.yaw)
+        M.debug_print("[Spawn] Processing '" .. (m.name or "Unknown") .. "' -> attaching to '" .. (m.parentName or tostring(m.attachedto) or "World") .. "'")
         if m.attachedto then
             local parentHandle = parentHandleMap[M.safe_tonumber(m.attachedto)] or parentHandleMap[tostring(m.attachedto)]
             if parentHandle and parentHandle ~= 0 and m.created and m.created ~= 0 then
@@ -1615,14 +1753,14 @@ end)
                     
                 end)
                 if ok then
-                    M.debug_print("[Spawn Debug] Successfully attached entity", tostring(m.created), "to parent", tostring(parentHandle))
+                    M.debug_print("[Spawn] ✓ Attached '" .. (m.name or "Unknown") .. "' to '" .. (m.parentName or "Parent") .. "'")
                 else
                 end
             else
-                M.debug_print("[Spawn Debug] Warning: Could not attach entity", tostring(m.created), ". Parent handle not found or invalid for attachedto:", tostring(m.attachedto))
+                M.debug_print("[Spawn] ✗ Failed to attach '" .. (m.name or "Unknown") .. "' - parent '" .. (m.parentName or tostring(m.attachedto)) .. "' not found")
             end
         else
-            M.debug_print("[Spawn Debug] Warning: Attachment", tostring(m.created), "has no 'attachedto' property. Not attaching.")
+            M.debug_print("[Spawn] '" .. (m.name or "Unknown") .. "' is a root entity (no parent attachment)")
         end
     end
     return created
@@ -2332,7 +2470,8 @@ function M.spawnVehicleFromINI(filePath, isPreview)
         end
 
         if not vehicleHandle or vehicleHandle == 0 then
-            M.debug_print("[Spawn Debug] Error: Failed to spawn main vehicle for model hash:", modelHash, "from:", filePath)
+            local fileName = filePath:match("([^/\\]+)$") or filePath
+            Logger.LogError("[Spawn] Failed to spawn vehicle from '" .. fileName .. "' (hash: " .. tostring(modelHash) .. ")")
             return
         end
         if spawnerSettings.randomColor then
@@ -2597,7 +2736,8 @@ function M.spawnVehicleFromXML(filePath, isPreview)
         end
 
         if not vehicleHandle or vehicleHandle == 0 then
-            M.debug_print("[Spawn Debug] Error: Failed to spawn main vehicle for model hash:", modelHash, "from:", filePath)
+            local fileName = filePath:match("([^/\\]+)$") or filePath
+            Logger.LogError("[Spawn] Failed to spawn vehicle from '" .. fileName .. "' (hash: " .. tostring(modelHash) .. ")")
             return
         end
         local initialHandleMap = {}
@@ -2753,8 +2893,8 @@ function M.spawnVehicleFromXML(filePath, isPreview)
             local filename = M.get_filename_from_path(filePath)
             local attachmentCount = #vehicleData.attachments
             pcall(function()
-                GUI.AddToast("Vehicle Spawned", "Spawned " .. filename .. " with " .. attachmentCount .. " attachment" .. (attachmentCount == 1 and "" or "s"), 5000, 0)
-                print("Vehicle Spawned", "Spawned " .. filename .. " with " .. attachmentCount .. " attachment" .. (attachmentCount == 1 and "" or "s"))
+                GUI.AddToast("Vehicle Spawned", filename .. " with " .. attachmentCount .. " attachment" .. (attachmentCount == 1 and "" or "s"), 5000, 0)
+                print("Vehicle Spawned", filename .. " with " .. attachmentCount .. " attachment" .. (attachmentCount == 1 and "" or "s"))
             end)
         else
         end
@@ -2820,7 +2960,8 @@ function M.spawnMenyooAttackerFromXML(filePath, targetPlayerIndex)
             if ok and h and h ~= 0 then vehicleHandle = h end
         end
         if not vehicleHandle or vehicleHandle == 0 then
-            M.debug_print("[Spawn Debug] Error: Failed to spawn main attacker vehicle for model hash:", modelHash, "from:", filePath)
+            local fileName = filePath:match("([^/\\]+)$") or filePath
+            Logger.LogError("[Spawn] Failed to spawn attacker vehicle from '" .. fileName .. "' (hash: " .. tostring(modelHash) .. ")")
             return
         end
         local attackerModel = M.safe_tonumber(M.get_xml_element_content(xmlContent, "AttackerModelHash"), 71929310)
@@ -2829,7 +2970,7 @@ function M.spawnMenyooAttackerFromXML(filePath, targetPlayerIndex)
         local ok2, h2 = pcall(function() return GTA.CreatePed(attackerModel, 26, spawnCoords.x, spawnCoords.y, spawnCoords.z, 0, true, true) end)
         if ok2 and h2 and h2 ~= 0 then attacker = h2 end
         if not attacker or attacker == 0 then
-            M.debug_print("[Spawn Debug] Error: Failed to spawn attacker ped for model:", tostring(attackerModel))
+            Logger.LogError("[Spawn] Failed to spawn attacker ped (hash: " .. tostring(attackerModel) .. ")")
             return
         end
         pcall(function()
@@ -2930,7 +3071,8 @@ function M.spawnMenyooAttackerFromINI(filePath, targetPlayerIndex)
             if ok and h and h ~= 0 then vehicleHandle = h end
         end
         if not vehicleHandle or vehicleHandle == 0 then
-            M.debug_print("[Spawn Debug] Error: Failed to spawn main attacker vehicle for model hash:", modelHash, "from:", filePath)
+            local fileName = filePath:match("([^/\\]+)$") or filePath
+            Logger.LogError("[Spawn] Failed to spawn attacker vehicle from '" .. fileName .. "' (hash: " .. tostring(modelHash) .. ")")
             spawnerSettings.inVehicle = originalInVehicle
             return
         end
@@ -2940,7 +3082,7 @@ function M.spawnMenyooAttackerFromINI(filePath, targetPlayerIndex)
         local ok2, h2 = pcall(function() return GTA.CreatePed(attackerModel, 26, spawnCoords.x, spawnCoords.y, spawnCoords.z, 0, true, true) end)
         if ok2 and h2 and h2 ~= 0 then attacker = h2 end
         if not attacker or attacker == 0 then
-            M.debug_print("[Spawn Debug] Error: Failed to spawn attacker ped for model:", tostring(attackerModel))
+            Logger.LogError("[Spawn] Failed to spawn attacker ped (hash: " .. tostring(attackerModel) .. ")")
             spawnerSettings.inVehicle = originalInVehicle
             return
         end
@@ -3093,8 +3235,8 @@ function M.spawnMenyooAttackerFromJSON(filePath, targetPlayerIndex)
             if ok and h and h ~= 0 then vehicleHandle = h end
         end
         if not vehicleHandle or vehicleHandle == 0 then
-            M.debug_print("[JSON Attacker] Error: Failed to spawn vehicle")
-            M.debug_print("[Spawn Debug] Error: Failed to spawn main attacker vehicle for model hash:", modelHash, "from:", filePath)
+            local fileName = filePath:match("([^/\\]+)$") or filePath
+            Logger.LogError("[Spawn] Failed to spawn attacker vehicle from '" .. fileName .. "' (hash: " .. tostring(modelHash) .. ")")
             spawnerSettings.inVehicle = originalInVehicle
             return
         end
@@ -3108,8 +3250,7 @@ function M.spawnMenyooAttackerFromJSON(filePath, targetPlayerIndex)
         local ok2, h2 = pcall(function() return GTA.CreatePed(attackerModel, 26, spawnCoords.x, spawnCoords.y, spawnCoords.z, 0, true, true) end)
         if ok2 and h2 and h2 ~= 0 then attacker = h2 end
         if not attacker or attacker == 0 then
-            print("[JSON Attacker] Error: Failed to spawn attacker ped")
-            M.debug_print("[Spawn Debug] Error: Failed to spawn attacker ped for model:", tostring(attackerModel))
+            Logger.LogError("[Spawn] Failed to spawn attacker ped (hash: " .. tostring(attackerModel) .. ")")
             spawnerSettings.inVehicle = originalInVehicle
             return
         end
@@ -3220,7 +3361,7 @@ function M.spawnMapV1Networked(filePath, placements)
     M.request_model_load(carattach_hash)
     local carattach = GTA.SpawnVehicle(carattach_hash, 0.0, 0.0, 0.0, 0.0, true, true)
     if not carattach or carattach == 0 then
-        M.debug_print("[Spawn Debug] Error: Failed to spawn base vehicle for Network Maps V1.")
+        Logger.LogError("[Spawn] Failed to spawn base vehicle for Network Maps V1")
         pcall(function() GUI.AddToast("Spawn Error", "Failed to spawn base vehicle for Network Maps V1.", 5000, 1) end)
         return nil, 0
     end
@@ -3241,8 +3382,11 @@ function M.spawnMapV1Networked(filePath, placements)
             goto continue_creation
         end
         local entityHandle = M.create_by_type(model, placement.Type, {x = 0.0, y = 0.0, z = 0.0})
+        local placementName = placement.HashName or tostring(model) or "Unknown"
+        local typeNames = {["1"] = "Ped", ["2"] = "Vehicle", ["3"] = "Object", [1] = "Ped", [2] = "Vehicle", [3] = "Object"}
+        local typeName = typeNames[placement.Type] or tostring(placement.Type)
         if not entityHandle or entityHandle == 0 then
-            M.debug_print("[Spawn Debug] Error: Failed to create entity for map placement model:", tostring(model), "type:", placement.Type)
+            Logger.LogError("[Spawn] Failed to create '" .. placementName .. "' [" .. typeName .. "] (hash: " .. tostring(model) .. ")")
             goto continue_creation
         end
         if placement.InitialHandle then
@@ -3352,6 +3496,8 @@ function M.spawnMapFromXML(filePath)
         end
         local createdEntities = {}
         local spawnCount = 0
+        local totalPlacements = #placements
+        local filename = M.get_filename_from_path(filePath)
         local refCoords = nil
         local refCoordsElement = M.get_xml_element(xmlContent, "ReferenceCoords")
         if refCoordsElement then
@@ -3375,8 +3521,11 @@ function M.spawnMapFromXML(filePath)
                     spawnCoords.z = placement.PositionRotation.Z or 0.0
                 end
                 local entityHandle = M.create_by_type(model, placement.Type, spawnCoords)
+                local placementName = placement.HashName or tostring(model) or "Unknown"
+                local typeNames = {["1"] = "Ped", ["2"] = "Vehicle", ["3"] = "Object", [1] = "Ped", [2] = "Vehicle", [3] = "Object"}
+                local typeName = typeNames[placement.Type] or tostring(placement.Type)
                 if not entityHandle or entityHandle == 0 then
-                    M.debug_print("[Spawn Debug] Error: Failed to create entity for map placement model:", tostring(model), "type:", placement.Type)
+                    Logger.LogError("[Spawn] Failed to create '" .. placementName .. "' [" .. typeName .. "] (hash: " .. tostring(model) .. ")")
                     goto continue_v2
                 end
                 pcall(function()
@@ -3384,6 +3533,10 @@ function M.spawnMapFromXML(filePath)
                 end)
                 table.insert(createdEntities, entityHandle)
                 spawnCount = spawnCount + 1
+                -- Show live progress every 5 spawns or on first/last (only if over 200 entities)
+                if totalPlacements > 200 and (spawnCount == 1 or spawnCount == totalPlacements or spawnCount % 5 == 0) then
+                    pcall(function() GUI.AddToast("Spawning Map", filename .. " (" .. spawnCount .. "/" .. totalPlacements .. ")", 1000, 0) end)
+                end
                 if spawnerSettings.networkMapsV2Enabled then
                     pcall(function()
                         constructor_lib.make_entity_networked({handle = entityHandle})
@@ -3502,10 +3655,16 @@ function M.spawnMapFromXML(filePath)
                 refCoords = refCoords
             }
             table.insert(spawnedMaps, mapData)
-            local filename = M.get_filename_from_path(filePath)
             pcall(function()
-                GUI.AddToast("Map Spawned", "Spawned " .. filename .. " with " .. spawnCount .. " object" .. (spawnCount == 1 and "" or "s") .. " and " .. (markers and #markers or 0) .. " markers", 5000, 0)
-                print("Map Spawned", "Spawned " .. filename .. " with " .. spawnCount .. " object" .. (spawnCount == 1 and "" or "s") .. " and " .. (markers and #markers or 0) .. " markers")
+                local markerCount = (markers and #markers or 0)
+                local toastMsg = filename
+                if totalPlacements > 200 then
+                    toastMsg = toastMsg .. " (" .. spawnCount .. "/" .. totalPlacements .. " objects, " .. markerCount .. " markers)"
+                else
+                    toastMsg = toastMsg .. " (" .. markerCount .. " markers)"
+                end
+                GUI.AddToast("Map Spawned", toastMsg, 5000, 0)
+                print("Map Spawned", toastMsg)
             end)
         else
         end
@@ -3946,7 +4105,8 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
         end
         
         if not vehicleHandle or vehicleHandle == 0 then
-            M.debug_print("[JSON Spawn Debug] Error: Failed to spawn vehicle")
+            local fileName = filePath:match("([^/\\]+)$") or filePath
+            Logger.LogError("[Spawn] Failed to spawn vehicle from '" .. fileName .. "' (hash: " .. tostring(modelHash) .. ")")
             pcall(function() GUI.AddToast("Spawn Error", "Failed to spawn vehicle", 3000, 0) end)
             return
         end
@@ -5045,7 +5205,7 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
             pcall(function()
                 local fileName = M.get_filename_from_path(filePath)
                 local attachmentCount = #childEntities
-                local toastMessage = "Spawned " .. fileName .. " with " .. attachmentCount .. " attachment" .. (attachmentCount == 1 and "" or "s")
+                local toastMessage = fileName .. " with " .. attachmentCount .. " attachment" .. (attachmentCount == 1 and "" or "s")
                 if jsonData.author and jsonData.author ~= "" then
                     toastMessage = toastMessage .. "\nby " .. jsonData.author
                 end
@@ -5105,6 +5265,10 @@ function M.spawnMapFromJSON(filePath, isPreview)
         end
         
         jsonData = parseResult
+        
+        -- Get filename and total children for progress tracking
+        local fileName = M.get_filename_from_path(filePath)
+        local totalChildren = (jsonData.children and #jsonData.children or 0) + (jsonData.hash and 1 or 0)
         
         -- Delete old map if requested
         if spawnerSettings.deleteOldMap and #spawnedMaps > 0 then
@@ -5446,6 +5610,10 @@ function M.spawnMapFromJSON(filePath, isPreview)
             
             for i, child in ipairs(jsonData.children) do
                 spawnMapChild(child, mainParentHandle, 1, spawnedEntities)
+                -- Show live progress (only if over 200 entities)
+                if totalChildren > 200 and (i == 1 or i == #jsonData.children or i % 5 == 0) then
+                    pcall(function() GUI.AddToast("Spawning Map", fileName .. " (" .. #spawnedEntities .. "/" .. totalChildren .. ")", 1000, 0) end)
+                end
             end
         end
         
@@ -5460,9 +5628,13 @@ function M.spawnMapFromJSON(filePath, isPreview)
         table.insert(spawnedMaps, mapRecord)
         
         pcall(function()
-            local fileName = M.get_filename_from_path(filePath)
-            GUI.AddToast("Map Spawned", "Spawned " .. fileName .. " with " .. #spawnedEntities .. " " .. (#spawnedEntities == 1 and "entity" or "entities"), 5000, 0)
-            print("Map Spawned", "Spawned " .. fileName .. " with " .. #spawnedEntities .. " " .. (#spawnedEntities == 1 and "entity" or "entities"))
+            local spawnedCount = #spawnedEntities
+            local toastMsg = fileName
+            if totalChildren > 200 then
+                toastMsg = toastMsg .. " (" .. spawnedCount .. "/" .. totalChildren .. " entities)"
+            end
+            GUI.AddToast("Map Spawned", toastMsg, 5000, 0)
+            print("Map Spawned", toastMsg)
         end)
     end)
 end

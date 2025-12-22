@@ -626,10 +626,8 @@ local function renderMenyooTab()
 
                     spawnerSettings.contextPreview = ImGui.Checkbox("Context Preview", spawnerSettings.contextPreview)
                     if ImGui.IsItemHovered() then
-                        ImGui.SetTooltip("Show file info when hovering over vehicle files")
+                        ImGui.SetTooltip("Light Blue = Networkable (under 80)\nOrange = Not everything will network")
                     end
-                    ImGui.Spacing()
-
                     spawnerSettings.previewVehicle = ImGui.Checkbox("Preview Vehicle", spawnerSettings.previewVehicle)
                     spawnerSettings.inVehicle = ImGui.Checkbox("In Vehicle", spawnerSettings.inVehicle)
                     spawnerSettings.spawnPlaneInTheAir = ImGui.Checkbox("Spawn Aircraft In The Air", spawnerSettings.spawnPlaneInTheAir)
@@ -788,10 +786,8 @@ local function renderMenyooTab()
 
                     spawnerSettings.contextPreview = ImGui.Checkbox("Context Preview", spawnerSettings.contextPreview)
                     if ImGui.IsItemHovered() then
-                        ImGui.SetTooltip("Show file info when hovering over map files")
+                        ImGui.SetTooltip("Light Blue = Networkable (under 80)\nOrange = Not everything will network")
                     end
-                    ImGui.Spacing()
-
                     spawnerSettings.teleportToMap = ImGui.Checkbox("Teleport to Map", spawnerSettings.teleportToMap)
                     if ImGui.IsItemHovered() then
                         ImGui.SetTooltip("Teleport to the map's reference coordinates when spawning (if available)")
@@ -803,7 +799,7 @@ local function renderMenyooTab()
                     end
                     spawnerSettings.networkMapsV1Enabled = ImGui.Checkbox("Network Maps V1", spawnerSettings.networkMapsV1Enabled)
                     if ImGui.IsItemHovered() then
-                        ImGui.SetTooltip("Spawns a vehicle at 0,0,0 and attaches everything to it (sometimes networks bettert)")
+                        ImGui.SetTooltip("Don't use seems broken after the latest update")
                     end
 
                     spawnerSettings.deleteOldMap = ImGui.Checkbox("Delete Old Map", spawnerSettings.deleteOldMap)
@@ -975,10 +971,8 @@ local function renderMenyooTab()
 
                     spawnerSettings.contextPreview = ImGui.Checkbox("Context Preview", spawnerSettings.contextPreview)
                     if ImGui.IsItemHovered() then
-                        ImGui.SetTooltip("Show file info when hovering over outfit files")
+                        ImGui.SetTooltip("Light Blue = Networkable (under 80)\nOrange = Not everything will network")
                     end
-                    ImGui.Spacing()
-
                     spawnerSettings.previewOutfit = ImGui.Checkbox("Preview Outfit", spawnerSettings.previewOutfit)
                     
                     spawnerSettings.onlyApplyAttachments = ImGui.Checkbox("Only Apply Attachments", spawnerSettings.onlyApplyAttachments)
@@ -1054,7 +1048,7 @@ local function renderMenyooTab()
 
                     ClickGUI.EndCustomChildWindow()
                     ImGui.Text("Cherax limits the attachments you can have")
-                    ImGui.Text("on your character")
+                    ImGui.Text("on your character to 20")
                 end
 
                 ImGui.TableSetColumnIndex(1)
