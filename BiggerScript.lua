@@ -1,5 +1,16 @@
----bigger script
-GUI.AddToast("BiggerScriptv6.01", "Added Spooner\n Fixed Entities being frozen", 10000, 0)
+---I think the edgy cracker logo really adds to whole experience
+Logger.Log(eLogColor.GREEN, "", " ▄▄▄▄    ██▓  ▄████   ▄████ ▓█████  ██▀███    ██████  ▄████▄   ██▀███   ██▓ ██▓███  ▄▄▄█████▓")
+Logger.Log(eLogColor.GREEN, "", "▓█████▄ ▓██▒ ██▒ ▀█▒ ██▒ ▀█▒▓█   ▀ ▓██ ▒ ██▒▒██    ▒ ▒██▀ ▀█  ▓██ ▒ ██▒▓██▒▓██░  ██▒▓  ██▒ ▓▒")
+Logger.Log(eLogColor.GREEN, "", "▒██▒ ▄██▒██▒▒██░▄▄▄░▒██░▄▄▄░▒███   ▓██ ░▄█ ▒░ ▓██▄   ▒▓█    ▄ ▓██ ░▄█ ▒▒██▒▓██░ ██▓▒▒ ▓██░ ▒░")
+Logger.Log(eLogColor.GREEN, "", "▒██░█▀  ░██░░▓█  ██▓░▓█  ██▓▒▓█  ▄ ▒██▀▀█▄    ▒   ██▒▒▓▓▄ ▄██▒▒██▀▀█▄  ░██░▒██▄█▓▒ ▒░ ▓██▓ ░ ")
+Logger.Log(eLogColor.GREEN, "", "░▓█  ▀█▓░██░░▒▓███▀▒░▒▓███▀▒░▒████▒░██▓ ▒██▒▒██████▒▒▒ ▓███▀ ░░██▓ ▒██▒░██░▒██▒ ░  ░  ▒██▒ ░ ")
+Logger.Log(eLogColor.GREEN, "", "░▒▓███▀▒░▓   ░▒   ▒  ░▒   ▒ ░░ ▒░ ░░ ▒▓ ░▒▓░▒ ▒▓▒ ▒ ░░ ░▒ ▒  ░░ ▒▓ ░▒▓░░▓  ▒▓▒░ ░  ░  ▒ ░░   ")
+Logger.Log(eLogColor.GREEN, "", "▒░▒   ░  ▒ ░  ░   ░   ░   ░  ░ ░  ░  ░▒ ░ ▒░░ ░▒  ░ ░  ░  ▒     ░▒ ░ ▒░ ▒ ░░▒ ░         ░    ")
+Logger.Log(eLogColor.GREEN, "", " ░    ░  ▒ ░░ ░   ░ ░ ░   ░    ░     ░░   ░ ░  ░  ░  ░          ░░   ░  ▒ ░░░         ░      ")
+Logger.Log(eLogColor.GREEN, "", " ░       ░        ░       ░    ░  ░   ░           ░  ░ ░         ░      ░                    ")
+Logger.Log(eLogColor.GREEN, "", "      ░                                              ░                                       ")
+
+GUI.AddToast("BiggerScriptv6.1", "Added IPL Loader\n Added Context Preview\n Improved logging\nImproved map spawning", 10000, 0)
 
 if Cherax.GetEdition() == "LE" then
     GUI.AddToast("BiggerScript", "Legacy Version of Cherax breaks vehicles with too many attachments", 10000, 0)
