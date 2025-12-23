@@ -271,6 +271,24 @@ function AssetLoader.incrementalUpdate(config, lastCommit, latestCommit, callbac
                     FileMgr.DeleteFile(local_path)
                     table.insert(removed_files, filename)
                 end
+            elseif status == "renamed" then
+                -- Handle renamed files: delete old location, download to new location
+                local previous_filename = file.previous_filename
+                if previous_filename then
+                    local old_local_path = config.targetPath .. "\\" .. previous_filename:gsub("/", "\\")
+                    if FileMgr.DoesFileExist(old_local_path) then
+                        FileMgr.DeleteFile(old_local_path)
+                        table.insert(removed_files, previous_filename)
+                    end
+                end
+                -- Download file to new location
+                local content = curl_get(raw_url)
+                if content then
+                    ensure_dir(local_path)
+                    write_file(local_path, content, "wb")
+                    count = count + 1
+                    table.insert(added_files, filename)
+                end
             elseif status == "added" or status == "modified" then
                 local content = curl_get(raw_url)
                 if content then
