@@ -1177,7 +1177,7 @@ local function renderMenyooTab()
                             ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.46, 0.06, 0.06, 1.0)
                             ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.26, 0.01, 0.01, 1.0)
                             if ImGui.Button("Unload##ipl" .. i) then
-                                iplloader.unloadIPLGroup(groupData.key)
+                                iplloader.queueUnloadGroup(groupData.key)
                             end
                             ImGui.PopStyleColor(3)
                             
@@ -1271,7 +1271,7 @@ local function renderMenyooTab()
                             
                             if ImGui.Button(loc.name .. "##curated" .. idx, -1, 0) then
                                 if isLoaded then
-                                    iplloader.unloadCuratedLocation(idx)
+                                    iplloader.queueUnloadCurated(idx)
                                 else
                                     iplloader.loadCuratedLocation(idx, true)
                                 end
@@ -1348,6 +1348,9 @@ local function renderMenyooTab()
             end
             ImGui.EndTabItem()
         end
+        
+        -- Process any queued IPL unloads after rendering is complete
+        iplloader.processPendingUnloads()
 
         if ImGui.BeginTabItem("Special") then
             local columns = 2

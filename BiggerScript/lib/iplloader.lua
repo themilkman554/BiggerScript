@@ -6,6 +6,7 @@ local cachedDlcNames = nil
 local loadedGroups = {}  -- { groupName = { position = {X, Y, Z}, displayName = "..." } }
 local selectedDlcFilter = nil  -- nil means "All"
 local lastLoadedGroup = nil
+local pendingUnloads = {}  -- Queue of group names to unload (deferred to avoid ImGui issues)
 
 function M.init(context)
     rootPath = context.rootPath
@@ -391,14 +392,50 @@ function M.unloadAllGroups()
     end
 end
 
--- Toggle load/unload for a group
+-- Queue a group for deferred unloading (safe to call during ImGui rendering)
+function M.queueUnloadGroup(groupName)
+    table.insert(pendingUnloads, { type = "group", key = groupName })
+end
+
+-- Queue a curated location for deferred unloading
+function M.queueUnloadCurated(index)
+    table.insert(pendingUnloads, { type = "curated", index = index })
+end
+
+-- Queue a DLC for deferred unloading
+function M.queueUnloadDlc(dlcName)
+    table.insert(pendingUnloads, { type = "dlc", key = dlcName })
+end
+
+-- Process all pending unloads (call this after ImGui rendering is complete)
+function M.processPendingUnloads()
+    if #pendingUnloads == 0 then
+        return
+    end
+    
+    -- Copy and clear the queue first to avoid issues if unload triggers more unloads
+    local toProcess = pendingUnloads
+    pendingUnloads = {}
+    
+    for _, pending in ipairs(toProcess) do
+        if pending.type == "group" then
+            M.unloadIPLGroup(pending.key)
+        elseif pending.type == "curated" then
+            M.unloadCuratedLocation(pending.index)
+        elseif pending.type == "dlc" then
+            M.unloadByDlc(pending.key)
+        end
+    end
+end
+
+-- Toggle load/unload for a group (uses queued unload for safety during ImGui rendering)
 function M.toggleGroup(groupName, unloadLast)
     if M.isGroupLoaded(groupName) then
-        M.unloadIPLGroup(groupName)
+        M.queueUnloadGroup(groupName)
     else
         -- Unload last group if setting is enabled
         if unloadLast and lastLoadedGroup and lastLoadedGroup ~= groupName and M.isGroupLoaded(lastLoadedGroup) then
-            M.unloadIPLGroup(lastLoadedGroup)
+            M.queueUnloadGroup(lastLoadedGroup)
         end
         M.loadIPLGroup(groupName)
         lastLoadedGroup = groupName
