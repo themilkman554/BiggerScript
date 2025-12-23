@@ -1383,29 +1383,43 @@ function M.create_by_type(model, typ, coords)
     M.request_model_load(mnum)
     if typ == "1" or typ == 1 then
         local ok, h = pcall(function() return GTA.CreatePed(mnum, 26, coords.x, coords.y, coords.z, 0, true, true) end)
-        if ok and h and h ~= 0 then return h end
+        if ok and h and h ~= 0 then
+            pcall(function() ENTITY.SET_ENTITY_LOD_DIST(h, 0xFFFF) end)
+            return h
+        end
         ok, h = pcall(function() return GTA.CreateRandomPed(coords.x, coords.y, coords.z) end)
-        if ok and h and h ~= 0 then return h end
+        if ok and h and h ~= 0 then
+            pcall(function() ENTITY.SET_ENTITY_LOD_DIST(h, 0xFFFF) end)
+            return h
+        end
         return 0
     end
     if typ == "2" or typ == 2 then
         local ok, h = pcall(function() return GTA.SpawnVehicle(mnum, coords.x, coords.y, coords.z, 0, true, true) end)
-        if ok and h and h ~= 0 then return h end
+        if ok and h and h ~= 0 then
+            pcall(function() ENTITY.SET_ENTITY_LOD_DIST(h, 0xFFFF) end)
+            return h
+        end
         return 0
     end
     if typ == "3" or typ == 3 then
         local ok, h = pcall(function() return GTA.CreateObject(mnum, coords.x, coords.y, coords.z, true, true) end)
         if ok and h and h ~= 0 then
             pcall(function() if ENTITY and ENTITY.SET_ENTITY_COORDS then ENTITY.SET_ENTITY_COORDS(h, coords.x, coords.y, coords.z, false, false, false, true) end end)
+            pcall(function() ENTITY.SET_ENTITY_LOD_DIST(h, 0xFFFF) end)
             return h
         end
         ok, h = pcall(function() return GTA.CreateWorldObject(mnum, coords.x, coords.y, coords.z, true, true) end)
         if ok and h and h ~= 0 then
             pcall(function() if ENTITY and ENTITY.SET_ENTITY_COORDS then ENTITY.SET_ENTITY_COORDS(h, coords.x, coords.y, coords.z, false, false, false, true) end end)
+            pcall(function() ENTITY.SET_ENTITY_LOD_DIST(h, 0xFFFF) end)
             return h
         end
         ok, h = pcall(function() return GTA.SpawnVehicle(mnum, coords.x, coords.y, coords.z, 0, true, true) end)
-        if ok and h and h ~= 0 then return h end
+        if ok and h and h ~= 0 then
+            pcall(function() ENTITY.SET_ENTITY_LOD_DIST(h, 0xFFFF) end)
+            return h
+        end
         return 0
     end
     return 0
@@ -1473,29 +1487,68 @@ function M.spawn_attachments(parsedAttachments, parentHandleMap, fallbackCoords,
             if ihNum ~= nil then parentHandleMap[ihNum] = h end
             parentHandleMap[ihStr] = h
         end
+        
+        -- Calculate collision proof BEFORE the isPreview check so it's in scope for meta table
+        local finalCollisionProof = false
+        if att.IsCollisionProof ~= nil then
+            local val = tostring(att.IsCollisionProof):lower()
+            finalCollisionProof = (val == "true" or val == "1")
+        end
+        
         if isPreview then
             pcall(function() ENTITY.SET_ENTITY_COLLISION(h, false, false) end)
         else
-            -- Apply collision proofing based on original setting
-            local finalCollisionProof = false
-if att.IsCollisionProof ~= nil then
-    local val = tostring(att.IsCollisionProof):lower()
-    finalCollisionProof = (val == "true" or val == "1")
-end
--- Apply damage proofs
-pcall(function()
-    ENTITY.SET_ENTITY_PROOFS(h, false, finalCollisionProof, false, false, false, false, false, false)
-end)
-
--- Apply actual collision toggle (so IsCollisionProof=true means no physical collision)
-pcall(function()
-    ENTITY.SET_ENTITY_COLLISION(h, not finalCollisionProof, false)
-end)
-
-
-
-
-            pcall(function() ENTITY.SET_ENTITY_PROOFS(h, false, finalCollisionProof, false, false, false, false, false, false) end)
+            -- Debug print for collision
+            local attachmentName = att.HashName or tostring(att.ModelHash) or "Unknown"
+            local typeName = ({["1"] = "Ped", ["2"] = "Vehicle", ["3"] = "Object"})[tostring(att.Type)] or tostring(att.Type)
+            print("[Collision Debug] Entity: " .. attachmentName .. " (" .. typeName .. "), IsCollisionProof: " .. tostring(att.IsCollisionProof) .. ", finalCollisionProof: " .. tostring(finalCollisionProof) .. ", handle: " .. tostring(h))
+            
+            if finalCollisionProof then
+                -- Use multiple methods to ensure collision is disabled
+                print("[Collision Debug] Disabling collision for: " .. attachmentName)
+                
+                -- Method 1: SET_ENTITY_COLLISION
+                pcall(function()
+                    ENTITY.SET_ENTITY_COLLISION(h, false, false)
+                    print("[Collision Debug] SET_ENTITY_COLLISION(h, false, false) called")
+                end)
+                
+                -- Method 2: SET_ENTITY_COMPLETELY_DISABLE_COLLISION (more aggressive)
+                pcall(function()
+                    if ENTITY.SET_ENTITY_COMPLETELY_DISABLE_COLLISION then
+                        ENTITY.SET_ENTITY_COMPLETELY_DISABLE_COLLISION(h, false, true)
+                        print("[Collision Debug] SET_ENTITY_COMPLETELY_DISABLE_COLLISION called")
+                    end
+                end)
+                
+                -- Method 3: For peds, disable collision with player's vehicle
+                if tostring(att.Type) == "1" then
+                    pcall(function()
+                        local playerPed = PLAYER.PLAYER_PED_ID()
+                        if playerPed and playerPed ~= 0 then
+                            local playerVehicle = PED.GET_VEHICLE_PED_IS_IN(playerPed, false)
+                            if playerVehicle and playerVehicle ~= 0 then
+                                ENTITY.SET_ENTITY_NO_COLLISION_ENTITY(h, playerVehicle, true)
+                                print("[Collision Debug] SET_ENTITY_NO_COLLISION_ENTITY with player vehicle called")
+                            end
+                        end
+                    end)
+                    
+                    -- Also disable ragdoll for peds to prevent physics issues
+                    pcall(function()
+                        if PED.SET_PED_CAN_RAGDOLL then
+                            PED.SET_PED_CAN_RAGDOLL(h, false)
+                            print("[Collision Debug] SET_PED_CAN_RAGDOLL(false) called")
+                        end
+                    end)
+                end
+                
+                -- Method 4: SET_ENTITY_PROOFS with collision proof
+                pcall(function()
+                    ENTITY.SET_ENTITY_PROOFS(h, false, false, false, true, false, false, false, false)
+                    print("[Collision Debug] SET_ENTITY_PROOFS with collisionProof=true called")
+                end)
+            end
         end
 
         if att.OpacityLevel ~= nil then
@@ -1741,6 +1794,7 @@ end)
         if m.attachedto then
             local parentHandle = parentHandleMap[M.safe_tonumber(m.attachedto)] or parentHandleMap[tostring(m.attachedto)]
             if parentHandle and parentHandle ~= 0 and m.created and m.created ~= 0 then
+                print("[Collision Debug] Attaching '" .. (m.name or "Unknown") .. "' with iscollisionproof=" .. tostring(m.iscollisionproof) .. " (collision param: " .. tostring(not m.iscollisionproof) .. ")")
                 local ok, err = pcall(function()
                     ENTITY.ATTACH_ENTITY_TO_ENTITY(
                         m.created,
@@ -1754,6 +1808,32 @@ end)
                 end)
                 if ok then
                     M.debug_print("[Spawn] ✓ Attached '" .. (m.name or "Unknown") .. "' to '" .. (m.parentName or "Parent") .. "'")
+                    
+                    -- Re-apply collision AFTER attachment (attachment may reset collision state)
+                    if m.iscollisionproof then
+                        print("[Collision Debug] Re-applying collision disable AFTER attaching: " .. (m.name or "Unknown"))
+                        pcall(function()
+                            ENTITY.SET_ENTITY_COLLISION(m.created, false, false)
+                        end)
+                        pcall(function()
+                            if ENTITY.SET_ENTITY_COMPLETELY_DISABLE_COLLISION then
+                                ENTITY.SET_ENTITY_COMPLETELY_DISABLE_COLLISION(m.created, false, true)
+                            end
+                        end)
+                        -- For peds, extra methods
+                        if m.isped then
+                            pcall(function()
+                                if PED.SET_PED_CAN_RAGDOLL then
+                                    PED.SET_PED_CAN_RAGDOLL(m.created, false)
+                                end
+                            end)
+                            -- Disable collision with parent
+                            pcall(function()
+                                ENTITY.SET_ENTITY_NO_COLLISION_ENTITY(m.created, parentHandle, true)
+                            end)
+                            print("[Collision Debug] Disabled ped collision with parent")
+                        end
+                    end
                 else
                 end
             else
@@ -2838,6 +2918,14 @@ function M.spawnVehicleFromXML(filePath, isPreview)
         if isVisible ~= nil then
             M.try_call(ENTITY, "SET_ENTITY_VISIBLE", vehicleHandle, M.to_boolean(isVisible), false)
         end
+        
+        -- Parse IsDriverVisible for player invisibility when driving
+        local isDriverVisible = M.get_xml_element_content(xmlContent, "IsDriverVisible")
+        local shouldHideDriver = false
+        if isDriverVisible ~= nil then
+            shouldHideDriver = not M.to_boolean(isDriverVisible)
+        end
+        
         local originalInVehicleSetting = spawnerSettings.inVehicle
         spawnerSettings.inVehicle = false
         local parsedAttachments = M.parse_spooner_attachments(xmlContent)
@@ -2868,6 +2956,57 @@ function M.spawnVehicleFromXML(filePath, isPreview)
             local playerHandle = GTA.PointerToHandle(playerPed)
             if playerHandle and playerHandle > 0 then
                 M.try_call(PED, "SET_PED_INTO_VEHICLE", playerHandle, vehicleHandle, -1)
+                
+                -- If IsDriverVisible is false, make the player invisible
+                if shouldHideDriver then
+                    M.debug_print("[Spawn] IsDriverVisible is false, hiding player")
+                    pcall(function()
+                        ENTITY.SET_ENTITY_VISIBLE(playerHandle, false, false)
+                    end)
+                    
+                    -- Start a background job to restore visibility when player exits vehicle
+                    local vehHandle = vehicleHandle
+                    local pedHandle = playerHandle
+                    Script.QueueJob(function()
+                        print("[Driver Visibility] Starting vehicle exit monitor for handle: " .. tostring(vehHandle))
+                        -- Wait for the player to exit the vehicle
+                        while true do
+                            Script.Yield(250)
+                            
+                            -- Check if vehicle still exists
+                            local vehExists = false
+                            pcall(function()
+                                vehExists = ENTITY.DOES_ENTITY_EXIST(vehHandle)
+                            end)
+                            
+                            if not vehExists then
+                                print("[Driver Visibility] Vehicle no longer exists, restoring visibility")
+                                pcall(function()
+                                    ENTITY.SET_ENTITY_VISIBLE(pedHandle, true, false)
+                                end)
+                                break
+                            end
+                            
+                            -- Check if player is in this specific vehicle using IS_PED_IN_VEHICLE
+                            local isInVehicle = false
+                            pcall(function()
+                                isInVehicle = PED.IS_PED_IN_VEHICLE(pedHandle, vehHandle, false)
+                            end)
+                            
+                            print("[Driver Visibility] Checking: isInVehicle=" .. tostring(isInVehicle))
+                            
+                            -- If player is no longer in the vehicle, restore visibility
+                            if not isInVehicle then
+                                print("[Driver Visibility] Player exited vehicle, restoring visibility")
+                                pcall(function()
+                                    ENTITY.SET_ENTITY_VISIBLE(pedHandle, true, false)
+                                end)
+                                break
+                            end
+                        end
+                        print("[Driver Visibility] Monitor ended")
+                    end)
+                end
             end
         end
         local vehicleData = {
@@ -3506,6 +3645,8 @@ function M.spawnMapFromXML(filePath)
             refCoords.y = M.safe_tonumber(M.get_xml_element_content(refCoordsElement, "Y"), 0.0)
             refCoords.z = M.safe_tonumber(M.get_xml_element_content(refCoordsElement, "Z"), 0.0)
         end
+        -- Progress tracking for maps over 200 entities
+        local progressShown = { [25] = false, [50] = false, [75] = false }
         if spawnerSettings.networkMapsV1Enabled then
             createdEntities, spawnCount = M.spawnMapV1Networked(filePath, placements)
         else
@@ -3533,9 +3674,19 @@ function M.spawnMapFromXML(filePath)
                 end)
                 table.insert(createdEntities, entityHandle)
                 spawnCount = spawnCount + 1
-                -- Show live progress every 5 spawns or on first/last (only if over 200 entities)
-                if totalPlacements > 200 and (spawnCount == 1 or spawnCount == totalPlacements or spawnCount % 5 == 0) then
-                    pcall(function() GUI.AddToast("Spawning Map", filename .. " (" .. spawnCount .. "/" .. totalPlacements .. ")", 1000, 0) end)
+                -- Show progress toasts at 25%, 50%, 75% for maps over 200 entities
+                if totalPlacements > 200 then
+                    local percentComplete = math.floor((spawnCount / totalPlacements) * 100)
+                    if percentComplete >= 25 and not progressShown[25] then
+                        progressShown[25] = true
+                        pcall(function() GUI.AddToast("Spawning Map", "25% completed (" .. spawnCount .. "/" .. totalPlacements .. ")", 2000, 0) end)
+                    elseif percentComplete >= 50 and not progressShown[50] then
+                        progressShown[50] = true
+                        pcall(function() GUI.AddToast("Spawning Map", "50% completed (" .. spawnCount .. "/" .. totalPlacements .. ")", 2000, 0) end)
+                    elseif percentComplete >= 75 and not progressShown[75] then
+                        progressShown[75] = true
+                        pcall(function() GUI.AddToast("Spawning Map", "75% completed (" .. spawnCount .. "/" .. totalPlacements .. ")", 2000, 0) end)
+                    end
                 end
                 if spawnerSettings.networkMapsV2Enabled then
                     pcall(function()
@@ -3657,12 +3808,7 @@ function M.spawnMapFromXML(filePath)
             table.insert(spawnedMaps, mapData)
             pcall(function()
                 local markerCount = (markers and #markers or 0)
-                local toastMsg = filename
-                if totalPlacements > 200 then
-                    toastMsg = toastMsg .. " (" .. spawnCount .. "/" .. totalPlacements .. " objects, " .. markerCount .. " markers)"
-                else
-                    toastMsg = toastMsg .. " (" .. markerCount .. " markers)"
-                end
+                local toastMsg = filename .. " (" .. spawnCount .. " entities, " .. markerCount .. " markers)"
                 GUI.AddToast("Map Spawned", toastMsg, 5000, 0)
                 print("Map Spawned", toastMsg)
             end)

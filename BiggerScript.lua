@@ -10,7 +10,7 @@ Logger.Log(eLogColor.GREEN, "", " ░    ░  ▒ ░░ ░   ░ ░ ░   ░
 Logger.Log(eLogColor.GREEN, "", " ░       ░        ░       ░    ░  ░   ░           ░  ░ ░         ░      ░                    ")
 Logger.Log(eLogColor.GREEN, "", "      ░                                              ░                                       ")
 
-GUI.AddToast("BiggerScriptv6.1", "Added IPL Loader\n Added Context Preview\n Improved logging\nImproved map spawning", 10000, 0)
+GUI.AddToast("BiggerScriptv6.1", "Added IPL Loader\nAdded Context Preview\n Improved logging\nImprovements to Spawning", 10000, 0)
 
 if Cherax.GetEdition() == "LE" then
     GUI.AddToast("BiggerScript", "Legacy Version of Cherax breaks vehicles with too many attachments", 10000, 0)
