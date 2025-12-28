@@ -1498,26 +1498,18 @@ function M.spawn_attachments(parsedAttachments, parentHandleMap, fallbackCoords,
         if isPreview then
             pcall(function() ENTITY.SET_ENTITY_COLLISION(h, false, false) end)
         else
-            -- Debug print for collision
-            local attachmentName = att.HashName or tostring(att.ModelHash) or "Unknown"
-            local typeName = ({["1"] = "Ped", ["2"] = "Vehicle", ["3"] = "Object"})[tostring(att.Type)] or tostring(att.Type)
-            print("[Collision Debug] Entity: " .. attachmentName .. " (" .. typeName .. "), IsCollisionProof: " .. tostring(att.IsCollisionProof) .. ", finalCollisionProof: " .. tostring(finalCollisionProof) .. ", handle: " .. tostring(h))
-            
             if finalCollisionProof then
                 -- Use multiple methods to ensure collision is disabled
-                print("[Collision Debug] Disabling collision for: " .. attachmentName)
                 
                 -- Method 1: SET_ENTITY_COLLISION
                 pcall(function()
                     ENTITY.SET_ENTITY_COLLISION(h, false, false)
-                    print("[Collision Debug] SET_ENTITY_COLLISION(h, false, false) called")
                 end)
                 
                 -- Method 2: SET_ENTITY_COMPLETELY_DISABLE_COLLISION (more aggressive)
                 pcall(function()
                     if ENTITY.SET_ENTITY_COMPLETELY_DISABLE_COLLISION then
                         ENTITY.SET_ENTITY_COMPLETELY_DISABLE_COLLISION(h, false, true)
-                        print("[Collision Debug] SET_ENTITY_COMPLETELY_DISABLE_COLLISION called")
                     end
                 end)
                 
@@ -1529,7 +1521,6 @@ function M.spawn_attachments(parsedAttachments, parentHandleMap, fallbackCoords,
                             local playerVehicle = PED.GET_VEHICLE_PED_IS_IN(playerPed, false)
                             if playerVehicle and playerVehicle ~= 0 then
                                 ENTITY.SET_ENTITY_NO_COLLISION_ENTITY(h, playerVehicle, true)
-                                print("[Collision Debug] SET_ENTITY_NO_COLLISION_ENTITY with player vehicle called")
                             end
                         end
                     end)
@@ -1538,7 +1529,6 @@ function M.spawn_attachments(parsedAttachments, parentHandleMap, fallbackCoords,
                     pcall(function()
                         if PED.SET_PED_CAN_RAGDOLL then
                             PED.SET_PED_CAN_RAGDOLL(h, false)
-                            print("[Collision Debug] SET_PED_CAN_RAGDOLL(false) called")
                         end
                     end)
                 end
@@ -1546,7 +1536,6 @@ function M.spawn_attachments(parsedAttachments, parentHandleMap, fallbackCoords,
                 -- Method 4: SET_ENTITY_PROOFS with collision proof
                 pcall(function()
                     ENTITY.SET_ENTITY_PROOFS(h, false, false, false, true, false, false, false, false)
-                    print("[Collision Debug] SET_ENTITY_PROOFS with collisionProof=true called")
                 end)
             end
         end
@@ -1794,7 +1783,6 @@ function M.spawn_attachments(parsedAttachments, parentHandleMap, fallbackCoords,
         if m.attachedto then
             local parentHandle = parentHandleMap[M.safe_tonumber(m.attachedto)] or parentHandleMap[tostring(m.attachedto)]
             if parentHandle and parentHandle ~= 0 and m.created and m.created ~= 0 then
-                print("[Collision Debug] Attaching '" .. (m.name or "Unknown") .. "' with iscollisionproof=" .. tostring(m.iscollisionproof) .. " (collision param: " .. tostring(not m.iscollisionproof) .. ")")
                 local ok, err = pcall(function()
                     ENTITY.ATTACH_ENTITY_TO_ENTITY(
                         m.created,
@@ -1804,14 +1792,12 @@ function M.spawn_attachments(parsedAttachments, parentHandleMap, fallbackCoords,
                         m.pitch, m.roll, m.yaw,
                         false, false, not m.iscollisionproof, m.isped, 2, true
                     )
-                    
                 end)
                 if ok then
                     M.debug_print("[Spawn] ✓ Attached '" .. (m.name or "Unknown") .. "' to '" .. (m.parentName or "Parent") .. "'")
                     
                     -- Re-apply collision AFTER attachment (attachment may reset collision state)
                     if m.iscollisionproof then
-                        print("[Collision Debug] Re-applying collision disable AFTER attaching: " .. (m.name or "Unknown"))
                         pcall(function()
                             ENTITY.SET_ENTITY_COLLISION(m.created, false, false)
                         end)
@@ -1831,7 +1817,6 @@ function M.spawn_attachments(parsedAttachments, parentHandleMap, fallbackCoords,
                             pcall(function()
                                 ENTITY.SET_ENTITY_NO_COLLISION_ENTITY(m.created, parentHandle, true)
                             end)
-                            print("[Collision Debug] Disabled ped collision with parent")
                         end
                     end
                 else
