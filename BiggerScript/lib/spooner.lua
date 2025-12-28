@@ -2843,7 +2843,8 @@ local attachmentsWindowVisible = false
 local attachmentsWindowState = {
     selectedAttachment = nil,
     selectedAttachmentType = nil,
-    boneIndex = 0,
+    boneIndex = 0,          -- For ped bones (enum ID)
+    boneName = "",          -- For vehicle bones (string name)
     offsetX = 0.0,
     offsetY = 0.0,
     offsetZ = 0.0,
@@ -2950,6 +2951,7 @@ local function renderAttachWindow()
             attachmentsWindowState.selectedAttachment = entityToAttach
             attachmentsWindowState.selectedAttachmentType = entityToAttachType
             attachmentsWindowState.boneIndex = 0
+            attachmentsWindowState.boneName = ""
             attachmentsWindowState.offsetX = 0.0
             attachmentsWindowState.offsetY = 0.0
             attachmentsWindowState.offsetZ = 0.0
@@ -3040,6 +3042,7 @@ local function renderAttachWindow()
                         attachmentsWindowState.selectedAttachment = entityToAttach
                         attachmentsWindowState.selectedAttachmentType = entityToAttachType
                         attachmentsWindowState.boneIndex = 0
+                        attachmentsWindowState.boneName = ""
                         attachmentsWindowState.offsetX = 0.0
                         attachmentsWindowState.offsetY = 0.0
                         attachmentsWindowState.offsetZ = 0.0
@@ -3143,7 +3146,7 @@ end
 -- Common GTA bone enum IDs (for use with GET_PED_BONE_INDEX)
 
 -- These are the bone enum values, NOT the bone indices. Use getPedBoneIndex() to get actual indices.
-local boneList = {
+local pedBoneList = {
     {name = "Root (Default)", boneEnum = 0},
     {name = "SKEL_Pelvis", boneEnum = 11816},
     {name = "SKEL_Spine_Root", boneEnum = 57597},
@@ -3196,8 +3199,94 @@ local boneList = {
     {name = "RB_Neck_1", boneEnum = 35731}
 }
 
+-- Vehicle bone names (for use with GET_ENTITY_BONE_INDEX_BY_NAME)
+-- These use bone names instead of enum IDs
+local vehicleBoneList = {
+    {name = "Root (Default)", boneName = ""},
+    {name = "Chassis", boneName = "chassis"},
+    {name = "Chassis Dummy", boneName = "chassis_dummy"},
+    -- Wheels
+    {name = "Wheel Front Left", boneName = "wheel_lf"},
+    {name = "Wheel Front Right", boneName = "wheel_rf"},
+    {name = "Wheel Rear Left", boneName = "wheel_lr"},
+    {name = "Wheel Rear Right", boneName = "wheel_rr"},
+    {name = "Wheel Middle Left", boneName = "wheel_lm1"},
+    {name = "Wheel Middle Right", boneName = "wheel_rm1"},
+    -- Doors
+    {name = "Door Front Left", boneName = "door_dside_f"},
+    {name = "Door Front Right", boneName = "door_pside_f"},
+    {name = "Door Rear Left", boneName = "door_dside_r"},
+    {name = "Door Rear Right", boneName = "door_pside_r"},
+    -- Hoods/Trunks
+    {name = "Hood/Bonnet", boneName = "bonnet"},
+    {name = "Trunk/Boot", boneName = "boot"},
+    -- Bumpers
+    {name = "Bumper Front", boneName = "bumper_f"},
+    {name = "Bumper Rear", boneName = "bumper_r"},
+    -- Exhaust
+    {name = "Exhaust", boneName = "exhaust"},
+    {name = "Exhaust 2", boneName = "exhaust_2"},
+    -- Lights
+    {name = "Headlight Left", boneName = "headlight_l"},
+    {name = "Headlight Right", boneName = "headlight_r"},
+    {name = "Taillight Left", boneName = "taillight_l"},
+    {name = "Taillight Right", boneName = "taillight_r"},
+    -- Engine
+    {name = "Engine", boneName = "engine"},
+    -- Spoiler
+    {name = "Spoiler", boneName = "spoiler"},
+    -- Suspension
+    {name = "Suspension Front Left", boneName = "suspension_lf"},
+    {name = "Suspension Front Right", boneName = "suspension_rf"},
+    {name = "Suspension Rear Left", boneName = "suspension_lr"},
+    {name = "Suspension Rear Right", boneName = "suspension_rr"},
+    -- Roof
+    {name = "Roof", boneName = "roof"},
+    -- Seats
+    {name = "Seat Front Left", boneName = "seat_dside_f"},
+    {name = "Seat Front Right", boneName = "seat_pside_f"},
+    {name = "Seat Rear Left", boneName = "seat_dside_r"},
+    {name = "Seat Rear Right", boneName = "seat_pside_r"},
+    -- Steering
+    {name = "Steering Wheel", boneName = "steeringwheel"},
+    -- Windows
+    {name = "Window Front Left", boneName = "window_lf"},
+    {name = "Window Front Right", boneName = "window_rf"},
+    {name = "Window Rear Left", boneName = "window_lr"},
+    {name = "Window Rear Right", boneName = "window_rr"},
+    -- Misc
+    {name = "Petrol Cap", boneName = "petrolcap"},
+    {name = "Numberplate", boneName = "numberplate"},
+    {name = "Windscreen", boneName = "windscreen"},
+    {name = "Windscreen Rear", boneName = "windscreen_r"},
+    -- Weapons (for armed vehicles)
+    {name = "Turret", boneName = "turret_1base"},
+    {name = "Turret Barrel", boneName = "turret_1barrel"},
+    {name = "Gun", boneName = "gun_1"},
+    {name = "Gun 2", boneName = "gun_2"},
+    {name = "Missile", boneName = "missile_1"},
+    -- Aircraft specific
+    {name = "Propeller", boneName = "propeller"},
+    {name = "Propeller 2", boneName = "propeller_2"},
+    {name = "Rotor Main", boneName = "rotor_main"},
+    {name = "Rotor Tail", boneName = "rotor_tail"},
+    {name = "Wing Left", boneName = "wing_l"},
+    {name = "Wing Right", boneName = "wing_r"},
+    {name = "Elevator Left", boneName = "elevator_l"},
+    {name = "Elevator Right", boneName = "elevator_r"},
+    {name = "Rudder", boneName = "rudder"},
+    {name = "Landing Gear Front", boneName = "wheel_f"},
+    {name = "Landing Gear Left", boneName = "landinggear_l"},
+    {name = "Landing Gear Right", boneName = "landinggear_r"},
+    -- Boat specific
+    {name = "Hull", boneName = "hull"},
+    {name = "Rudder 2", boneName = "rudder2"}
+}
+
 -- Get bone index for attachment (uses native function)
-local function getBoneIndex(entity, boneEnum)
+-- For peds: boneEnum is the bone enum ID
+-- For vehicles: boneEnum is actually unused, we use boneName from vehicleBoneList
+local function getBoneIndex(entity, boneEnum, boneName)
     if not entity or entity == 0 or not ENTITY.DOES_ENTITY_EXIST(entity) then
         return 0
     end
@@ -3211,9 +3300,102 @@ local function getBoneIndex(entity, boneEnum)
         return result
     end
     
-    -- For non-peds (vehicles, objects), bone index is usually 0 or use the enum directly
-    -- Most vehicles don't have named bones accessible this way
-    return boneEnum
+    -- For vehicles, use GET_ENTITY_BONE_INDEX_BY_NAME with the bone name
+    if ENTITY.IS_ENTITY_A_VEHICLE(entity) and boneName and boneName ~= "" then
+        local result = -1
+        pcall(function()
+            result = ENTITY.GET_ENTITY_BONE_INDEX_BY_NAME(entity, boneName)
+        end)
+        -- If bone wasn't found (-1), use root (0)
+        if result == -1 then
+            return 0
+        end
+        return result
+    end
+    
+    -- For objects or unknown types, just use 0
+    return 0
+end
+
+-- Check if a bone exists on an entity
+-- Returns true if the bone exists, false otherwise
+local function doesBoneExist(entity, boneEnum, boneName)
+    if not entity or entity == 0 or not ENTITY.DOES_ENTITY_EXIST(entity) then
+        return false
+    end
+    
+    -- For vehicles, use GET_ENTITY_BONE_INDEX_BY_NAME
+    if ENTITY.IS_ENTITY_A_VEHICLE(entity) then
+        if not boneName or boneName == "" then
+            return true -- Root always exists
+        end
+        local result = -1
+        pcall(function()
+            result = ENTITY.GET_ENTITY_BONE_INDEX_BY_NAME(entity, boneName)
+        end)
+        return result ~= -1
+    end
+    
+    -- For peds, use GET_PED_BONE_INDEX
+    if ENTITY.IS_ENTITY_A_PED(entity) then
+        if not boneEnum or boneEnum == 0 then
+            return true -- Root always exists
+        end
+        local result = -1
+        pcall(function()
+            result = PED.GET_PED_BONE_INDEX(entity, boneEnum)
+        end)
+        return result ~= -1
+    end
+    
+    -- For objects, only root exists
+    return (not boneEnum or boneEnum == 0)
+end
+
+-- Helper to get the appropriate bone list based on entity type
+-- filterExisting: if true, only returns bones that exist on the entity
+local function getBoneListForEntity(entity, filterExisting)
+    if not entity or not ENTITY.DOES_ENTITY_EXIST(entity) then
+        return pedBoneList, "ped"
+    end
+    
+    local fullList, entityType
+    if ENTITY.IS_ENTITY_A_VEHICLE(entity) then
+        fullList = vehicleBoneList
+        entityType = "vehicle"
+    elseif ENTITY.IS_ENTITY_A_PED(entity) then
+        fullList = pedBoneList
+        entityType = "ped"
+    else
+        return pedBoneList, "ped"
+    end
+    
+    -- If not filtering, return the full list
+    if not filterExisting then
+        return fullList, entityType
+    end
+    
+    -- Filter to only bones that exist on this entity
+    local filteredList = {}
+    for _, bone in ipairs(fullList) do
+        local boneEnum = bone.boneEnum or 0
+        local boneName = bone.boneName or ""
+        
+        if doesBoneExist(entity, boneEnum, boneName) then
+            table.insert(filteredList, bone)
+        end
+    end
+    
+    -- Always include at least the root if nothing found
+    if #filteredList == 0 then
+        if entityType == "vehicle" then
+            table.insert(filteredList, {name = "Root (Default)", boneName = ""})
+        else
+            table.insert(filteredList, {name = "Root (Default)", boneEnum = 0})
+        end
+    end
+    
+    return filteredList, entityType
 end
 
 function M.openAttachmentsWindow()
@@ -3222,6 +3404,7 @@ function M.openAttachmentsWindow()
     attachmentsWindowState.selectedAttachment = nil
     attachmentsWindowState.selectedAttachmentType = nil
     attachmentsWindowState.boneIndex = 0
+    attachmentsWindowState.boneName = ""
     attachmentsWindowState.offsetX = 0.0
     attachmentsWindowState.offsetY = 0.0
     attachmentsWindowState.offsetZ = 0.0
@@ -4143,6 +4326,7 @@ local function renderAttachmentsWindow()
                             local cached = attachmentOffsetCache[attachment.handle]
                             if cached then
                                 attachmentsWindowState.boneIndex = cached.bone or 0
+                                attachmentsWindowState.boneName = cached.boneName or ""
                                 attachmentsWindowState.offsetX = cached.offsetX or 0.0
                                 attachmentsWindowState.offsetY = cached.offsetY or 0.0
                                 attachmentsWindowState.offsetZ = cached.offsetZ or 0.0
@@ -4151,6 +4335,7 @@ local function renderAttachmentsWindow()
                                 attachmentsWindowState.rotYaw = cached.rotYaw or 0.0
                             else
                                 attachmentsWindowState.boneIndex = 0
+                                attachmentsWindowState.boneName = ""
                                 attachmentsWindowState.offsetX = 0.0
                                 attachmentsWindowState.offsetY = 0.0
                                 attachmentsWindowState.offsetZ = 0.0
@@ -4198,24 +4383,58 @@ local function renderAttachmentsWindow()
             ImGui.SameLine() -- Let ImGui handle spacing (was 50)
             ImGui.PushItemWidth(200) -- Increased width slightly
             
-            -- Find current bone name
+            -- Get the appropriate bone list based on entity type (filtered to only existing bones)
+            local activeBoneList, entityBoneType = getBoneListForEntity(selectedEntity, true)
+            local isVehicleTarget = (entityBoneType == "vehicle")
+            
+            -- Find current bone name for display
             local currentBoneName = "Root (Default)"
-            for _, bone in ipairs(boneList) do
-                if bone.boneEnum == attachmentsWindowState.boneIndex then
-                    currentBoneName = bone.name
-                    break
+            if isVehicleTarget then
+                -- For vehicles, match by boneName
+                for _, bone in ipairs(activeBoneList) do
+                    if bone.boneName == attachmentsWindowState.boneName then
+                        currentBoneName = bone.name
+                        break
+                    end
+                end
+            else
+                -- For peds, match by boneEnum
+                for _, bone in ipairs(activeBoneList) do
+                    if bone.boneEnum == attachmentsWindowState.boneIndex then
+                        currentBoneName = bone.name
+                        break
+                    end
                 end
             end
             
             if ImGui.BeginCombo("##BoneCombo", currentBoneName) then
-                for _, bone in ipairs(boneList) do
-                    local isSelected = (bone.boneEnum == attachmentsWindowState.boneIndex)
-                    if ImGui.Selectable(bone.name .. "##bone" .. bone.boneEnum, isSelected) then
-                        attachmentsWindowState.boneIndex = bone.boneEnum
+                for i, bone in ipairs(activeBoneList) do
+                    local isSelected
+                    local selectableId
+                    
+                    if isVehicleTarget then
+                        isSelected = (bone.boneName == attachmentsWindowState.boneName)
+                        selectableId = bone.name .. "##vbone" .. i
+                    else
+                        isSelected = (bone.boneEnum == attachmentsWindowState.boneIndex)
+                        selectableId = bone.name .. "##pbone" .. bone.boneEnum
+                    end
+                    
+                    if ImGui.Selectable(selectableId, isSelected) then
+                        -- Update state based on bone type
+                        if isVehicleTarget then
+                            attachmentsWindowState.boneName = bone.boneName
+                            attachmentsWindowState.boneIndex = 0 -- Reset ped bone
+                        else
+                            attachmentsWindowState.boneIndex = bone.boneEnum
+                            attachmentsWindowState.boneName = "" -- Reset vehicle bone
+                        end
+                        
                         -- Auto-apply when bone changes
                         local attachHandle = attachmentsWindowState.selectedAttachment
                         local targetHandle = selectedEntity
-                        local boneEnum = bone.boneEnum
+                        local boneEnum = bone.boneEnum or 0
+                        local boneName = bone.boneName or ""
                         local offX = attachmentsWindowState.offsetX
                         local offY = attachmentsWindowState.offsetY
                         local offZ = attachmentsWindowState.offsetZ
@@ -4223,9 +4442,10 @@ local function renderAttachmentsWindow()
                         local rotY = attachmentsWindowState.rotRoll
                         local rotZ = attachmentsWindowState.rotYaw
                         
-                        -- Cache the offset values
+                        -- Cache the offset values (store both bone types)
                         attachmentOffsetCache[attachHandle] = {
                             bone = boneEnum,
+                            boneName = boneName,
                             offsetX = offX,
                             offsetY = offY,
                             offsetZ = offZ,
@@ -4237,8 +4457,8 @@ local function renderAttachmentsWindow()
                         Script.QueueJob(function()
                             pcall(function()
                                 if ENTITY.DOES_ENTITY_EXIST(attachHandle) and ENTITY.DOES_ENTITY_EXIST(targetHandle) then
-                                    -- Get actual bone index using native function
-                                    local actualBoneIndex = getBoneIndex(targetHandle, boneEnum)
+                                    -- Get actual bone index using native function (pass both boneEnum and boneName)
+                                    local actualBoneIndex = getBoneIndex(targetHandle, boneEnum, boneName)
                                     ENTITY.DETACH_ENTITY(attachHandle, true, true)
                                     local isPed = ENTITY.IS_ENTITY_A_PED(targetHandle) or ENTITY.IS_ENTITY_A_PED(attachHandle)
                                     ENTITY.ATTACH_ENTITY_TO_ENTITY(attachHandle, targetHandle, actualBoneIndex, offX, offY, offZ, rotX, rotY, rotZ, false, false, false, isPed, 0, true)
@@ -4505,6 +4725,7 @@ local function renderAttachmentsWindow()
                 local attachHandle = attachmentsWindowState.selectedAttachment
                 local targetHandle = selectedEntity
                 local boneEnum = attachmentsWindowState.boneIndex
+                local boneName = attachmentsWindowState.boneName
                 local offX = attachmentsWindowState.offsetX
                 local offY = attachmentsWindowState.offsetY
                 local offZ = attachmentsWindowState.offsetZ
@@ -4512,9 +4733,10 @@ local function renderAttachmentsWindow()
                 local rotY = attachmentsWindowState.rotRoll
                 local rotZ = attachmentsWindowState.rotYaw
                 
-                -- Cache the offset values
+                -- Cache the offset values (store both bone types)
                 attachmentOffsetCache[attachHandle] = {
                     bone = boneEnum,
+                    boneName = boneName,
                     offsetX = offX,
                     offsetY = offY,
                     offsetZ = offZ,
@@ -4526,8 +4748,8 @@ local function renderAttachmentsWindow()
                 Script.QueueJob(function()
                     pcall(function()
                         if ENTITY.DOES_ENTITY_EXIST(attachHandle) and ENTITY.DOES_ENTITY_EXIST(targetHandle) then
-                            -- Get actual bone index using native function
-                            local actualBoneIndex = getBoneIndex(targetHandle, boneEnum)
+                            -- Get actual bone index using native function (pass both boneEnum and boneName)
+                            local actualBoneIndex = getBoneIndex(targetHandle, boneEnum, boneName)
                             ENTITY.DETACH_ENTITY(attachHandle, true, true)
                             local isPed = ENTITY.IS_ENTITY_A_PED(targetHandle) or ENTITY.IS_ENTITY_A_PED(attachHandle)
                             ENTITY.ATTACH_ENTITY_TO_ENTITY(attachHandle, targetHandle, actualBoneIndex, offX, offY, offZ, rotX, rotY, rotZ, false, false, false, isPed, 0, true)
