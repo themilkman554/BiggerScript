@@ -1927,6 +1927,129 @@ function M.managePreview(hoveredFile)
     end)
 end
 
+-- Helper function to calculate combined bounding box for all preview entities
+local function calculateCombinedBoundingBox(entities, mainEntity)
+    -- Initialize with extreme values
+    local globalMinX, globalMinY, globalMinZ = math.huge, math.huge, math.huge
+    local globalMaxX, globalMaxY, globalMaxZ = -math.huge, -math.huge, -math.huge
+    
+    for _, entity in ipairs(entities) do
+        if entity and ENTITY.DOES_ENTITY_EXIST(entity) then
+            -- Get entity bounding box using model dimensions
+            -- GTA V Vector3 has padding: x(4) + pad(4) + y(4) + pad(4) + z(4) + pad(4) = 24 bytes
+            local min = Memory.Alloc(24)
+            local max = Memory.Alloc(24)
+            MISC.GET_MODEL_DIMENSIONS(ENTITY.GET_ENTITY_MODEL(entity), min, max)
+            
+            -- Read with proper Vector3 stride (8 bytes per component due to padding)
+            local minX = Memory.ReadFloat(min)
+            local minY = Memory.ReadFloat(min + 8)
+            local minZ = Memory.ReadFloat(min + 16)
+            local maxX = Memory.ReadFloat(max)
+            local maxY = Memory.ReadFloat(max + 8)
+            local maxZ = Memory.ReadFloat(max + 16)
+            
+            Memory.Free(min)
+            Memory.Free(max)
+            
+            -- Calculate the 8 corners of this entity's bounding box
+            local corners = {
+                {minX, minY, minZ},
+                {maxX, minY, minZ},
+                {maxX, maxY, minZ},
+                {minX, maxY, minZ},
+                {minX, minY, maxZ},
+                {maxX, minY, maxZ},
+                {maxX, maxY, maxZ},
+                {minX, maxY, maxZ}
+            }
+            
+            -- Transform corners to world space relative to the main entity
+            for _, corner in ipairs(corners) do
+                local worldPos = ENTITY.GET_OFFSET_FROM_ENTITY_IN_WORLD_COORDS(entity, corner[1], corner[2], corner[3])
+                -- Convert world pos back to main entity's local space
+                local localPos = ENTITY.GET_OFFSET_FROM_ENTITY_GIVEN_WORLD_COORDS(mainEntity, worldPos.x, worldPos.y, worldPos.z)
+                
+                -- Update global bounds
+                if localPos.x < globalMinX then globalMinX = localPos.x end
+                if localPos.y < globalMinY then globalMinY = localPos.y end
+                if localPos.z < globalMinZ then globalMinZ = localPos.z end
+                if localPos.x > globalMaxX then globalMaxX = localPos.x end
+                if localPos.y > globalMaxY then globalMaxY = localPos.y end
+                if localPos.z > globalMaxZ then globalMaxZ = localPos.z end
+            end
+        end
+    end
+    
+    -- Calculate size
+    local sizeX = globalMaxX - globalMinX
+    local sizeY = globalMaxY - globalMinY
+    local sizeZ = globalMaxZ - globalMinZ
+    local maxDimension = math.max(sizeX, sizeY, sizeZ)
+    
+    return {
+        minX = globalMinX, minY = globalMinY, minZ = globalMinZ,
+        maxX = globalMaxX, maxY = globalMaxY, maxZ = globalMaxZ,
+        sizeX = sizeX, sizeY = sizeY, sizeZ = sizeZ,
+        maxDimension = maxDimension
+    }
+end
+
+-- Helper function to draw bounding box around preview entities
+local function drawPreviewBoundingBox(mainEntity, bounds)
+    -- Calculate the 8 corners of the combined bounding box in local space
+    local corners = {
+        {bounds.minX, bounds.minY, bounds.minZ}, -- bottom front left
+        {bounds.maxX, bounds.minY, bounds.minZ}, -- bottom front right
+        {bounds.maxX, bounds.maxY, bounds.minZ}, -- bottom back right
+        {bounds.minX, bounds.maxY, bounds.minZ}, -- bottom back left
+        {bounds.minX, bounds.minY, bounds.maxZ}, -- top front left
+        {bounds.maxX, bounds.minY, bounds.maxZ}, -- top front right
+        {bounds.maxX, bounds.maxY, bounds.maxZ}, -- top back right
+        {bounds.minX, bounds.maxY, bounds.maxZ}  -- top back left
+    }
+    
+    -- Transform corners to world space
+    local worldCorners = {}
+    for _, corner in ipairs(corners) do
+        local worldPos = ENTITY.GET_OFFSET_FROM_ENTITY_IN_WORLD_COORDS(mainEntity, corner[1], corner[2], corner[3])
+        table.insert(worldCorners, worldPos)
+    end
+    
+    -- Purple color for all edges
+    local boxColor = {r = 180, g = 100, b = 255, a = 200}
+    
+    -- Draw bottom edges
+    GRAPHICS.DRAW_LINE(worldCorners[1].x, worldCorners[1].y, worldCorners[1].z,
+                       worldCorners[2].x, worldCorners[2].y, worldCorners[2].z, boxColor.r, boxColor.g, boxColor.b, boxColor.a)
+    GRAPHICS.DRAW_LINE(worldCorners[2].x, worldCorners[2].y, worldCorners[2].z,
+                       worldCorners[3].x, worldCorners[3].y, worldCorners[3].z, boxColor.r, boxColor.g, boxColor.b, boxColor.a)
+    GRAPHICS.DRAW_LINE(worldCorners[3].x, worldCorners[3].y, worldCorners[3].z,
+                       worldCorners[4].x, worldCorners[4].y, worldCorners[4].z, boxColor.r, boxColor.g, boxColor.b, boxColor.a)
+    GRAPHICS.DRAW_LINE(worldCorners[4].x, worldCorners[4].y, worldCorners[4].z,
+                       worldCorners[1].x, worldCorners[1].y, worldCorners[1].z, boxColor.r, boxColor.g, boxColor.b, boxColor.a)
+    
+    -- Draw top edges
+    GRAPHICS.DRAW_LINE(worldCorners[5].x, worldCorners[5].y, worldCorners[5].z,
+                       worldCorners[6].x, worldCorners[6].y, worldCorners[6].z, boxColor.r, boxColor.g, boxColor.b, boxColor.a)
+    GRAPHICS.DRAW_LINE(worldCorners[6].x, worldCorners[6].y, worldCorners[6].z,
+                       worldCorners[7].x, worldCorners[7].y, worldCorners[7].z, boxColor.r, boxColor.g, boxColor.b, boxColor.a)
+    GRAPHICS.DRAW_LINE(worldCorners[7].x, worldCorners[7].y, worldCorners[7].z,
+                       worldCorners[8].x, worldCorners[8].y, worldCorners[8].z, boxColor.r, boxColor.g, boxColor.b, boxColor.a)
+    GRAPHICS.DRAW_LINE(worldCorners[8].x, worldCorners[8].y, worldCorners[8].z,
+                       worldCorners[5].x, worldCorners[5].y, worldCorners[5].z, boxColor.r, boxColor.g, boxColor.b, boxColor.a)
+    
+    -- Draw vertical edges connecting bottom to top
+    GRAPHICS.DRAW_LINE(worldCorners[1].x, worldCorners[1].y, worldCorners[1].z,
+                       worldCorners[5].x, worldCorners[5].y, worldCorners[5].z, boxColor.r, boxColor.g, boxColor.b, boxColor.a)
+    GRAPHICS.DRAW_LINE(worldCorners[2].x, worldCorners[2].y, worldCorners[2].z,
+                       worldCorners[6].x, worldCorners[6].y, worldCorners[6].z, boxColor.r, boxColor.g, boxColor.b, boxColor.a)
+    GRAPHICS.DRAW_LINE(worldCorners[3].x, worldCorners[3].y, worldCorners[3].z,
+                       worldCorners[7].x, worldCorners[7].y, worldCorners[7].z, boxColor.r, boxColor.g, boxColor.b, boxColor.a)
+    GRAPHICS.DRAW_LINE(worldCorners[4].x, worldCorners[4].y, worldCorners[4].z,
+                       worldCorners[8].x, worldCorners[8].y, worldCorners[8].z, boxColor.r, boxColor.g, boxColor.b, boxColor.a)
+end
+
 function M.startPreviewUpdater()
     if previewUpdateJob then return end
     isPreviewUpdaterRunning = true -- Set flag to true when starting
@@ -1944,28 +2067,39 @@ function M.startPreviewUpdater()
                     if not playerPed or playerPed == 0 then
                         M.clearPreview()
                     else
-                        -- Ensure collision is disabled for all preview entities, as set during spawn_attachments
-                        -- No need for a loop here, as collision is handled by the isPreview flag in spawn_attachments
+                        -- Calculate combined bounding box for all preview entities
+                        local bounds = calculateCombinedBoundingBox(previewEntities, mainEntity)
                         
                         local camCoords = CAM.GET_GAMEPLAY_CAM_COORD()
                         local camRot = CAM.GET_GAMEPLAY_CAM_ROT(2) -- 2 for Euler angles
                         
                         local isOutfit = ENTITY.GET_ENTITY_TYPE(mainEntity) == 1 -- 1 for ped
-                        local offset_distance = isOutfit and 2.5 or 25.0 -- Increased distance for camera preview
-                        local offset_height = isOutfit and -0.5 or 0.0 -- Adjusted height for camera preview
+                        
+                        -- Calculate dynamic distance based on bounding box size
+                        -- Use max dimension to ensure the entire vehicle fits in view
+                        local baseDistance = isOutfit and 2.5 or 10.0
+                        local dynamicDistance = baseDistance + (bounds.maxDimension * 1.5)
+                        -- Clamp distance to reasonable values
+                        dynamicDistance = math.max(5.0, math.min(dynamicDistance, 100.0))
+                        
+                        local offset_height = isOutfit and -0.5 or 0.0
 
                         local camForward = M.RotToDir(camRot)
+                        -- Calculate horizontal position in front of camera
                         local spawnPos = {
-                            x = camCoords.x + (camForward.x * offset_distance),
-                            y = camCoords.y + (camForward.y * offset_distance),
-                            z = camCoords.z + (camForward.z * offset_distance) + offset_height
+                            x = camCoords.x + (camForward.x * dynamicDistance),
+                            y = camCoords.y + (camForward.y * dynamicDistance),
+                            z = camCoords.z -- Temporary, will be adjusted
                         }
                         
-                        -- Removed groundZ logic as per user feedback for previews
-                        -- if isOutfit then
-                        --     local foundGround, groundZ = GTA.GetGroundZ(spawnPos.x, spawnPos.y)
-                        --     if foundGround then spawnPos.z = groundZ end
-                        -- end
+                        -- Get ground Z at the spawn position and add 5 units
+                        local foundGround, groundZ = GTA.GetGroundZ(spawnPos.x, spawnPos.y)
+                        if foundGround then
+                            spawnPos.z = groundZ + 1.0
+                        else
+                            -- Fallback if ground not found
+                            spawnPos.z = camCoords.z + 1.0
+                        end
 
                         ENTITY.SET_ENTITY_COORDS_NO_OFFSET(mainEntity, spawnPos.x, spawnPos.y, spawnPos.z, false, false, true)
                         
@@ -1974,6 +2108,9 @@ function M.startPreviewUpdater()
                         
                         -- Align the entity with the camera's yaw, but keep pitch and roll at 0 for a stable preview
                         ENTITY.SET_ENTITY_ROTATION(mainEntity, 0.0, 0.0, camRot.z + previewRotation.z, 2, true)
+                        
+                        -- Draw bounding box around the entire vehicle and attachments
+                        drawPreviewBoundingBox(mainEntity, bounds)
                     end
                 else
                     M.clearPreview()
