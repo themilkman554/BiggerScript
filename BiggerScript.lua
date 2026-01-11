@@ -10,7 +10,7 @@ Logger.Log(eLogColor.GREEN, "", " ░    ░  ▒ ░░ ░   ░ ░ ░   ░
 Logger.Log(eLogColor.GREEN, "", " ░       ░        ░       ░    ░  ░   ░           ░  ░ ░         ░      ░                    ")
 Logger.Log(eLogColor.GREEN, "", "      ░                                              ░                                       ")
 
-GUI.AddToast("BiggerScriptv6.3", "Added Apply Attachments to Current Vehicle\n Added Right Click Window to Delete/Move stuff\n Improved Ui Scrolling", 10000, 0)
+GUI.AddToast("BiggerScriptv6.3", "Added Apply Attachments to Current Vehicle\n Added Right Click Window to Delete/Move stuff\n Improved Ui Scrolling\n Added Spawn Map On Me toggle", 10000, 0)
 
 if Cherax.GetEdition() == "LE" then
     GUI.AddToast("BiggerScript", "Legacy Version of Cherax breaks vehicles with too many attachments", 10000, 0)
@@ -56,6 +56,7 @@ local spawnerSettings = {
     previewVehicle = false,
     previewOutfit = false,
     teleportToMap = true,
+    spawnMapOnMe = false,
     vehicleFly = false,
     upsideDownMap = false,
     radioOff = false,
@@ -433,12 +434,12 @@ local function renderFolder(folderName, folderData, spawnFunction, filterText, p
 
     local isOpen
     if isSearching then
-        ImGui.SetNextItemOpen(true)
+        ImGui.SetNextItemOpen(true, ImGuiCond.Always)
         isOpen = ImGui.TreeNode(folderName)
     else
         local currentState = folderStates[currentPath]
         if currentState ~= nil then
-            ImGui.SetNextItemOpen(currentState)
+            ImGui.SetNextItemOpen(currentState, ImGuiCond.Always)
         end
         isOpen = ImGui.TreeNode(folderName)
         folderStates[currentPath] = isOpen
@@ -478,9 +479,9 @@ local function renderFolder(folderName, folderData, spawnFunction, filterText, p
                     if hoverCallback then
                         hoverCallback({ path = fileData.fullPath, type = itemType })
                     end
-                    -- Delete key (VK_DELETE = 46) or right mouse button
-                    local delPressed = Utils.IsKeyPressed(46) and not contextKeyConsumed
-                    local rightClick = ImGui.IsMouseDown(1) and not mouseRightConsumed
+                    -- Delete key (VK_DELETE = 46) or right mouse button (only when GUI is open)
+                    local delPressed = Utils.IsKeyPressed(46) and not contextKeyConsumed and GUI.IsOpen()
+                    local rightClick = ImGui.IsMouseDown(1) and not mouseRightConsumed and GUI.IsOpen()
                     if delPressed or rightClick then
                         -- Toggle: if clicking same file, close the menu
                         if contextMenuOpen and contextMenuFile and contextMenuFile.path == fileData.fullPath then
@@ -542,9 +543,9 @@ local function renderFolderContents(folderData, spawnFunction, filterText, searc
                 if hoverCallback then
                     hoverCallback({ path = fileData.fullPath, type = itemType })
                 end
-                -- Delete key (VK_DELETE = 46) or right mouse button
-                local delPressed = Utils.IsKeyPressed(46) and not contextKeyConsumed
-                local rightClick = ImGui.IsMouseDown(1) and not mouseRightConsumed
+                -- Delete key (VK_DELETE = 46) or right mouse button (only when GUI is open)
+                local delPressed = Utils.IsKeyPressed(46) and not contextKeyConsumed and GUI.IsOpen()
+                local rightClick = ImGui.IsMouseDown(1) and not mouseRightConsumed and GUI.IsOpen()
                 if delPressed or rightClick then
                     -- Toggle: if clicking same file, close the menu
                     if contextMenuOpen and contextMenuFile and contextMenuFile.path == fileData.fullPath then
@@ -1054,6 +1055,10 @@ local function renderMenyooTab()
                     if ImGui.IsItemHovered() then
                         ImGui.SetTooltip("Teleport to the map's reference coordinates when spawning (if available)")
                     end
+                    spawnerSettings.spawnMapOnMe = ImGui.Checkbox("Spawn Map on Me", spawnerSettings.spawnMapOnMe)
+                    if ImGui.IsItemHovered() then
+                        ImGui.SetTooltip("Spawn the map at your current position instead of its original coordinates")
+                    end
 
                     spawnerSettings.networkMapsV2Enabled = ImGui.Checkbox("Network Maps V2", spawnerSettings.networkMapsV2Enabled)
                     if ImGui.IsItemHovered() then
@@ -1163,6 +1168,17 @@ local function renderMenyooTab()
                                         end
                                     end
                                 end
+                            end
+                            ImGui.PopStyleColor(3)
+                            
+                            ImGui.SameLine()
+                            
+                            -- Blue Bring button (move map to player)
+                            ImGui.PushStyleColor(ImGuiCol.Button, 0.016, 0.157, 0.36, 1.0)
+                            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.06, 0.22, 0.46, 1.0)
+                            ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.01, 0.10, 0.26, 1.0)
+                            if ImGui.Button("Bring##map" .. i) then
+                                spawning.bringMapToPlayer(i)
                             end
                             ImGui.PopStyleColor(3)
                             

@@ -603,6 +603,14 @@ function M.get_xml_element(xml, tag)
     return nil
 end
 
+-- Apply F1/Racing wheels (wheel type 10) to a vehicle if setting is enabled
+function M.applyF1WheelsIfEnabled(vehicleHandle)
+    if spawnerSettings and spawnerSettings.spawnWithF1Wheels and vehicleHandle and vehicleHandle ~= 0 then
+        M.try_call(VEHICLE, "SET_VEHICLE_WHEEL_TYPE", vehicleHandle, 10)
+        M.debug_print("[Spawn] Applied F1/Racing wheels to vehicle: " .. tostring(vehicleHandle))
+    end
+end
+
 function M.finalizePreviewVehicle(entities)
     for _, entity in ipairs(entities) do
         ENTITY.FREEZE_ENTITY_POSITION(entity, false)
@@ -2478,6 +2486,57 @@ function M.teleportToMapRefCoords(refCoords)
     end)
 end
 
+-- Bring a loaded map to the player's current position
+-- This deletes the existing map and respawns it at the player's location
+function M.bringMapToPlayer(mapIndex)
+    if not spawnedMaps or not spawnedMaps[mapIndex] then return end
+    
+    -- Get map data before deletion
+    local mapData = spawnedMaps[mapIndex]
+    local filePath = mapData.filePath
+    
+    if not filePath then
+        pcall(function() GUI.AddToast("Bring Map", "No file path stored for this map", 3000, 0) end)
+        return
+    end
+    
+    Script.QueueJob(function()
+        -- Delete all entities from this map
+        if mapData.entities then
+            for _, entityHandle in ipairs(mapData.entities) do
+                if entityHandle and entityHandle ~= 0 then
+                    pcall(function()
+                        if ENTITY.DOES_ENTITY_EXIST(entityHandle) then
+                            local ptr = Memory.AllocInt()
+                            Memory.WriteInt(ptr, entityHandle)
+                            ENTITY.DELETE_ENTITY(ptr)
+                        end
+                    end)
+                end
+            end
+        end
+        
+        -- Remove from spawnedMaps table
+        table.remove(spawnedMaps, mapIndex)
+        
+        -- Wait a moment for entities to be deleted
+        Script.Yield(100)
+        
+        -- Now respawn the map at player's location
+        -- Pass options to override settings specifically for this spawn
+        M.spawnMapFromXML(filePath, { 
+            spawnMapOnMe = true, 
+            teleportToMap = false, 
+            deleteOldMap = false 
+        })
+        
+        pcall(function()
+            local fileName = M.get_filename_from_path(filePath)
+            GUI.AddToast("Map Brought", "Respawned " .. fileName .. " at your location", 3000, 0)
+        end)
+    end)
+end
+
 function M.deleteAllSpawnedVehicles()
     Script.QueueJob(function()
         local vehiclesToDelete = {}
@@ -2810,6 +2869,7 @@ function M.spawnVehicleFromINI(filePath, isPreview)
             end
         end
         if spawnerSettings.vehicleGodMode then M.try_call(ENTITY, "SET_ENTITY_INVINCIBLE", vehicleHandle, true) end
+        M.applyF1WheelsIfEnabled(vehicleHandle)
 
         --this is so it networks and because setting it normally makes lights see through for some reason
         local opacityLevel = M.safe_tonumber(mainVehicleSection.OpacityLevel, nil)
@@ -3076,6 +3136,7 @@ function M.spawnVehicleFromXML(filePath, isPreview)
             if spawnerSettings.radioOff then M.try_call(AUDIO, "SET_VEHICLE_RADIO_ENABLED", vehicleHandle, false) end
         end
         if spawnerSettings.vehicleGodMode then M.try_call(ENTITY, "SET_ENTITY_INVINCIBLE", vehicleHandle, true) end
+        M.applyF1WheelsIfEnabled(vehicleHandle)
         local opacityLevel = M.safe_tonumber(M.get_xml_element_content(xmlContent, "OpacityLevel"), nil)
         if opacityLevel ~= nil and opacityLevel == 0 then
             M.try_call(ENTITY, "SET_ENTITY_ALPHA", vehicleHandle, 0, false)
@@ -3781,8 +3842,13 @@ function M.spawnMapV1Networked(filePath, placements)
     return mapV1Entities, spawnCount
 end
 
-function M.spawnMapFromXML(filePath)
+function M.spawnMapFromXML(filePath, options)
     Script.QueueJob(function()
+        local opt = options or {}
+        local checkSpawnOnMe = (opt.spawnMapOnMe ~= nil) and opt.spawnMapOnMe or spawnerSettings.spawnMapOnMe
+        local checkTeleport = (opt.teleportToMap ~= nil) and opt.teleportToMap or spawnerSettings.teleportToMap
+        local checkDeleteOld = (opt.deleteOldMap ~= nil) and opt.deleteOldMap or spawnerSettings.deleteOldMap
+        
         if not FileMgr.DoesFileExist(filePath) then
             M.debug_print("[Spawn Debug] Error: XML map file does not exist:", filePath)
             return
@@ -3796,7 +3862,7 @@ function M.spawnMapFromXML(filePath)
         if (not placements or #placements == 0) and (not markers or #markers == 0) then
             return
         end
-        if spawnerSettings.deleteOldMap then
+        if checkDeleteOld then
             M.deleteAllSpawnedMaps()
         end
         local createdEntities = {}
@@ -3811,6 +3877,23 @@ function M.spawnMapFromXML(filePath)
             refCoords.y = M.safe_tonumber(M.get_xml_element_content(refCoordsElement, "Y"), 0.0)
             refCoords.z = M.safe_tonumber(M.get_xml_element_content(refCoordsElement, "Z"), 0.0)
         end
+        
+        -- Calculate spawn offset if "Spawn Map on Me" is enabled
+        local spawnOffset = { x = 0.0, y = 0.0, z = 0.0 }
+        local actualRefCoords = refCoords -- The reference coords we'll store (updated if spawning on player)
+        if checkSpawnOnMe and refCoords then
+            local playerPed = PLAYER.PLAYER_PED_ID()
+            if playerPed and playerPed ~= 0 then
+                local playerCoords = ENTITY.GET_ENTITY_COORDS(playerPed, false)
+                spawnOffset.x = playerCoords.x - refCoords.x
+                spawnOffset.y = playerCoords.y - refCoords.y
+                spawnOffset.z = playerCoords.z - refCoords.z
+                -- Update actual ref coords to player's position for storage
+                actualRefCoords = { x = playerCoords.x, y = playerCoords.y, z = playerCoords.z }
+                M.debug_print("[Spawn Map on Me] Offset calculated: X=" .. spawnOffset.x .. " Y=" .. spawnOffset.y .. " Z=" .. spawnOffset.z)
+            end
+        end
+        
         -- Progress tracking for maps over 200 entities
         local progressShown = { [25] = false, [50] = false, [75] = false }
         if spawnerSettings.networkMapsV1Enabled then
@@ -3823,10 +3906,12 @@ function M.spawnMapFromXML(filePath)
                 end
                 local spawnCoords = { x = 0.0, y = 0.0, z = 0.0 }
                 if placement.PositionRotation then
-                    spawnCoords.x = placement.PositionRotation.X or 0.0
-                    spawnCoords.y = placement.PositionRotation.Y or 0.0
-                    spawnCoords.z = placement.PositionRotation.Z or 0.0
+                    -- Apply the spawn offset to the original coordinates
+                    spawnCoords.x = (placement.PositionRotation.X or 0.0) + spawnOffset.x
+                    spawnCoords.y = (placement.PositionRotation.Y or 0.0) + spawnOffset.y
+                    spawnCoords.z = (placement.PositionRotation.Z or 0.0) + spawnOffset.z
                 end
+
                 local entityHandle = M.create_by_type(model, placement.Type, spawnCoords)
                 local placementName = placement.HashName or tostring(model) or "Unknown"
                 local typeNames = {["1"] = "Ped", ["2"] = "Vehicle", ["3"] = "Object", [1] = "Ped", [2] = "Vehicle", [3] = "Object"}
@@ -3917,7 +4002,8 @@ function M.spawnMapFromXML(filePath)
                 ::continue_v2::
             end
         end
-        if refCoords and spawnerSettings.teleportToMap then
+        -- Only teleport if not using spawnMapOnMe (because player is already at the spawn location)
+        if refCoords and checkTeleport and not checkSpawnOnMe then
             local playerPed = GTA.GetLocalPed()
             if playerPed then
                 pcall(function()
@@ -3928,6 +4014,15 @@ function M.spawnMapFromXML(filePath)
                 end)
             end
         end
+        -- Apply spawn offset to markers if spawnMapOnMe is enabled
+        if markers and checkSpawnOnMe then
+            for _, marker in ipairs(markers) do
+                marker.X = (marker.X or 0.0) + spawnOffset.x
+                marker.Y = (marker.Y or 0.0) + spawnOffset.y
+                marker.Z = (marker.Z or 0.0) + spawnOffset.z
+            end
+        end
+        
         if markers and #markers > 0 then
             Script.QueueJob(function()
                 while true do
@@ -3969,12 +4064,15 @@ function M.spawnMapFromXML(filePath)
                 entities = createdEntities,
                 markers = markers,
                 filePath = filePath,
-                refCoords = refCoords
+                refCoords = actualRefCoords -- Use updated ref coords when spawning on player
             }
             table.insert(spawnedMaps, mapData)
             pcall(function()
                 local markerCount = (markers and #markers or 0)
                 local toastMsg = filename .. " (" .. spawnCount .. " entities, " .. markerCount .. " markers)"
+                if checkSpawnOnMe then
+                    toastMsg = toastMsg .. " - Spawned at your location"
+                end
                 GUI.AddToast("Map Spawned", toastMsg, 5000, 0)
                 print("Map Spawned", toastMsg)
             end)
@@ -4736,6 +4834,10 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
             pcall(function()
                 VEHICLE.SET_VEHICLE_RADIO_ENABLED(vehicleHandle, false)
             end)
+        end
+        
+        if not isPreview then
+            M.applyF1WheelsIfEnabled(vehicleHandle)
         end
         
         -- Recursive function to spawn a child and its nested children
