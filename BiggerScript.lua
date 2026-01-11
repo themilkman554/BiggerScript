@@ -10,7 +10,7 @@ Logger.Log(eLogColor.GREEN, "", " ░    ░  ▒ ░░ ░   ░ ░ ░   ░
 Logger.Log(eLogColor.GREEN, "", " ░       ░        ░       ░    ░  ░   ░           ░  ░ ░         ░      ░                    ")
 Logger.Log(eLogColor.GREEN, "", "      ░                                              ░                                       ")
 
-GUI.AddToast("BiggerScriptv6.2", "Added IPL Loader\nAdded Context Preview\n Improved logging\nImprovements to Spawning", 10000, 0)
+GUI.AddToast("BiggerScriptv6.3", "Added Apply Attachments to Current Vehicle\n Added Right Click Window to Delete/Move stuff\n Improved Ui Scrolling", 10000, 0)
 
 if Cherax.GetEdition() == "LE" then
     GUI.AddToast("BiggerScript", "Legacy Version of Cherax breaks vehicles with too many attachments", 10000, 0)
@@ -227,7 +227,7 @@ local cachedChrxVehicles = nil
 local cachedChrxOutfits = nil
 
 local function refreshChrxVehicles()
-    local files = FileMgr.FindFiles(chrxVehiclesFolder, ".json", false) 
+    local files = FileMgr.FindFiles(chrxVehiclesFolder, ".json", true) 
     if not files or #files == 0 then
         cachedChrxVehicles = { folders = {}, files = {} }
     else
@@ -236,7 +236,7 @@ local function refreshChrxVehicles()
 end
 
 local function refreshChrxOutfits()
-    local files = FileMgr.FindFiles(chrxOutfitsFolder, ".json", false)
+    local files = FileMgr.FindFiles(chrxOutfitsFolder, ".json", true)
     if not files or #files == 0 then
         cachedChrxOutfits = { folders = {}, files = {} }
     else
@@ -282,6 +282,131 @@ end
 local folderStates = {}
 local preSearchFolderStates = nil
 local activeSearchField = nil
+
+-- Context menu state
+local contextMenuFile = nil  -- { path = string, type = string ("vehicle"/"map"/"outfit") }
+local contextMenuOpen = false
+local contextKeyConsumed = false  -- Prevent multiple activations per key press
+local mouseRightConsumed = false  -- Prevent multiple activations per right-click
+local contextMenuPos = { x = 0, y = 0 }  -- Store position where menu was opened
+
+-- Helper function to get !favs folder path based on item type and base folder
+local function getFavsFolder(itemType, originalPath)
+    local baseFolders = {
+        vehicle = { xmlVehiclesFolder, iniVehiclesFolder, jsonVehiclesFolder, chrxVehiclesFolder },
+        map = { xmlMapsFolder, jsonMapsFolder },
+        outfit = { xmlOutfitsFolder, jsonOutfitsFolder, chrxOutfitsFolder }
+    }
+    local folders = baseFolders[itemType]
+    if not folders then return nil end
+    
+    local normalizedPath = originalPath:gsub("\\", "/")
+    for _, baseFolder in ipairs(folders) do
+        local normalizedBase = baseFolder:gsub("\\", "/")
+        if normalizedPath:sub(1, #normalizedBase) == normalizedBase then
+            return baseFolder .. "\\!favs"
+        end
+    end
+    return nil
+end
+
+-- Helper function to get filename from path
+local function getFilenameFromPath(path)
+    return path:match("[^/\\]+$") or path
+end
+
+-- Helper function to refresh the appropriate cache based on file path
+local function refreshCacheForFile(filePath, itemType)
+    local normalizedPath = filePath:gsub("\\", "/")
+    
+    if itemType == "vehicle" then
+        if normalizedPath:find(xmlVehiclesFolder:gsub("\\", "/"), 1, true) then
+            refreshXmlVehicles()
+        elseif normalizedPath:find(iniVehiclesFolder:gsub("\\", "/"), 1, true) then
+            refreshIniVehicles()
+        elseif normalizedPath:find(jsonVehiclesFolder:gsub("\\", "/"), 1, true) then
+            refreshJsonVehicles()
+        elseif normalizedPath:find(chrxVehiclesFolder:gsub("\\", "/"), 1, true) then
+            refreshChrxVehicles()
+        end
+    elseif itemType == "map" then
+        if normalizedPath:find(xmlMapsFolder:gsub("\\", "/"), 1, true) then
+            refreshXmlMaps()
+        elseif normalizedPath:find(jsonMapsFolder:gsub("\\", "/"), 1, true) then
+            refreshJsonMaps()
+        end
+    elseif itemType == "outfit" then
+        if normalizedPath:find(xmlOutfitsFolder:gsub("\\", "/"), 1, true) then
+            refreshXmlOutfits()
+        elseif normalizedPath:find(jsonOutfitsFolder:gsub("\\", "/"), 1, true) then
+            refreshJsonOutfits()
+        elseif normalizedPath:find(chrxOutfitsFolder:gsub("\\", "/"), 1, true) then
+            refreshChrxOutfits()
+        end
+    end
+end
+
+-- Move file to favorites folder
+local function moveToFavorites(filePath, itemType)
+    if not filePath or not FileMgr.DoesFileExist(filePath) then
+        GUI.AddToast("BiggerScript", "File not found: " .. tostring(filePath), 3000, 0)
+        return false
+    end
+    
+    local favsFolder = getFavsFolder(itemType, filePath)
+    if not favsFolder then
+        GUI.AddToast("BiggerScript", "Could not determine favorites folder", 3000, 0)
+        return false
+    end
+    
+    -- Ensure !favs folder exists
+    FileMgr.CreateDir(favsFolder)
+    
+    local filename = getFilenameFromPath(filePath)
+    local destPath = favsFolder .. "\\" .. filename
+    
+    -- Read file content
+    local content = FileMgr.ReadFileContent(filePath)
+    if not content then
+        GUI.AddToast("BiggerScript", "Failed to read file", 3000, 0)
+        return false
+    end
+    
+    -- Write to new location
+    local success = FileMgr.WriteFileContent(destPath, content, false)
+    if not success then
+        GUI.AddToast("BiggerScript", "Failed to write to favorites folder", 3000, 0)
+        return false
+    end
+    
+    -- Delete original file
+    FileMgr.DeleteFile(filePath)
+    
+    -- Refresh the appropriate caches
+    refreshCacheForFile(filePath, itemType)
+    refreshCacheForFile(destPath, itemType)
+    
+    GUI.AddToast("BiggerScript", "Moved to favorites: " .. filename, 3000, 0)
+    return true
+end
+
+-- Delete a file
+local function deleteFile(filePath, itemType)
+    if not filePath or not FileMgr.DoesFileExist(filePath) then
+        GUI.AddToast("BiggerScript", "File not found: " .. tostring(filePath), 3000, 0)
+        return false
+    end
+    
+    local filename = getFilenameFromPath(filePath)
+    
+    FileMgr.DeleteFile(filePath)
+    
+    -- Refresh the appropriate cache
+    refreshCacheForFile(filePath, itemType)
+    
+    GUI.AddToast("BiggerScript", "Deleted: " .. filename, 3000, 0)
+    return true
+end
 
 local function renderFolder(folderName, folderData, spawnFunction, filterText, path, searchId, itemType, hoverCallback)
     local currentPath = path and (path .. "/" .. folderName) or folderName
@@ -348,8 +473,28 @@ local function renderFolder(folderName, folderData, spawnFunction, filterText, p
                         end
                     end
                 end
-                if ImGui.IsItemHovered() and hoverCallback then
-                    hoverCallback({ path = fileData.fullPath, type = itemType })
+                -- Press Delete key OR right-click while hovering to open context menu
+                if ImGui.IsItemHovered() then
+                    if hoverCallback then
+                        hoverCallback({ path = fileData.fullPath, type = itemType })
+                    end
+                    -- Delete key (VK_DELETE = 46) or right mouse button
+                    local delPressed = Utils.IsKeyPressed(46) and not contextKeyConsumed
+                    local rightClick = ImGui.IsMouseDown(1) and not mouseRightConsumed
+                    if delPressed or rightClick then
+                        -- Toggle: if clicking same file, close the menu
+                        if contextMenuOpen and contextMenuFile and contextMenuFile.path == fileData.fullPath then
+                            contextMenuOpen = false
+                            contextMenuFile = nil
+                        else
+                            contextMenuFile = { path = fileData.fullPath, type = itemType }
+                            contextMenuOpen = true
+                            -- Store mouse position for frozen tooltip
+                            contextMenuPos.x, contextMenuPos.y = ImGui.GetMousePos()
+                        end
+                        if delPressed then contextKeyConsumed = true end
+                        if rightClick then mouseRightConsumed = true end
+                    end
                 end
             end
         end
@@ -392,8 +537,28 @@ local function renderFolderContents(folderData, spawnFunction, filterText, searc
                     end
                 end
             end
-            if ImGui.IsItemHovered() and hoverCallback then
-                hoverCallback({ path = fileData.fullPath, type = itemType })
+            -- Press Delete key OR right-click while hovering to open context menu
+            if ImGui.IsItemHovered() then
+                if hoverCallback then
+                    hoverCallback({ path = fileData.fullPath, type = itemType })
+                end
+                -- Delete key (VK_DELETE = 46) or right mouse button
+                local delPressed = Utils.IsKeyPressed(46) and not contextKeyConsumed
+                local rightClick = ImGui.IsMouseDown(1) and not mouseRightConsumed
+                if delPressed or rightClick then
+                    -- Toggle: if clicking same file, close the menu
+                    if contextMenuOpen and contextMenuFile and contextMenuFile.path == fileData.fullPath then
+                        contextMenuOpen = false
+                        contextMenuFile = nil
+                    else
+                        contextMenuFile = { path = fileData.fullPath, type = itemType }
+                        contextMenuOpen = true
+                        -- Store mouse position for frozen tooltip
+                        contextMenuPos.x, contextMenuPos.y = ImGui.GetMousePos()
+                    end
+                    if delPressed then contextKeyConsumed = true end
+                    if rightClick then mouseRightConsumed = true end
+                end
             end
         end
     end
@@ -623,6 +788,76 @@ local function renderMenyooTab()
         end
     end
 
+    -- Reset consumed flags when keys released
+    if not Utils.IsKeyPressed(46) then
+        contextKeyConsumed = false
+    end
+    if not ImGui.IsMouseDown(1) then
+        mouseRightConsumed = false
+    end
+
+    -- Render context menu as fixed-position window (styled like tooltip)
+    if contextMenuOpen and contextMenuFile then
+        local filename = getFilenameFromPath(contextMenuFile.path)
+        local displayName = filename:gsub("%.xml$", ""):gsub("%.ini$", ""):gsub("%.json$", "")
+        
+        -- Position window at stored mouse position
+        ImGui.SetNextWindowPos(contextMenuPos.x, contextMenuPos.y, ImGuiCond.Always)
+        ImGui.SetNextWindowSize(0, 0)  -- Auto-size
+        
+        local windowFlags = ImGuiWindowFlags.NoTitleBar + ImGuiWindowFlags.NoResize + ImGuiWindowFlags.AlwaysAutoResize + ImGuiWindowFlags.NoMove + ImGuiWindowFlags.NoSavedSettings
+        local windowOpen = ImGui.Begin("##FileContextMenu", true, windowFlags)
+        if windowOpen then
+            -- Header with file name (purple like Context Preview)
+            ImGui.PushStyleColor(ImGuiCol.Text, 0.9, 0.7, 1.0, 1.0)
+            ImGui.SetWindowFontScale(1.1)
+            ImGui.Text(displayName)
+            ImGui.SetWindowFontScale(1.0)
+            ImGui.PopStyleColor()
+            
+            ImGui.Separator()
+            ImGui.Spacing()
+            
+            -- Move to Favorites button (green)
+            ImGui.PushStyleColor(ImGuiCol.Button, 0.016, 0.36, 0.157, 1.0)
+            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.06, 0.46, 0.22, 1.0)
+            ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.01, 0.26, 0.10, 1.0)
+            if ImGui.Button("Move to Favorites") then
+                moveToFavorites(contextMenuFile.path, contextMenuFile.type)
+                contextMenuOpen = false
+                contextMenuFile = nil
+            end
+            ImGui.PopStyleColor(3)
+            
+            -- Delete button (red)
+            ImGui.PushStyleColor(ImGuiCol.Button, 0.36, 0.016, 0.016, 1.0)
+            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.46, 0.06, 0.06, 1.0)
+            ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.26, 0.01, 0.01, 1.0)
+            if ImGui.Button("Delete") then
+                deleteFile(contextMenuFile.path, contextMenuFile.type)
+                contextMenuOpen = false
+                contextMenuFile = nil
+            end
+            ImGui.PopStyleColor(3)
+            
+            ImGui.Spacing()
+            
+            -- Info text
+            ImGui.PushStyleColor(ImGuiCol.Text, 0.5, 0.5, 0.5, 1.0)
+            ImGui.Text("Right-click to close")
+            ImGui.PopStyleColor()
+            
+            -- Close if right-clicking inside the window
+            if ImGui.IsWindowHovered() and ImGui.IsMouseDown(1) and not mouseRightConsumed then
+                contextMenuOpen = false
+                contextMenuFile = nil
+                mouseRightConsumed = true
+            end
+            
+            ImGui.End()
+        end
+    end
+
     if ImGui.BeginTabBar("MenyooTabs") then
         -- VEHICLES TAB (combines XML, INI, JSON)
         if ImGui.BeginTabItem("Vehicles") then
@@ -640,6 +875,10 @@ local function renderMenyooTab()
                         ImGui.SetTooltip("Light Blue = Networkable (under 80)\nOrange = Not everything will network")
                     end
                     spawnerSettings.previewVehicle = ImGui.Checkbox("Preview Vehicle", spawnerSettings.previewVehicle)
+                    spawnerSettings.onlyApplyAttachments = ImGui.Checkbox("Apply Attachments to Current Vehicle", spawnerSettings.onlyApplyAttachments)
+                    if ImGui.IsItemHovered() then
+                        ImGui.SetTooltip("Instead of spawning a new vehicle, attach objects to the vehicle you're currently in")
+                    end
                     spawnerSettings.inVehicle = ImGui.Checkbox("In Vehicle", spawnerSettings.inVehicle)
                     spawnerSettings.spawnPlaneInTheAir = ImGui.Checkbox("Spawn Aircraft In The Air", spawnerSettings.spawnPlaneInTheAir)
                     spawnerSettings.deleteOldVehicle = ImGui.Checkbox("Delete Old Vehicle", spawnerSettings.deleteOldVehicle)
@@ -722,8 +961,11 @@ local function renderMenyooTab()
                             end
                             ImGui.Spacing()
 
+                            -- Scrollable child region for file list
+                            ImGui.BeginChild("##xmlVehiclesList", 0, 475, false)
                             local xmlStructure = getXmlFiles()
                             renderFolderContents(xmlStructure, spawning.spawnVehicleFromXML, searchXmlVehicles, "xmlVehicles", "vehicle", hoverCallback)
+                            ImGui.EndChild()
                             ImGui.EndTabItem()
                         end
 
@@ -735,8 +977,11 @@ local function renderMenyooTab()
                             end
                             ImGui.Spacing()
 
+                            -- Scrollable child region for file list
+                            ImGui.BeginChild("##iniVehiclesList", 0, 475, false)
                             local iniStructure = getIniVehicles()
                             renderFolderContents(iniStructure, spawning.spawnVehicleFromINI, searchIniVehicles, "iniVehicles", "vehicle", hoverCallback)
+                            ImGui.EndChild()
                             ImGui.EndTabItem()
                         end
 
@@ -748,8 +993,11 @@ local function renderMenyooTab()
                             end
                             ImGui.Spacing()
 
+                            -- Scrollable child region for file list
+                            ImGui.BeginChild("##jsonVehiclesList", 0, 475, false)
                             local jsonStructure = getJsonVehicles()
                             renderFolderContents(jsonStructure, spawning.spawnVehicleFromJSON, searchJsonVehicles, "jsonVehicles", "vehicle", hoverCallback)
+                            ImGui.EndChild()
                             ImGui.EndTabItem()
                         end
 
@@ -761,8 +1009,11 @@ local function renderMenyooTab()
                             end
                             ImGui.Spacing()
 
+                            -- Scrollable child region for file list
+                            ImGui.BeginChild("##chrxVehiclesList", 0, 475, false)
                             local chrxStructure = getChrxVehicles()
                             renderFolderContents(chrxStructure, spawning.spawnVehicleFromCHRX, searchChrxVehicles, "chrxVehicles", "vehicle", hoverCallback)
+                            ImGui.EndChild()
                             ImGui.EndTabItem()
                         end
 
@@ -941,8 +1192,11 @@ local function renderMenyooTab()
                             end
                             ImGui.Spacing()
 
+                            -- Scrollable child region for file list
+                            ImGui.BeginChild("##xmlMapsList", 0, 475, false)
                             local xmlStructure = getXmlMaps()
                             renderFolderContents(xmlStructure, spawning.spawnMapFromXML, searchXmlMaps, "xmlMaps", "map", hoverCallback)
+                            ImGui.EndChild()
                             ImGui.EndTabItem()
                         end
 
@@ -954,8 +1208,11 @@ local function renderMenyooTab()
                             end
                             ImGui.Spacing()
 
+                            -- Scrollable child region for file list
+                            ImGui.BeginChild("##jsonMapsList", 0, 475, false)
                             local jsonStructure = getJsonMaps()
                             renderFolderContents(jsonStructure, spawning.spawnMapFromJSON, searchJsonMaps, "jsonMaps", "map", hoverCallback)
+                            ImGui.EndChild()
                             ImGui.EndTabItem()
                         end
 
@@ -1073,8 +1330,11 @@ local function renderMenyooTab()
                             end
                             ImGui.Spacing()
 
+                            -- Scrollable child region for file list
+                            ImGui.BeginChild("##xmlOutfitsList", 0, 475, false)
                             local xmlStructure = getXmlOutfits()
                             renderFolderContents(xmlStructure, spawning.spawnOutfitFromXML, searchXmlOutfits, "xmlOutfits", "outfit", hoverCallback)
+                            ImGui.EndChild()
                             ImGui.EndTabItem()
                         end
 
@@ -1086,8 +1346,11 @@ local function renderMenyooTab()
                             end
                             ImGui.Spacing()
 
+                            -- Scrollable child region for file list
+                            ImGui.BeginChild("##jsonOutfitsList", 0, 475, false)
                             local jsonStructure = getJsonOutfits()
                             renderFolderContents(jsonStructure, spawning.spawnOutfitFromJSON, searchJsonOutfits, "jsonOutfits", "outfit", hoverCallback)
+                            ImGui.EndChild()
                             ImGui.EndTabItem()
                         end
 
@@ -1099,8 +1362,11 @@ local function renderMenyooTab()
                             end
                             ImGui.Spacing()
 
+                            -- Scrollable child region for file list
+                            ImGui.BeginChild("##chrxOutfitsList", 0, 475, false)
                             local chrxStructure = getChrxOutfits()
                             renderFolderContents(chrxStructure, spawning.spawnOutfitFromCHRX, searchChrxOutfits, "chrxOutfits", "outfit", hoverCallback)
+                            ImGui.EndChild()
                             ImGui.EndTabItem()
                         end
 

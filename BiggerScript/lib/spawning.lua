@@ -2642,7 +2642,29 @@ function M.spawnVehicleFromINI(filePath, isPreview)
         local playerID = PLAYER.PLAYER_ID()
         local forwardOffset = 5.0 
 
-        if not isPreview then
+        -- Check if we should use the current vehicle instead of spawning a new one
+        local applyToCurrentVehicle = spawnerSettings.onlyApplyAttachments and not isPreview
+        
+        if applyToCurrentVehicle then
+            -- Get the player's current vehicle
+            local playerPedHandle = GTA.PointerToHandle(playerPed)
+            if playerPedHandle and playerPedHandle ~= 0 then
+                local currentVehicle = nil
+                pcall(function()
+                    currentVehicle = PED.GET_VEHICLE_PED_IS_IN(playerPedHandle, false)
+                end)
+                if currentVehicle and currentVehicle ~= 0 then
+                    vehicleHandle = currentVehicle
+                    M.debug_print("[Apply Attachments] Using current vehicle: " .. tostring(vehicleHandle))
+                else
+                    GUI.AddToast("Apply Attachments", "You must be in a vehicle to apply attachments", 5000, 0)
+                    return
+                end
+            else
+                GUI.AddToast("Apply Attachments", "Could not get player ped handle", 5000, 0)
+                return
+            end
+        elseif not isPreview then
   
             local vehhash = modelHash
             local isPlane = VEHICLE.IS_THIS_MODEL_A_PLANE(vehhash)
@@ -2908,7 +2930,29 @@ function M.spawnVehicleFromXML(filePath, isPreview)
         local playerID = PLAYER.PLAYER_ID()
         local forwardOffset = 5.0 -- Default forward offset
 
-        if not isPreview then
+        -- Check if we should use the current vehicle instead of spawning a new one
+        local applyToCurrentVehicle = spawnerSettings.onlyApplyAttachments and not isPreview
+        
+        if applyToCurrentVehicle then
+            -- Get the player's current vehicle
+            local playerPedHandle = GTA.PointerToHandle(playerPed)
+            if playerPedHandle and playerPedHandle ~= 0 then
+                local currentVehicle = nil
+                pcall(function()
+                    currentVehicle = PED.GET_VEHICLE_PED_IS_IN(playerPedHandle, false)
+                end)
+                if currentVehicle and currentVehicle ~= 0 then
+                    vehicleHandle = currentVehicle
+                    M.debug_print("[Apply Attachments] Using current vehicle: " .. tostring(vehicleHandle))
+                else
+                    GUI.AddToast("Apply Attachments", "You must be in a vehicle to apply attachments", 5000, 0)
+                    return
+                end
+            else
+                GUI.AddToast("Apply Attachments", "Could not get player ped handle", 5000, 0)
+                return
+            end
+        elseif not isPreview then
             -- If it's a plane/heli, spawn it higher
             local vehhash = modelHash
             local isPlane = VEHICLE.IS_THIS_MODEL_A_PLANE(vehhash)
@@ -4351,24 +4395,42 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
         local playerID = PLAYER.PLAYER_ID()
         local forwardOffset = 5.0
         
-        -- Use GTA.SpawnVehicleForPlayer like INI spawning does
-        local spawnSuccess, spawnResult = pcall(function()
-            return GTA.SpawnVehicleForPlayer(modelHash, playerID, forwardOffset)
-        end)
+        -- Check if we should use the current vehicle instead of spawning a new one
+        local applyToCurrentVehicle = spawnerSettings.onlyApplyAttachments and not isPreview
         
-        if spawnSuccess and spawnResult and spawnResult ~= 0 then
-            vehicleHandle = spawnResult
+        if applyToCurrentVehicle then
+            -- Get the player's current vehicle
+            local currentVehicle = nil
+            pcall(function()
+                currentVehicle = PED.GET_VEHICLE_PED_IS_IN(playerPed, false)
+            end)
+            if currentVehicle and currentVehicle ~= 0 then
+                vehicleHandle = currentVehicle
+                M.debug_print("[Apply Attachments] Using current vehicle: " .. tostring(vehicleHandle))
+            else
+                GUI.AddToast("Apply Attachments", "You must be in a vehicle to apply attachments", 5000, 0)
+                return
+            end
         else
-        end
-        
-        -- Fallback to GTA.SpawnVehicle if SpawnVehicleForPlayer failed
-        if not vehicleHandle or vehicleHandle == 0 then
-            local spawnSuccess2, spawnResult2 = pcall(function()
-                return GTA.SpawnVehicle(modelHash, spawnCoords.x, spawnCoords.y, spawnCoords.z, playerHeading, true, true)
+            -- Use GTA.SpawnVehicleForPlayer like INI spawning does
+            local spawnSuccess, spawnResult = pcall(function()
+                return GTA.SpawnVehicleForPlayer(modelHash, playerID, forwardOffset)
             end)
             
-            if spawnSuccess2 and spawnResult2 and spawnResult2 ~= 0 then
-                vehicleHandle = spawnResult2
+            if spawnSuccess and spawnResult and spawnResult ~= 0 then
+                vehicleHandle = spawnResult
+            else
+            end
+            
+            -- Fallback to GTA.SpawnVehicle if SpawnVehicleForPlayer failed
+            if not vehicleHandle or vehicleHandle == 0 then
+                local spawnSuccess2, spawnResult2 = pcall(function()
+                    return GTA.SpawnVehicle(modelHash, spawnCoords.x, spawnCoords.y, spawnCoords.z, playerHeading, true, true)
+                end)
+                
+                if spawnSuccess2 and spawnResult2 and spawnResult2 ~= 0 then
+                    vehicleHandle = spawnResult2
+                end
             end
         end
         
@@ -6279,22 +6341,80 @@ function M.spawnOutfitFromJSON(filePath, isPreview)
 end
 
 function M.spawnVehicleFromCHRX(path, index)
-    if not path or not index then return end
+    if not path then return end
     
-    local filename = M.get_filename_from_path(path)
-    local name = filename:match("(.+)%.%w+$") or filename
+    -- Get the root CHRX vehicles folder and find all files recursively
+    local chrxRoot = chrxVehiclesFolder
+    local allFiles = FileMgr.FindFiles(chrxRoot, ".json", true)
     
-    FeatureMgr.SetFeatureListIndex(514776905, index)
+    if not allFiles or #allFiles == 0 then
+        GUI.AddToast("CHRX Spawn", "No vehicle files found", 5000, 0)
+        return
+    end
+    
+    -- Sort files alphabetically (case-insensitive) to match Cherax's ordering
+    table.sort(allFiles, function(a, b)
+        return a:lower() < b:lower()
+    end)
+    
+    -- Find the index of our file in the sorted list
+    local correctIndex = nil
+    for i, file in ipairs(allFiles) do
+        -- Normalize paths for comparison
+        local normalizedFile = file:gsub("\\", "/")
+        local normalizedPath = path:gsub("\\", "/")
+        if normalizedFile == normalizedPath then
+            correctIndex = i - 1 -- 0-indexed
+            break
+        end
+    end
+    
+    if correctIndex == nil then
+        GUI.AddToast("CHRX Spawn", "Failed to find file index", 5000, 0)
+        return
+    end
+    
+    -- Spawn the vehicle using the calculated index
+    FeatureMgr.SetFeatureListIndex(514776905, correctIndex)
     FeatureMgr.GetFeatureByName("Load Vehicle"):TriggerCallback()
 end
 
 function M.spawnOutfitFromCHRX(path, index)
-    if not path or not index then return end
+    if not path then return end
     
-    local filename = M.get_filename_from_path(path)
-    local name = filename:match("(.+)%.%w+$") or filename
+    -- Get the root CHRX outfits folder and find all files recursively
+    local chrxRoot = chrxOutfitsFolder
+    local allFiles = FileMgr.FindFiles(chrxRoot, ".json", true)
     
-    FeatureMgr.SetFeatureListIndex(2384691091, index)
+    if not allFiles or #allFiles == 0 then
+        GUI.AddToast("CHRX Spawn", "No outfit files found", 5000, 0)
+        return
+    end
+    
+    -- Sort files alphabetically (case-insensitive) to match Cherax's ordering
+    table.sort(allFiles, function(a, b)
+        return a:lower() < b:lower()
+    end)
+    
+    -- Find the index of our file in the sorted list
+    local correctIndex = nil
+    for i, file in ipairs(allFiles) do
+        -- Normalize paths for comparison
+        local normalizedFile = file:gsub("\\", "/")
+        local normalizedPath = path:gsub("\\", "/")
+        if normalizedFile == normalizedPath then
+            correctIndex = i - 1 -- 0-indexed
+            break
+        end
+    end
+    
+    if correctIndex == nil then
+        GUI.AddToast("CHRX Spawn", "Failed to find file index", 5000, 0)
+        return
+    end
+    
+    -- Spawn the outfit using the calculated index
+    FeatureMgr.SetFeatureListIndex(2384691091, correctIndex)
     FeatureMgr.GetFeatureByName("Load Outfit"):TriggerCallback()
 end
 
