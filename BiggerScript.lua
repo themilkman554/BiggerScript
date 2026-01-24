@@ -10,7 +10,7 @@ Logger.Log(eLogColor.GREEN, "", " ░    ░  ▒ ░░ ░   ░ ░ ░   ░
 Logger.Log(eLogColor.GREEN, "", " ░       ░        ░       ░    ░  ░   ░           ░  ░ ░         ░      ░                    ")
 Logger.Log(eLogColor.GREEN, "", "      ░                                              ░                                       ")
 
-GUI.AddToast("BiggerScriptv6.4", "Added Gift and Apply vehicles", 10000, 0)
+GUI.AddToast("BiggerScriptv6.4", "Added Gift and Apply vehicles\n Added Send to All\n Added more json support (peds can spawn in helicopters)", 10000, 0)
 
 if Cherax.GetEdition() == "LE" then
     GUI.AddToast("BiggerScript", "Legacy Version of Cherax breaks vehicles with too many attachments", 10000, 0)
@@ -1913,8 +1913,13 @@ ClickGUI.AddPlayerTab("Bigger Script", function()
             ImGui.EndCombo()
         end
         if ImGui.IsItemHovered() then
-            local targetName = PLAYER.GET_PLAYER_NAME(Utils.GetSelectedPlayer()) or "Target"
-            ImGui.SetTooltip("Attacker: Spawns vehicle with ped that chases " .. targetName .. "\nGift: Spawns vehicle in front of " .. targetName .. "\nApply: Applies attachments to " .. targetName .. "'s current vehicle")
+            ImGui.SetTooltip("Attacker: Spawns vehicle with ped that chases Target\nGift: Spawns vehicle in front of Target\nApply: Applies attachments to Target's current vehicle")
+        end
+        ImGui.SameLine()
+        if spawnerSettings.sendToAllPlayers == nil then spawnerSettings.sendToAllPlayers = false end
+        spawnerSettings.sendToAllPlayers = ImGui.Checkbox("Send to All", spawnerSettings.sendToAllPlayers)
+        if ImGui.IsItemHovered() then
+            ImGui.SetTooltip("Send vehicle to all players in the session (excluding you)")
         end
         ImGui.Spacing()
 
@@ -1924,12 +1929,26 @@ ClickGUI.AddPlayerTab("Bigger Script", function()
                 local targetPlayer = Utils.GetSelectedPlayer()
                 local attackerSpawnFunc = function(filePath)
                     local mode = spawnerSettings.attackerSpawnMode
-                    if mode == 0 then
-                        spawning.spawnMenyooAttackerFromXML(filePath, targetPlayer)
-                    elseif mode == 1 then
-                        spawning.spawnGiftVehicleFromXML(filePath, targetPlayer)
-                    elseif mode == 2 then
-                        spawning.applyVehicleAttachmentsFromXML(filePath, targetPlayer)
+                    if spawnerSettings.sendToAllPlayers then
+                        local count = 0
+                        for _, pid in pairs(Players.Get()) do
+                            if pid ~= GTA.GetLocalPlayerId() then
+                                if mode == 0 then spawning.spawnMenyooAttackerFromXML(filePath, pid, true)
+                                elseif mode == 1 then spawning.spawnGiftVehicleFromXML(filePath, pid, true)
+                                elseif mode == 2 then spawning.applyVehicleAttachmentsFromXML(filePath, pid, true)
+                                end
+                                count = count + 1
+                            end
+                        end
+                        GUI.AddToast("Send to All", "Sent to " .. count .. " players", 5000, 0)
+                    else
+                        if mode == 0 then
+                            spawning.spawnMenyooAttackerFromXML(filePath, targetPlayer)
+                        elseif mode == 1 then
+                            spawning.spawnGiftVehicleFromXML(filePath, targetPlayer)
+                        elseif mode == 2 then
+                            spawning.applyVehicleAttachmentsFromXML(filePath, targetPlayer)
+                        end
                     end
                 end
                 local searchXmlAttackers = ImGui.InputText("##searchXmlAttackers", searchXmlAttackers or "", 256)
@@ -1943,12 +1962,26 @@ ClickGUI.AddPlayerTab("Bigger Script", function()
                 local targetPlayer = Utils.GetSelectedPlayer()
                 local attackerSpawnFunc = function(filePath)
                     local mode = spawnerSettings.attackerSpawnMode
-                    if mode == 0 then
-                        spawning.spawnMenyooAttackerFromINI(filePath, targetPlayer)
-                    elseif mode == 1 then
-                        spawning.spawnGiftVehicleFromINI(filePath, targetPlayer)
-                    elseif mode == 2 then
-                        spawning.applyVehicleAttachmentsFromINI(filePath, targetPlayer)
+                    if spawnerSettings.sendToAllPlayers then
+                        local count = 0
+                        for _, pid in pairs(Players.Get()) do
+                            if pid ~= GTA.GetLocalPlayerId() then
+                                if mode == 0 then spawning.spawnMenyooAttackerFromINI(filePath, pid, true)
+                                elseif mode == 1 then spawning.spawnGiftVehicleFromINI(filePath, pid, true)
+                                elseif mode == 2 then spawning.applyVehicleAttachmentsFromINI(filePath, pid, true)
+                                end
+                                count = count + 1
+                            end
+                        end
+                        GUI.AddToast("Send to All", "Sent to " .. count .. " players", 5000, 0)
+                    else
+                        if mode == 0 then
+                            spawning.spawnMenyooAttackerFromINI(filePath, targetPlayer)
+                        elseif mode == 1 then
+                            spawning.spawnGiftVehicleFromINI(filePath, targetPlayer)
+                        elseif mode == 2 then
+                            spawning.applyVehicleAttachmentsFromINI(filePath, targetPlayer)
+                        end
                     end
                 end
                 local searchIniAttackers = ImGui.InputText("##searchIniAttackers", searchIniAttackers or "", 256)
@@ -1962,12 +1995,26 @@ ClickGUI.AddPlayerTab("Bigger Script", function()
                 local targetPlayer = Utils.GetSelectedPlayer()
                 local attackerSpawnFunc = function(filePath)
                     local mode = spawnerSettings.attackerSpawnMode
-                    if mode == 0 then
-                        spawning.spawnMenyooAttackerFromJSON(filePath, targetPlayer)
-                    elseif mode == 1 then
-                        spawning.spawnGiftVehicleFromJSON(filePath, targetPlayer)
-                    elseif mode == 2 then
-                        spawning.applyVehicleAttachmentsFromJSON(filePath, targetPlayer)
+                    if spawnerSettings.sendToAllPlayers then
+                        local count = 0
+                        for _, pid in pairs(Players.Get()) do
+                            if pid ~= GTA.GetLocalPlayerId() then
+                                if mode == 0 then spawning.spawnMenyooAttackerFromJSON(filePath, pid, true)
+                                elseif mode == 1 then spawning.spawnGiftVehicleFromJSON(filePath, pid, true)
+                                elseif mode == 2 then spawning.applyVehicleAttachmentsFromJSON(filePath, pid, true)
+                                end
+                                count = count + 1
+                            end
+                        end
+                        GUI.AddToast("Send to All", "Sent to " .. count .. " players", 5000, 0)
+                    else
+                        if mode == 0 then
+                            spawning.spawnMenyooAttackerFromJSON(filePath, targetPlayer)
+                        elseif mode == 1 then
+                            spawning.spawnGiftVehicleFromJSON(filePath, targetPlayer)
+                        elseif mode == 2 then
+                            spawning.applyVehicleAttachmentsFromJSON(filePath, targetPlayer)
+                        end
                     end
                 end
                 local searchJsonAttackers = ImGui.InputText("##searchJsonAttackers", searchJsonAttackers or "", 256)

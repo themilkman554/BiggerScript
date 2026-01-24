@@ -3273,7 +3273,7 @@ function M.getFirstVehicleXml()
     return files[1]
 end
 
-function M.spawnMenyooAttackerFromXML(filePath, targetPlayerIndex)
+function M.spawnMenyooAttackerFromXML(filePath, targetPlayerIndex, suppressToast)
     local originalInVehicle = spawnerSettings.inVehicle
     spawnerSettings.inVehicle = false
     Script.QueueJob(function()
@@ -3371,13 +3371,13 @@ function M.spawnMenyooAttackerFromXML(filePath, targetPlayerIndex)
         local fileName = filePath:match("([^/\\]+)$") or filePath
         local tName = "Target"
         if targetPlayerIndex then tName = Players.GetName(targetPlayerIndex) or "Target" end
-        pcall(function() GUI.AddToast("Attacker Vehicle", fileName .. " sent to chase " .. tName, 5000, 0) end)
+        if not suppressToast then pcall(function() GUI.AddToast("Attacker Vehicle", fileName .. " sent to chase " .. tName, 5000, 0) end) end
         spawnerSettings.inVehicle = originalInVehicle
     end)
 end
 
 -- Gift mode: spawn vehicle in front of target player without attacker
-function M.spawnGiftVehicleFromXML(filePath, targetPlayerIndex)
+function M.spawnGiftVehicleFromXML(filePath, targetPlayerIndex, suppressToast)
     local originalInVehicle = spawnerSettings.inVehicle
     spawnerSettings.inVehicle = false
     Script.QueueJob(function()
@@ -3474,13 +3474,13 @@ function M.spawnGiftVehicleFromXML(filePath, targetPlayerIndex)
         local fileName = filePath:match("([^/\\]+)$") or filePath
         local tName = "Target"
         if targetPlayerIndex then tName = Players.GetName(targetPlayerIndex) or "Target" end
-        pcall(function() GUI.AddToast("Gift Vehicle", fileName .. " spawned in front of " .. tName, 5000, 0) end)
+        if not suppressToast then pcall(function() GUI.AddToast("Gift Vehicle", fileName .. " spawned in front of " .. tName, 5000, 0) end) end
         spawnerSettings.inVehicle = originalInVehicle
     end)
 end
 
 -- Apply mode: apply attachments to target's current vehicle
-function M.applyVehicleAttachmentsFromXML(filePath, targetPlayerIndex)
+function M.applyVehicleAttachmentsFromXML(filePath, targetPlayerIndex, suppressToast)
     Script.QueueJob(function()
         if not filePath or not FileMgr.DoesFileExist(filePath) then
             M.debug_print("[Apply Attachments] Error: XML file does not exist:", filePath)
@@ -3512,7 +3512,7 @@ function M.applyVehicleAttachmentsFromXML(filePath, targetPlayerIndex)
         if not pedExists then
             local tName = "Target"
             if targetPlayerIndex then tName = Players.GetName(targetPlayerIndex) or "Target" end
-            GUI.AddToast("Apply Attachments", "Cannot find " .. tName, 5000, 0)
+            if not suppressToast then GUI.AddToast("Apply Attachments", "Cannot find " .. tName, 5000, 0) end
             return
         end
         
@@ -3540,7 +3540,7 @@ function M.applyVehicleAttachmentsFromXML(filePath, targetPlayerIndex)
         if not targetVehicle or targetVehicle == 0 or not vehicleExists or not isActuallyInVehicle then
             local tName = "Target"
             if targetPlayerIndex then tName = Players.GetName(targetPlayerIndex) or "Target" end
-            GUI.AddToast("Apply Attachments", tName .. " is not in a vehicle", 5000, 0)
+            if not suppressToast then GUI.AddToast("Apply Attachments", tName .. " is not in a vehicle", 5000, 0) end
             return
         end
         local spawnCoords = { x = 0.0, y = 0.0, z = 0.0 }
@@ -3563,11 +3563,11 @@ function M.applyVehicleAttachmentsFromXML(filePath, targetPlayerIndex)
         local fileName = filePath:match("([^/\\]+)$") or filePath
         local tName = "Target"
         if targetPlayerIndex then tName = Players.GetName(targetPlayerIndex) or "Target" end
-        pcall(function() GUI.AddToast("Apply Attachments", fileName .. " applied " .. #createdAttachments .. " attachments to " .. tName .. "'s vehicle", 5000, 0) end)
+        if not suppressToast then pcall(function() GUI.AddToast("Apply Attachments", fileName .. " applied " .. #createdAttachments .. " attachments to " .. tName .. "'s vehicle", 5000, 0) end) end
     end)
 end
 
-function M.spawnMenyooAttackerFromINI(filePath, targetPlayerIndex)
+function M.spawnMenyooAttackerFromINI(filePath, targetPlayerIndex, suppressToast)
     local originalInVehicle = spawnerSettings.inVehicle
     spawnerSettings.inVehicle = false
     Script.QueueJob(function()
@@ -3681,13 +3681,13 @@ function M.spawnMenyooAttackerFromINI(filePath, targetPlayerIndex)
         local fileName = filePath:match("([^/\\]+)$") or filePath
         local tName = "Target"
         if targetPlayerIndex then tName = Players.GetName(targetPlayerIndex) or "Target" end
-        pcall(function() GUI.AddToast("Attacker Vehicle", fileName .. " sent to chase " .. tName, 5000, 0) end)
+        if not suppressToast then pcall(function() GUI.AddToast("Attacker Vehicle", fileName .. " sent to chase " .. tName, 5000, 0) end) end
         spawnerSettings.inVehicle = originalInVehicle
     end)
 end
 
 -- Gift mode: spawn vehicle in front of target player from INI without attacker
-function M.spawnGiftVehicleFromINI(filePath, targetPlayerIndex)
+function M.spawnGiftVehicleFromINI(filePath, targetPlayerIndex, suppressToast)
     local originalInVehicle = spawnerSettings.inVehicle
     spawnerSettings.inVehicle = false
     Script.QueueJob(function()
@@ -3770,13 +3770,13 @@ function M.spawnGiftVehicleFromINI(filePath, targetPlayerIndex)
         local fileName = filePath:match("([^/\\]+)$") or filePath
         local tName = "Target"
         if targetPlayerIndex then tName = Players.GetName(targetPlayerIndex) or "Target" end
-        pcall(function() GUI.AddToast("Gift Vehicle", fileName .. " spawned in front of " .. tName, 5000, 0) end)
+        if not suppressToast then pcall(function() GUI.AddToast("Gift Vehicle", fileName .. " spawned in front of " .. tName, 5000, 0) end) end
         spawnerSettings.inVehicle = originalInVehicle
     end)
 end
 
 -- Apply mode: apply attachments to target's current vehicle from INI
-function M.applyVehicleAttachmentsFromINI(filePath, targetPlayerIndex)
+function M.applyVehicleAttachmentsFromINI(filePath, targetPlayerIndex, suppressToast)
     Script.QueueJob(function()
         if not filePath or not FileMgr.DoesFileExist(filePath) then
             M.debug_print("[Apply Attachments] Error: INI file does not exist:", filePath)
@@ -3808,14 +3808,14 @@ function M.applyVehicleAttachmentsFromINI(filePath, targetPlayerIndex)
         if not pedExists then
             local tName = "Target"
             if targetPlayerIndex then tName = Players.GetName(targetPlayerIndex) or "Target" end
-            GUI.AddToast("Apply Attachments", "Cannot find " .. tName, 5000, 0)
+            if not suppressToast then GUI.AddToast("Apply Attachments", "Cannot find " .. tName, 5000, 0) end
             return
         end
         
         if not targetVehicle or targetVehicle == 0 then
             local tName = "Target"
             if targetPlayerIndex then tName = Players.GetName(targetPlayerIndex) or "Target" end
-            GUI.AddToast("Apply Attachments", tName .. " is not in a vehicle", 5000, 0)
+            if not suppressToast then GUI.AddToast("Apply Attachments", tName .. " is not in a vehicle", 5000, 0) end
             return
         end
         
@@ -3843,7 +3843,7 @@ function M.applyVehicleAttachmentsFromINI(filePath, targetPlayerIndex)
         if not targetVehicle or targetVehicle == 0 or not vehicleExists or not isActuallyInVehicle then
             local tName = "Target"
             if targetPlayerIndex then tName = Players.GetName(targetPlayerIndex) or "Target" end
-            GUI.AddToast("Apply Attachments", tName .. " is not in a vehicle", 5000, 0)
+            if not suppressToast then GUI.AddToast("Apply Attachments", tName .. " is not in a vehicle", 5000, 0) end
             return
         end
         local spawnCoords = { x = 0.0, y = 0.0, z = 0.0 }
@@ -3874,11 +3874,173 @@ function M.applyVehicleAttachmentsFromINI(filePath, targetPlayerIndex)
         local fileName = filePath:match("([^/\\]+)$") or filePath
         local tName = "Target"
         if targetPlayerIndex then tName = Players.GetName(targetPlayerIndex) or "Target" end
-        pcall(function() GUI.AddToast("Apply Attachments", fileName .. " applied " .. #createdAttachments .. " attachments to " .. tName .. "'s vehicle", 5000, 0) end)
+        if not suppressToast then pcall(function() GUI.AddToast("Apply Attachments", fileName .. " applied " .. #createdAttachments .. " attachments to " .. tName .. "'s vehicle", 5000, 0) end) end
     end)
 end
 
-function M.spawnMenyooAttackerFromJSON(filePath, targetPlayerIndex)
+-- Recursive helper function to spawn JSON children (handles nested hierarchies, PEDs, bone attachments)
+local function spawnJSONChildRecursive(child, parentHandle, spawnCoords, allSpawnedObjects)
+    if not child then return end
+    
+    local childModel = child.hash or child.model
+    if not childModel then
+        -- Try to convert model name to hash if it's a string
+        if type(child.model) == "string" then
+            childModel = Utils.Joaat(child.model)
+        end
+    end
+    if not childModel or childModel == 0 then 
+        print("[JSON Recursive] No valid model for child:", child.name or "unknown")
+        return 
+    end
+    
+    local childType = child.type or "OBJECT"
+    print("[JSON Recursive] Spawning child:", child.name or child.model, "type:", childType, "parent:", tostring(parentHandle))
+    
+    M.request_model_load(childModel)
+    Script.Yield(100)
+    
+    local objectHandle = nil
+    
+    -- Spawn based on type
+    if childType == "VEHICLE" then
+        local ok, h = pcall(function()
+            return GTA.SpawnVehicle(childModel, spawnCoords.x, spawnCoords.y, spawnCoords.z, 0, true, true)
+        end)
+        if ok and h and h ~= 0 then 
+            objectHandle = h 
+            print("[JSON Recursive] Vehicle spawned:", objectHandle)
+            -- Set engine running if specified
+            if child.options and child.options.engine_running then
+                pcall(function() VEHICLE.SET_VEHICLE_ENGINE_ON(objectHandle, true, true, false) end)
+                print("[JSON Recursive] Engine set to running")
+            end
+            -- Also check vehicle_attributes for engine_running
+            if child.vehicle_attributes and child.vehicle_attributes.options and child.vehicle_attributes.options.engine_running then
+                pcall(function() VEHICLE.SET_VEHICLE_ENGINE_ON(objectHandle, true, true, false) end)
+                print("[JSON Recursive] Engine set to running (from vehicle_attributes)")
+            end
+        end
+    elseif childType == "PED" then
+        local ok, h = pcall(function()
+            return GTA.CreatePed(childModel, 26, spawnCoords.x, spawnCoords.y, spawnCoords.z, 0, true, true)
+        end)
+        if ok and h and h ~= 0 then 
+            objectHandle = h 
+            print("[JSON Recursive] Ped spawned:", objectHandle)
+        end
+    else -- OBJECT or unknown
+        local ok, h = pcall(function()
+            return GTA.CreateObject(childModel, spawnCoords.x, spawnCoords.y, spawnCoords.z, true, true)
+        end)
+        if ok and h and h ~= 0 then 
+            objectHandle = h 
+            print("[JSON Recursive] Object spawned:", objectHandle)
+        end
+    end
+    
+    if not objectHandle or objectHandle == 0 then
+        print("[JSON Recursive] FAILED to spawn child:", child.name or childModel)
+        return
+    end
+    
+    -- Apply options
+    if child.options then
+        local opts = child.options
+        if opts.is_visible ~= nil then
+            pcall(function() ENTITY.SET_ENTITY_VISIBLE(objectHandle, opts.is_visible, false) end)
+        end
+        if opts.has_collision ~= nil then
+            pcall(function() ENTITY.SET_ENTITY_COLLISION(objectHandle, opts.has_collision, false) end)
+        end
+        if opts.is_invincible ~= nil then
+            pcall(function() ENTITY.SET_ENTITY_INVINCIBLE(objectHandle, opts.is_invincible) end)
+        else
+            pcall(function() ENTITY.SET_ENTITY_INVINCIBLE(objectHandle, true) end)
+        end
+        if opts.alpha and opts.alpha < 255 then
+            pcall(function() ENTITY.SET_ENTITY_ALPHA(objectHandle, opts.alpha, false) end)
+        end
+        if opts.is_frozen then
+            pcall(function() ENTITY.FREEZE_ENTITY_POSITION(objectHandle, true) end)
+        end
+    end
+    
+    -- Handle PED seating in parent vehicle
+    if childType == "PED" and parentHandle and parentHandle ~= 0 then
+        local parentType = nil
+        pcall(function() parentType = ENTITY.GET_ENTITY_TYPE(parentHandle) end)
+        print("[JSON Recursive] Ped parent type:", parentType)
+        if parentType == 2 then -- Parent is a vehicle
+            local seat = -1 -- Default to driver
+            if child.ped_attributes and child.ped_attributes.seat ~= nil then
+                seat = child.ped_attributes.seat
+            end
+            pcall(function()
+                PED.SET_PED_INTO_VEHICLE(objectHandle, parentHandle, seat)
+                -- Lock ped in vehicle
+                PED.SET_PED_CAN_BE_DRAGGED_OUT(objectHandle, false)
+                PED.SET_PED_STAY_IN_VEHICLE_WHEN_JACKED(objectHandle, true)
+                PED.SET_PED_CONFIG_FLAG(objectHandle, 184, true) -- CPED_CONFIG_FLAG_PreventAutoShuffleToDriversSeat
+                PED.SET_PED_CONFIG_FLAG(objectHandle, 292, true) -- CPED_CONFIG_FLAG_FreezePosition
+                PED.SET_PED_CONFIG_FLAG(objectHandle, 32, false) -- CPED_CONFIG_FLAG_CanFlyThroughWindscreen
+                PED.SET_PED_COMBAT_ATTRIBUTES(objectHandle, 3, false) -- BF_CanLeaveVehicle = false
+            end)
+            -- Turn on engine after ped is in vehicle
+            pcall(function() VEHICLE.SET_VEHICLE_ENGINE_ON(parentHandle, true, true, false) end)
+        else
+            print("[JSON Recursive] Parent is NOT a vehicle, cannot seat ped")
+        end
+    end
+    
+    table.insert(allSpawnedObjects, objectHandle)
+    
+    if childType == "VEHICLE" and child.vehicle_attributes then
+        M.applyJSONVehicleAttributes(objectHandle, child.vehicle_attributes)
+    end
+    
+    -- Recursively spawn children of this child
+    if child.children and #child.children > 0 then
+        print("[JSON Recursive] Processing", #child.children, "children of", child.name or child.model)
+        for _, grandchild in ipairs(child.children) do
+            spawnJSONChildRecursive(grandchild, objectHandle, spawnCoords, allSpawnedObjects)
+        end
+    end
+
+    -- Attach to parent if we have a parent and this entity should be attached (not for PEDs in vehicles)
+    local shouldAttach = parentHandle and parentHandle ~= 0 and childType ~= "PED"
+    if shouldAttach then
+        local boneIndex = 0
+        if child.options and child.options.bone_index then
+            boneIndex = child.options.bone_index
+        end
+        
+        local offX = child.offset and child.offset.x or 0
+        local offY = child.offset and child.offset.y or 0
+        local offZ = child.offset and child.offset.z or 0
+        local rotX = child.rotation and child.rotation.x or 0
+        local rotY = child.rotation and child.rotation.y or 0
+        local rotZ = child.rotation and child.rotation.z or 0
+        
+        local useSoftPinning = false
+        if child.options and child.options.use_soft_pinning ~= nil then
+            useSoftPinning = child.options.use_soft_pinning
+        end
+        
+        pcall(function()
+            ENTITY.ATTACH_ENTITY_TO_ENTITY(
+                objectHandle, parentHandle, boneIndex,
+                offX, offY, offZ,
+                rotX, rotY, rotZ,
+                false, useSoftPinning, false, false, 2, true
+            )
+            -- Phasing: Disable collision with parent IMMEDIATELY after attach
+            ENTITY.SET_ENTITY_NO_COLLISION_ENTITY(objectHandle, parentHandle, false)
+        end)
+    end
+end
+
+function M.spawnMenyooAttackerFromJSON(filePath, targetPlayerIndex, suppressToast)
     print("[JSON Attacker] Function called with file:", filePath, "target player:", tostring(targetPlayerIndex))
     local originalInVehicle = spawnerSettings.inVehicle
     spawnerSettings.inVehicle = false
@@ -4029,76 +4191,17 @@ function M.spawnMenyooAttackerFromJSON(filePath, targetPlayerIndex)
             TASK.TASK_VEHICLE_MISSION_PED_TARGET(attacker, vehicleHandle, targetPed, 6, 500.0, 786988, 0.0, 0.0, true)
         end)
         
-        -- Spawn and attach children objects
-        M.debug_print("[JSON Attacker] Spawning attachments...")
+        -- Spawn and attach children objects recursively
+        M.debug_print("[JSON Attacker] Spawning attachments recursively...")
         local attachedObjects = {}
         if jsonData.children and #jsonData.children > 0 then
             M.debug_print("[JSON Attacker] Found", #jsonData.children, "children to spawn")
-            
-            for i, child in ipairs(jsonData.children) do
-                local childModel = child.hash or child.model
-                if childModel then
-                    M.request_model_load(childModel)
-                    Script.Yield(100)
-                    
-                    local objectHandle
-                    if child.type == "VEHICLE" then
-                        local ok2, h2 = pcall(function()
-                            return GTA.SpawnVehicle(childModel, spawnCoords.x, spawnCoords.y, spawnCoords.z, 0, true, true)
-                        end)
-                        if ok2 and h2 and h2 ~= 0 then
-                            objectHandle = h2
-                        end
-                    else
-                        local ok2, h2 = pcall(function()
-                            return GTA.CreateObject(childModel, spawnCoords.x, spawnCoords.y, spawnCoords.z, true, true)
-                        end)
-                        if ok2 and h2 and h2 ~= 0 then
-                            objectHandle = h2
-                        end
-                    end
-                    
-                    if objectHandle and objectHandle ~= 0 then
-                        print("[JSON Attacker] Attachment", i, "spawned, handle:", objectHandle)
-                        
-                        -- Apply options
-                        if child.options then
-                            local opts = child.options
-                            if opts.is_visible ~= nil then
-                                pcall(function() ENTITY.SET_ENTITY_VISIBLE(objectHandle, opts.is_visible, false) end)
-                            end
-                            if opts.has_collision ~= nil then
-                                pcall(function() ENTITY.SET_ENTITY_COLLISION(objectHandle, opts.has_collision, false) end)
-                            end
-                            if opts.is_invincible ~= nil then
-                                pcall(function() ENTITY.SET_ENTITY_INVINCIBLE(objectHandle, opts.is_invincible) end)
-                            else
-                                pcall(function() ENTITY.SET_ENTITY_INVINCIBLE(objectHandle, true) end)
-                            end
-                        end
-                        
-                        -- Attach to vehicle
-                        pcall(function()
-                            ENTITY.ATTACH_ENTITY_TO_ENTITY(
-                                objectHandle, vehicleHandle, 0,
-                                child.offset and child.offset.x or 0,
-                                child.offset and child.offset.y or 0,
-                                child.offset and child.offset.z or 0,
-                                child.rotation and child.rotation.x or 0,
-                                child.rotation and child.rotation.y or 0,
-                                child.rotation and child.rotation.z or 0,
-                                false, false, false, false, 2, true
-                            )
-                        end)
-                        print("[JSON Attacker] Attached child", i)
-                        
-                        table.insert(attachedObjects, objectHandle)
-                    end
-                end
+            for _, child in ipairs(jsonData.children) do
+                spawnJSONChildRecursive(child, vehicleHandle, spawnCoords, attachedObjects)
             end
         end
         
-        print("[JSON Attacker] Total attachments spawned:", #attachedObjects)
+        M.debug_print("[JSON Attacker] Total attachments spawned:", #attachedObjects)
         
         -- Track spawned vehicle
         local attachments = { attacker }
@@ -4109,13 +4212,13 @@ function M.spawnMenyooAttackerFromJSON(filePath, targetPlayerIndex)
         local fileName = filePath:match("([^/\\]+)$") or filePath
         local tName = "Target"
         if targetPlayerIndex then tName = Players.GetName(targetPlayerIndex) or "Target" end
-        pcall(function() GUI.AddToast("Attacker Vehicle", fileName .. " sent to chase " .. tName, 5000, 0) end)
+        if not suppressToast then pcall(function() GUI.AddToast("Attacker Vehicle", fileName .. " sent to chase " .. tName, 5000, 0) end) end
         spawnerSettings.inVehicle = originalInVehicle
     end)
 end
 
 -- Gift mode: spawn vehicle in front of target player from JSON without attacker
-function M.spawnGiftVehicleFromJSON(filePath, targetPlayerIndex)
+function M.spawnGiftVehicleFromJSON(filePath, targetPlayerIndex, suppressToast)
     local originalInVehicle = spawnerSettings.inVehicle
     spawnerSettings.inVehicle = false
     Script.QueueJob(function()
@@ -4200,54 +4303,24 @@ function M.spawnGiftVehicleFromJSON(filePath, targetPlayerIndex)
             spawnerSettings.inVehicle = originalInVehicle
             return
         end
-        -- Spawn and attach children objects
+        -- Spawn and attach children objects recursively
         local attachedObjects = {}
         if jsonData.children and #jsonData.children > 0 then
-            for i, child in ipairs(jsonData.children) do
-                local childModel = child.hash or child.model
-                if childModel then
-                    M.request_model_load(childModel)
-                    Script.Yield(50)
-                    local objectHandle
-                    if child.type == "VEHICLE" then
-                        local ok2, h2 = pcall(function() return GTA.SpawnVehicle(childModel, spawnCoords.x, spawnCoords.y, spawnCoords.z, 0, true, true) end)
-                        if ok2 and h2 and h2 ~= 0 then objectHandle = h2 end
-                    else
-                        local ok2, h2 = pcall(function() return GTA.CreateObject(childModel, spawnCoords.x, spawnCoords.y, spawnCoords.z, true, true) end)
-                        if ok2 and h2 and h2 ~= 0 then objectHandle = h2 end
-                    end
-                    if objectHandle and objectHandle ~= 0 then
-                        if child.options then
-                            local opts = child.options
-                            if opts.is_visible ~= nil then pcall(function() ENTITY.SET_ENTITY_VISIBLE(objectHandle, opts.is_visible, false) end) end
-                            if opts.has_collision ~= nil then pcall(function() ENTITY.SET_ENTITY_COLLISION(objectHandle, opts.has_collision, false) end) end
-                            if opts.is_invincible ~= nil then pcall(function() ENTITY.SET_ENTITY_INVINCIBLE(objectHandle, opts.is_invincible) end)
-                            else pcall(function() ENTITY.SET_ENTITY_INVINCIBLE(objectHandle, true) end) end
-                        end
-                        pcall(function()
-                            ENTITY.ATTACH_ENTITY_TO_ENTITY(
-                                objectHandle, vehicleHandle, 0,
-                                child.offset and child.offset.x or 0, child.offset and child.offset.y or 0, child.offset and child.offset.z or 0,
-                                child.rotation and child.rotation.x or 0, child.rotation and child.rotation.y or 0, child.rotation and child.rotation.z or 0,
-                                false, false, false, false, 2, true
-                            )
-                        end)
-                        table.insert(attachedObjects, objectHandle)
-                    end
-                end
+            for _, child in ipairs(jsonData.children) do
+                spawnJSONChildRecursive(child, vehicleHandle, spawnCoords, attachedObjects)
             end
         end
         table.insert(spawnedVehicles, { vehicle = vehicleHandle, attachments = attachedObjects })
         local fileName = filePath:match("([^/\\]+)$") or filePath
         local tName = "Target"
         if targetPlayerIndex then tName = Players.GetName(targetPlayerIndex) or "Target" end
-        pcall(function() GUI.AddToast("Gift Vehicle", fileName .. " spawned in front of " .. tName, 5000, 0) end)
+        if not suppressToast then pcall(function() GUI.AddToast("Gift Vehicle", fileName .. " spawned in front of " .. tName, 5000, 0) end) end
         spawnerSettings.inVehicle = originalInVehicle
     end)
 end
 
 -- Apply mode: apply attachments to target's current vehicle from JSON
-function M.applyVehicleAttachmentsFromJSON(filePath, targetPlayerIndex)
+function M.applyVehicleAttachmentsFromJSON(filePath, targetPlayerIndex, suppressToast)
     Script.QueueJob(function()
         if not filePath or not FileMgr.DoesFileExist(filePath) then
             M.debug_print("[Apply Attachments] Error: JSON file does not exist:", filePath)
@@ -4279,7 +4352,7 @@ function M.applyVehicleAttachmentsFromJSON(filePath, targetPlayerIndex)
         if not pedExists then
             local tName = "Target"
             if targetPlayerIndex then tName = Players.GetName(targetPlayerIndex) or "Target" end
-            GUI.AddToast("Apply Attachments", "Cannot find " .. tName, 5000, 0)
+            if not suppressToast then GUI.AddToast("Apply Attachments", "Cannot find " .. tName, 5000, 0) end
             return
         end
         
@@ -4307,7 +4380,7 @@ function M.applyVehicleAttachmentsFromJSON(filePath, targetPlayerIndex)
         if not targetVehicle or targetVehicle == 0 or not vehicleExists or not isActuallyInVehicle then
             local tName = "Target"
             if targetPlayerIndex then tName = Players.GetName(targetPlayerIndex) or "Target" end
-            GUI.AddToast("Apply Attachments", tName .. " is not in a vehicle", 5000, 0)
+            if not suppressToast then GUI.AddToast("Apply Attachments", tName .. " is not in a vehicle", 5000, 0) end
             return
         end
         local parseSuccess, parseResult = pcall(function()
@@ -4344,44 +4417,14 @@ function M.applyVehicleAttachmentsFromJSON(filePath, targetPlayerIndex)
         -- Spawn and attach children objects
         local attachedObjects = {}
         if jsonData.children and #jsonData.children > 0 then
-            for i, child in ipairs(jsonData.children) do
-                local childModel = child.hash or child.model
-                if childModel then
-                    M.request_model_load(childModel)
-                    Script.Yield(50)
-                    local objectHandle
-                     if child.type == "VEHICLE" then
-                        local ok2, h2 = pcall(function() return GTA.SpawnVehicle(childModel, spawnCoords.x, spawnCoords.y, spawnCoords.z, 0, true, true) end)
-                        if ok2 and h2 and h2 ~= 0 then objectHandle = h2 end
-                    else
-                        local ok2, h2 = pcall(function() return GTA.CreateObject(childModel, spawnCoords.x, spawnCoords.y, spawnCoords.z, true, true) end)
-                        if ok2 and h2 and h2 ~= 0 then objectHandle = h2 end
-                    end
-                    if objectHandle and objectHandle ~= 0 then
-                        if child.options then
-                            local opts = child.options
-                            if opts.is_visible ~= nil then pcall(function() ENTITY.SET_ENTITY_VISIBLE(objectHandle, opts.is_visible, false) end) end
-                            if opts.has_collision ~= nil then pcall(function() ENTITY.SET_ENTITY_COLLISION(objectHandle, opts.has_collision, false) end) end
-                            if opts.is_invincible ~= nil then pcall(function() ENTITY.SET_ENTITY_INVINCIBLE(objectHandle, opts.is_invincible) end)
-                            else pcall(function() ENTITY.SET_ENTITY_INVINCIBLE(objectHandle, true) end) end
-                        end
-                        pcall(function()
-                            ENTITY.ATTACH_ENTITY_TO_ENTITY(
-                                objectHandle, targetVehicle, 0,
-                                child.offset and child.offset.x or 0, child.offset and child.offset.y or 0, child.offset and child.offset.z or 0,
-                                child.rotation and child.rotation.x or 0, child.rotation and child.rotation.y or 0, child.rotation and child.rotation.z or 0,
-                                false, false, false, false, 2, true
-                            )
-                        end)
-                        table.insert(attachedObjects, objectHandle)
-                    end
-                end
+            for _, child in ipairs(jsonData.children) do
+                spawnJSONChildRecursive(child, targetVehicle, spawnCoords, attachedObjects)
             end
         end
         local fileName = filePath:match("([^/\\]+)$") or filePath
         local tName = "Target"
         if targetPlayerIndex then tName = Players.GetName(targetPlayerIndex) or "Target" end
-        pcall(function() GUI.AddToast("Apply Attachments", fileName .. " applied " .. #attachedObjects .. " attachments to " .. tName .. "'s vehicle", 5000, 0) end)
+        if not suppressToast then pcall(function() GUI.AddToast("Apply Attachments", fileName .. " applied " .. #attachedObjects .. " attachments to " .. tName .. "'s vehicle", 5000, 0) end) end
     end)
 end
 
@@ -5889,6 +5932,28 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
                             if attrs.keep_on_task then
                                 pcall(function() PED.SET_PED_KEEP_TASK(h, true) end)
                             end
+                            
+                            -- Seat ped in parent vehicle if parent is a vehicle
+                            if attrs.seat ~= nil then
+                                -- Check if parent is a vehicle
+                                local parentType = nil
+                                pcall(function() parentType = ENTITY.GET_ENTITY_TYPE(parentHandle) end)
+                                if parentType == 2 then -- Parent is a vehicle
+                                    M.debug_print("[JSON Spawn Debug]" .. indent .. "Seating ped in vehicle, seat:", attrs.seat)
+                                    pcall(function()
+                                        PED.SET_PED_INTO_VEHICLE(h, parentHandle, attrs.seat)
+                                        -- Lock ped in vehicle
+                                        PED.SET_PED_CAN_BE_DRAGGED_OUT(h, false)
+                                        PED.SET_PED_STAY_IN_VEHICLE_WHEN_JACKED(h, true)
+                                        PED.SET_PED_CONFIG_FLAG(h, 184, true) -- CPED_CONFIG_FLAG_PreventAutoShuffleToDriversSeat
+                                        PED.SET_PED_CONFIG_FLAG(h, 292, true) -- CPED_CONFIG_FLAG_FreezePosition
+                                        PED.SET_PED_CONFIG_FLAG(h, 32, false) -- CPED_CONFIG_FLAG_CanFlyThroughWindscreen
+                                        PED.SET_PED_COMBAT_ATTRIBUTES(h, 3, false) -- BF_CanLeaveVehicle = false
+                                    end)
+                                    -- Turn on engine after seating ped
+                                    pcall(function() VEHICLE.SET_VEHICLE_ENGINE_ON(parentHandle, true, true, false) end)
+                                end
+                            end
                         end
                 else
                     M.debug_print("[JSON Spawn Debug]" .. indent .. "Failed to spawn child PED with GTA.CreatePed, ok:", ok, "handle:", tostring(h))
@@ -6186,7 +6251,21 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
             
             if childHandle and childHandle ~= 0 then
                 
+                -- Phasing: Disable collision with parent
+                if parentHandle and parentHandle ~= 0 then
+                    pcall(function() ENTITY.SET_ENTITY_NO_COLLISION_ENTITY(childHandle, parentHandle, false) end)
+                end
+                
                 -- Apply all options from JSON
+
+                if childType == "VEHICLE" and child.vehicle_attributes then
+                     M.applyJSONVehicleAttributes(childHandle, child.vehicle_attributes)
+                     -- Phasing: Disable collision with parent AGAIN after attributes just in case
+                     if parentHandle and parentHandle ~= 0 then
+                        pcall(function() ENTITY.SET_ENTITY_NO_COLLISION_ENTITY(childHandle, parentHandle, false) end)
+                    end
+                end
+
                 if child.options then
                     local opts = child.options
                     
@@ -6231,23 +6310,6 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
                         ENTITY.SET_ENTITY_PROOFS(childHandle, bulletProof, fireProof, explosionProof, false, meleeProof, false, false, false)
                     end)
                     
-                    -- Get bone index for attachment
-                    local boneIndex = opts.bone_index or 0
-                    
-                    -- Attach to parent
-                    if child.offset then
-                        pcall(function()
-                            ENTITY.ATTACH_ENTITY_TO_ENTITY(
-                                childHandle, parentHandle, boneIndex,
-                                child.offset.x or 0, child.offset.y or 0, child.offset.z or 0,
-                                child.rotation and child.rotation.x or 0,
-                                child.rotation and child.rotation.y or 0,
-                                child.rotation and child.rotation.z or 0,
-                                false, false, true, false, 0, true
-                            )
-                        end)
-                        M.debug_print("[JSON Spawn Debug]" .. indent .. "Attached to parent (bone:", boneIndex, ")")
-                    end
                 end
                 
                 table.insert(childEntities, childHandle)
@@ -6257,6 +6319,61 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
                     for j, nestedChild in ipairs(child.children) do
                         spawnJSONChild(nestedChild, childHandle, depth + 1, childEntities)
                     end
+                end
+                
+                -- Re-read options for post-order attachment
+                if child.options then
+                    local opts = child.options
+                    local boneIndex = opts.bone_index or 0
+                    M.debug_print("[JSON Spawn Debug]" .. indent .. "Child: " .. (child.name or child.model) .. " opts.bone_index: " .. tostring(opts.bone_index) .. " -> boneIndex: " .. tostring(boneIndex))
+                    
+                    -- Attach to parent (skip for PEDs that were seated in a vehicle)
+                    local shouldAttach = child.offset ~= nil
+                    -- PEDs with seat attribute should be seated, not attached
+                    if child.type == "PED" and child.ped_attributes and child.ped_attributes.seat ~= nil then
+                        shouldAttach = false
+                        M.debug_print("[JSON Spawn Debug]" .. indent .. "Skipping attachment for seated PED")
+                    end
+                    
+                -- Re-read options for post-order attachment
+                if child.options then
+                    local opts = child.options
+                    local boneIndex = opts.bone_index or 0
+                    M.debug_print("[JSON Spawn Debug]" .. indent .. "Child: " .. (child.name or child.model) .. " opts.bone_index: " .. tostring(opts.bone_index) .. " -> boneIndex: " .. tostring(boneIndex))
+                    
+                    -- Attach to parent (skip for PEDs that were seated in a vehicle)
+                    local shouldAttach = child.offset ~= nil
+                    -- PEDs with seat attribute should be seated, not attached
+                    if child.type == "PED" and child.ped_attributes and child.ped_attributes.seat ~= nil then
+                        shouldAttach = false
+                        M.debug_print("[JSON Spawn Debug]" .. indent .. "Skipping attachment for seated PED")
+                    end
+                    
+                    if shouldAttach then
+                        local offX = child.offset.x or 0
+                        local offY = child.offset.y or 0
+                        local offZ = child.offset.z or 0
+                        local rotX = child.rotation and child.rotation.x or 0
+                        local rotY = child.rotation and child.rotation.y or 0
+                        local rotZ = child.rotation and child.rotation.z or 0
+                        
+                        local useSoftPinning = false
+                        if child.options and child.options.use_soft_pinning ~= nil then
+                            useSoftPinning = child.options.use_soft_pinning
+                        end
+                        
+                        pcall(function()
+                            ENTITY.ATTACH_ENTITY_TO_ENTITY(
+                                childHandle, parentHandle, boneIndex,
+                                offX, offY, offZ,
+                                rotX, rotY, rotZ,
+                                false, useSoftPinning, false, false, 2, true
+                            )
+                            -- Phasing: Disable collision with parent IMMEDIATELY after attach
+                            ENTITY.SET_ENTITY_NO_COLLISION_ENTITY(childHandle, parentHandle, false)
+                        end)
+                    end
+                end
                 end
                 
                 return childHandle
@@ -6307,6 +6424,137 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
                 GUI.AddToast("Vehicle Spawned", toastMessage, 5000, 0)
                 print("Vehicle Spawned", toastMessage)
             end)
+        end
+    end)
+end
+
+-- Helper function to apply complex JSON vehicle attributes
+function M.applyJSONVehicleAttributes(vehicleHandle, attrs)
+    if not vehicleHandle or vehicleHandle == 0 or not attrs then return end
+    
+    pcall(function()
+        -- 1. Mods (Before paint to ensure compatibility)
+        VEHICLE.SET_VEHICLE_MOD_KIT(vehicleHandle, 0)
+        if attrs.mods then
+            for modKey, modValue in pairs(attrs.mods) do
+                local modType = tonumber(modKey:match("_(%d+)"))
+                if modType then
+                    if type(modValue) == "boolean" then
+                        VEHICLE.TOGGLE_VEHICLE_MOD(vehicleHandle, modType, modValue)
+                    elseif type(modValue) == "number" then
+                        VEHICLE.SET_VEHICLE_MOD(vehicleHandle, modType, modValue, false)
+                    end
+                end
+            end
+        end
+
+        -- 2. Livery (Standard and Legacy)
+        if attrs.paint then
+            if attrs.paint.livery and attrs.paint.livery ~= -1 then
+                VEHICLE.SET_VEHICLE_MOD(vehicleHandle, 48, attrs.paint.livery, false)
+                VEHICLE.SET_VEHICLE_LIVERY(vehicleHandle, attrs.paint.livery) 
+            end
+        end
+
+        -- 3. Paint (Primary, Secondary, Pearl, Wheel, Interior, Dashboard)
+        if attrs.paint then
+            local p = attrs.paint
+            local primary = p.primary and p.primary.vehicle_standard_color or 0
+            local secondary = p.secondary and p.secondary.vehicle_standard_color or 0
+            
+            -- Set standard colors
+            VEHICLE.SET_VEHICLE_COLOURS(vehicleHandle, primary, secondary)
+            
+            -- Custom Primary
+            if p.primary and p.primary.is_custom and p.primary.custom_color and #p.primary.custom_color >= 3 then
+                VEHICLE.SET_VEHICLE_CUSTOM_PRIMARY_COLOUR(vehicleHandle, p.primary.custom_color[1], p.primary.custom_color[2], p.primary.custom_color[3])
+            end
+            
+            -- Custom Secondary
+            if p.secondary and p.secondary.is_custom and p.secondary.custom_color and #p.secondary.custom_color >= 3 then
+                VEHICLE.SET_VEHICLE_CUSTOM_SECONDARY_COLOUR(vehicleHandle, p.secondary.custom_color[1], p.secondary.custom_color[2], p.secondary.custom_color[3])
+            end
+            
+            -- Pearlescent and Wheels
+            local pearl = p.extra_colors and p.extra_colors.pearlescent or 0
+            local wheelCol = p.extra_colors and p.extra_colors.wheel or 0
+            VEHICLE.SET_VEHICLE_EXTRA_COLOURS(vehicleHandle, pearl, wheelCol)
+            
+            -- Interior and Dashboard
+            if p.interior_color then
+                 -- Note: Natives for interior/dashboard exist but might not be exposed standardly in all APIs. 
+                 -- Cherax usually maps extra colors. If not available, we skip.
+            end
+            
+            -- Enamel/Fade/Dirt
+            if p.dirt_level then VEHICLE.SET_VEHICLE_DIRT_LEVEL(vehicleHandle, p.dirt_level) end
+        end
+
+        -- 4. Wheels (Type and Custom Tires)
+        if attrs.wheels then
+            if attrs.wheels.wheel_type then
+                VEHICLE.SET_VEHICLE_WHEEL_TYPE(vehicleHandle, attrs.wheels.wheel_type)
+            end
+            -- Apply wheel mod if defined in mods to ensure it sticks
+             if attrs.mods and attrs.mods._23 then
+                 VEHICLE.SET_VEHICLE_MOD(vehicleHandle, 23, attrs.mods._23, attrs.wheels.is_custom_tires or false)
+             end
+        end
+
+        -- 5. Window Tint
+        if attrs.options and attrs.options.window_tint and attrs.options.window_tint ~= -1 then
+            VEHICLE.SET_VEHICLE_WINDOW_TINT(vehicleHandle, attrs.options.window_tint)
+        end
+        
+        -- 6. Neon
+        if attrs.neon then
+            if attrs.neon.lights then
+                VEHICLE.SET_VEHICLE_NEON_LIGHT_ENABLED(vehicleHandle, 0, attrs.neon.lights.left or false)
+                VEHICLE.SET_VEHICLE_NEON_LIGHT_ENABLED(vehicleHandle, 1, attrs.neon.lights.right or false)
+                VEHICLE.SET_VEHICLE_NEON_LIGHT_ENABLED(vehicleHandle, 2, attrs.neon.lights.front or false)
+                VEHICLE.SET_VEHICLE_NEON_LIGHT_ENABLED(vehicleHandle, 3, attrs.neon.lights.back or false)
+            end
+            if attrs.neon.color then
+                VEHICLE.SET_VEHICLE_NEON_LIGHTS_COLOUR(vehicleHandle, attrs.neon.color.r or 255, attrs.neon.color.g or 255, attrs.neon.color.b or 255)
+            end
+        end
+        
+        -- 7. Extras
+        if attrs.extras then
+            for extraKey, enabled in pairs(attrs.extras) do
+                local extraId = tonumber(extraKey:match("_(%d+)"))
+                if extraId then
+                    VEHICLE.SET_VEHICLE_EXTRA(vehicleHandle, extraId, not enabled) -- Native: 0 is on, 1 is off usually, or boolean reversed?
+                    -- Usually SetVehicleExtra(veh, id, disable) -> so disable=false means ON.
+                    -- XML/JSON usually stores 'true' for ON.
+                end
+            end
+        end
+
+        -- 8. Doors
+        if attrs.doors and attrs.doors.open then
+            local doorMap = {frontleft=0, frontright=1, backleft=2, backright=3, hood=4, trunk=5, trunk2=6}
+            for doorName, isOpen in pairs(attrs.doors.open) do
+                if isOpen and doorMap[doorName] then
+                    VEHICLE.SET_VEHICLE_DOOR_OPEN(vehicleHandle, doorMap[doorName], false, false)
+                end
+            end
+        end
+        
+        -- 9. General Options
+        if attrs.options then
+            if attrs.options.engine_running then
+                VEHICLE.SET_VEHICLE_ENGINE_ON(vehicleHandle, true, true, false)
+            end
+            if attrs.options.bulletproof_tires then
+                VEHICLE.SET_VEHICLE_TYRES_CAN_BURST(vehicleHandle, false)
+            end
+            if attrs.options.license_plate_text then
+                VEHICLE.SET_VEHICLE_NUMBER_PLATE_TEXT(vehicleHandle, attrs.options.license_plate_text)
+            end
+            if attrs.options.license_plate_type then
+                VEHICLE.SET_VEHICLE_NUMBER_PLATE_TEXT_INDEX(vehicleHandle, attrs.options.license_plate_type)
+            end
         end
     end)
 end
