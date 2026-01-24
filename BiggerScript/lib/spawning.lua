@@ -3368,9 +3368,202 @@ function M.spawnMenyooAttackerFromXML(filePath, targetPlayerIndex)
             table.insert(attachments, h)
         end
         table.insert(spawnedVehicles, { vehicle = vehicleHandle, attachments = attachments })
-        if #createdAttachments > 0 then
-        end
+        local fileName = filePath:match("([^/\\]+)$") or filePath
+        local tName = "Target"
+        if targetPlayerIndex then tName = Players.GetName(targetPlayerIndex) or "Target" end
+        pcall(function() GUI.AddToast("Attacker Vehicle", fileName .. " sent to chase " .. tName, 5000, 0) end)
         spawnerSettings.inVehicle = originalInVehicle
+    end)
+end
+
+-- Gift mode: spawn vehicle in front of target player without attacker
+function M.spawnGiftVehicleFromXML(filePath, targetPlayerIndex)
+    local originalInVehicle = spawnerSettings.inVehicle
+    spawnerSettings.inVehicle = false
+    Script.QueueJob(function()
+        if not filePath or not FileMgr.DoesFileExist(filePath) then
+            M.debug_print("[Gift Spawn] Error: XML file does not exist:", filePath)
+            spawnerSettings.inVehicle = originalInVehicle
+            return
+        end
+        local xmlContent = FileMgr.ReadFileContent(filePath)
+        if not xmlContent or xmlContent == "" then
+            M.debug_print("[Gift Spawn] Error: Failed to read XML file:", filePath)
+            spawnerSettings.inVehicle = originalInVehicle
+            return
+        end
+        local modelHashStr = M.get_xml_element_content(xmlContent, "ModelHash")
+        if not modelHashStr then
+            M.debug_print("[Gift Spawn] Error: 'ModelHash' not found in XML file:", filePath)
+            spawnerSettings.inVehicle = originalInVehicle
+            return
+        end
+        local modelHash = M.safe_tonumber(modelHashStr, nil)
+        if not modelHash then
+            M.debug_print("[Gift Spawn] Error: Invalid 'ModelHash' value:", modelHashStr)
+            spawnerSettings.inVehicle = originalInVehicle
+            return
+        end
+        -- Get target ped
+        local targetPed = nil
+        if targetPlayerIndex ~= nil then
+            pcall(function() targetPed = PLAYER.GET_PLAYER_PED_SCRIPT_INDEX(targetPlayerIndex) end)
+        end
+        if not targetPed or targetPed == 0 then
+            targetPed = GTA.GetLocalPed()
+        end
+        if not targetPed or targetPed == 0 then
+            M.debug_print("[Gift Spawn] Error: No target ped available.")
+            spawnerSettings.inVehicle = originalInVehicle
+            return
+        end
+        -- Spawn in front of target
+        local spawnCoords = { x = 0.0, y = 0.0, z = 0.0 }
+        pcall(function()
+            local off = ENTITY.GET_OFFSET_FROM_ENTITY_IN_WORLD_COORDS(targetPed, 0, 5.0, 0)
+            spawnCoords.x = off.x or off[1] or 0.0
+            spawnCoords.y = off.y or off[2] or 0.0
+            spawnCoords.z = off.z or off[3] or 0.0
+            local foundGround, gz = GTA.GetGroundZ(spawnCoords.x, spawnCoords.y)
+            if foundGround then spawnCoords.z = gz end
+        end)
+        M.request_model_load(modelHash)
+        local vehicleHandle = nil
+        local ok, h = pcall(function() return GTA.SpawnVehicle(modelHash, spawnCoords.x, spawnCoords.y, spawnCoords.z, 0, true, true) end)
+        if ok and h and h ~= 0 then vehicleHandle = h end
+        if not vehicleHandle or vehicleHandle == 0 then
+            local fileName = filePath:match("([^/\\]+)$") or filePath
+            Logger.LogError("[Gift Spawn] Failed to spawn vehicle from '" .. fileName .. "'")
+            spawnerSettings.inVehicle = originalInVehicle
+            return
+        end
+        -- Apply vehicle properties
+        local colors = M.parse_vehicle_colors(xmlContent)
+        local mods = M.parse_vehicle_mods(xmlContent)
+        local neons = M.parse_vehicle_neons(xmlContent)
+        if colors then
+            if colors.Primary ~= nil or colors.Secondary ~= nil then
+                M.try_call(VEHICLE, "SET_VEHICLE_COLOURS", vehicleHandle, colors.Primary or 0, colors.Secondary or 0)
+            end
+            if colors.IsPrimaryColourCustom then
+                M.try_call(VEHICLE, "SET_VEHICLE_CUSTOM_PRIMARY_COLOUR", vehicleHandle, colors.Cust1_R, colors.Cust1_G, colors.Cust1_B)
+            end
+            if colors.IsSecondaryColourCustom then
+                M.try_call(VEHICLE, "SET_VEHICLE_CUSTOM_SECONDARY_COLOUR", vehicleHandle, colors.Cust2_R, colors.Cust2_G, colors.Cust2_B)
+            end
+        end
+        for modId, modData in pairs(mods) do
+            if modData and modData.mod and modData.mod >= 0 then M.try_call(VEHICLE, "SET_VEHICLE_MOD", vehicleHandle, modId, modData.mod, false) end
+        end
+        if neons then
+            M.try_call(VEHICLE, "SET_VEHICLE_NEON_LIGHT_ENABLED", vehicleHandle, 0, neons.Left or false)
+            M.try_call(VEHICLE, "SET_VEHICLE_NEON_LIGHT_ENABLED", vehicleHandle, 1, neons.Right or false)
+            M.try_call(VEHICLE, "SET_VEHICLE_NEON_LIGHT_ENABLED", vehicleHandle, 2, neons.Front or false)
+            M.try_call(VEHICLE, "SET_VEHICLE_NEON_LIGHT_ENABLED", vehicleHandle, 3, neons.Back or false)
+        end
+        -- Spawn attachments
+        local parsedAttachments = M.parse_spooner_attachments(xmlContent)
+        local createdAttachments = {}
+        if parsedAttachments and #parsedAttachments > 0 then
+            local parentHandleMap = {}
+            local initialHandleVal = M.safe_tonumber(M.get_xml_element_content(xmlContent, "InitialHandle"), nil)
+            if initialHandleVal then parentHandleMap[initialHandleVal] = vehicleHandle end
+            createdAttachments = M.spawn_attachments(parsedAttachments, parentHandleMap, spawnCoords, spawnerSettings.disableCollision)
+        end
+        table.insert(spawnedVehicles, { vehicle = vehicleHandle, attachments = createdAttachments })
+        local fileName = filePath:match("([^/\\]+)$") or filePath
+        local tName = "Target"
+        if targetPlayerIndex then tName = Players.GetName(targetPlayerIndex) or "Target" end
+        pcall(function() GUI.AddToast("Gift Vehicle", fileName .. " spawned in front of " .. tName, 5000, 0) end)
+        spawnerSettings.inVehicle = originalInVehicle
+    end)
+end
+
+-- Apply mode: apply attachments to target's current vehicle
+function M.applyVehicleAttachmentsFromXML(filePath, targetPlayerIndex)
+    Script.QueueJob(function()
+        if not filePath or not FileMgr.DoesFileExist(filePath) then
+            M.debug_print("[Apply Attachments] Error: XML file does not exist:", filePath)
+            return
+        end
+        local xmlContent = FileMgr.ReadFileContent(filePath)
+        if not xmlContent or xmlContent == "" then
+            M.debug_print("[Apply Attachments] Error: Failed to read XML file:", filePath)
+            return
+        end
+        -- Get target ped and their vehicle
+        local targetPed = nil
+        if targetPlayerIndex ~= nil then
+            pcall(function() targetPed = PLAYER.GET_PLAYER_PED_SCRIPT_INDEX(targetPlayerIndex) end)
+        end
+        if not targetPed or targetPed == 0 then
+            targetPed = GTA.PointerToHandle(GTA.GetLocalPed())
+        end
+        if not targetPed or targetPed == 0 then
+            M.debug_print("[Apply Attachments] Error: No target ped available.")
+            return
+        end
+        
+        -- Check if the ped entity exists
+        local pedExists = false
+        pcall(function()
+            pedExists = ENTITY.DOES_ENTITY_EXIST(targetPed)
+        end)
+        if not pedExists then
+            local tName = "Target"
+            if targetPlayerIndex then tName = Players.GetName(targetPlayerIndex) or "Target" end
+            GUI.AddToast("Apply Attachments", "Cannot find " .. tName, 5000, 0)
+            return
+        end
+        
+        local targetVehicle = nil
+        pcall(function()
+            targetVehicle = PED.GET_VEHICLE_PED_IS_IN(targetPed, false)
+        end)
+        
+        -- Additional check: verify vehicle entity exists
+        local vehicleExists = false
+        if targetVehicle and targetVehicle ~= 0 then
+            pcall(function()
+                vehicleExists = ENTITY.DOES_ENTITY_EXIST(targetVehicle)
+            end)
+        end
+        
+        -- Additional check: verify ped is actually IN the vehicle right now
+        local isActuallyInVehicle = false
+        if targetVehicle and targetVehicle ~= 0 and vehicleExists then
+            pcall(function()
+                isActuallyInVehicle = PED.IS_PED_IN_VEHICLE(targetPed, targetVehicle, false)
+            end)
+        end
+        
+        if not targetVehicle or targetVehicle == 0 or not vehicleExists or not isActuallyInVehicle then
+            local tName = "Target"
+            if targetPlayerIndex then tName = Players.GetName(targetPlayerIndex) or "Target" end
+            GUI.AddToast("Apply Attachments", tName .. " is not in a vehicle", 5000, 0)
+            return
+        end
+        local spawnCoords = { x = 0.0, y = 0.0, z = 0.0 }
+        pcall(function()
+            local coords = ENTITY.GET_ENTITY_COORDS(targetVehicle, true)
+            spawnCoords.x = coords.x or coords[1] or 0.0
+            spawnCoords.y = coords.y or coords[2] or 0.0
+            spawnCoords.z = coords.z or coords[3] or 0.0
+        end)
+        -- Spawn attachments on target's vehicle
+        local parsedAttachments = M.parse_spooner_attachments(xmlContent)
+        local createdAttachments = {}
+        if parsedAttachments and #parsedAttachments > 0 then
+            local parentHandleMap = {}
+            local initialHandleVal = M.safe_tonumber(M.get_xml_element_content(xmlContent, "InitialHandle"), nil)
+            if initialHandleVal then parentHandleMap[initialHandleVal] = targetVehicle end
+            createdAttachments = M.spawn_attachments(parsedAttachments, parentHandleMap, spawnCoords, spawnerSettings.disableCollision)
+            for _, h in ipairs(createdAttachments) do pcall(function() ENTITY.SET_ENTITY_INVINCIBLE(h, true) end) end
+        end
+        local fileName = filePath:match("([^/\\]+)$") or filePath
+        local tName = "Target"
+        if targetPlayerIndex then tName = Players.GetName(targetPlayerIndex) or "Target" end
+        pcall(function() GUI.AddToast("Apply Attachments", fileName .. " applied " .. #createdAttachments .. " attachments to " .. tName .. "'s vehicle", 5000, 0) end)
     end)
 end
 
@@ -3485,7 +3678,203 @@ function M.spawnMenyooAttackerFromINI(filePath, targetPlayerIndex)
             table.insert(attachments, h)
         end
         table.insert(spawnedVehicles, { vehicle = vehicleHandle, attachments = attachments })
+        local fileName = filePath:match("([^/\\]+)$") or filePath
+        local tName = "Target"
+        if targetPlayerIndex then tName = Players.GetName(targetPlayerIndex) or "Target" end
+        pcall(function() GUI.AddToast("Attacker Vehicle", fileName .. " sent to chase " .. tName, 5000, 0) end)
         spawnerSettings.inVehicle = originalInVehicle
+    end)
+end
+
+-- Gift mode: spawn vehicle in front of target player from INI without attacker
+function M.spawnGiftVehicleFromINI(filePath, targetPlayerIndex)
+    local originalInVehicle = spawnerSettings.inVehicle
+    spawnerSettings.inVehicle = false
+    Script.QueueJob(function()
+        if not filePath or not FileMgr.DoesFileExist(filePath) then
+            M.debug_print("[Gift Spawn] Error: INI file does not exist:", filePath)
+            spawnerSettings.inVehicle = originalInVehicle
+            return
+        end
+        local iniData = M.parse_ini_file(filePath)
+        if not iniData then
+            M.debug_print("[Gift Spawn] Error: Failed to parse INI file:", filePath)
+            spawnerSettings.inVehicle = originalInVehicle
+            return
+        end
+        local mainVehicleSection = iniData.Vehicle or iniData.Vehicle0
+        if not mainVehicleSection then
+            M.debug_print("[Gift Spawn] Error: Main vehicle section not found in INI file:", filePath)
+            spawnerSettings.inVehicle = originalInVehicle
+            return
+        end
+        local modelHashStr = mainVehicleSection.Hash or mainVehicleSection.ModelHash or mainVehicleSection.Model or mainVehicleSection.model
+        if not modelHashStr then
+            M.debug_print("[Gift Spawn] Error: Vehicle model hash not found in INI file:", filePath)
+            spawnerSettings.inVehicle = originalInVehicle
+            return
+        end
+        local modelHash = M.safe_tonumber(modelHashStr, nil)
+        if not modelHash then
+            M.debug_print("[Gift Spawn] Error: Invalid vehicle model hash value in INI file:", filePath)
+            spawnerSettings.inVehicle = originalInVehicle
+            return
+        end
+        -- Get target ped
+        local targetPed = nil
+        if targetPlayerIndex ~= nil then
+            pcall(function() targetPed = PLAYER.GET_PLAYER_PED_SCRIPT_INDEX(targetPlayerIndex) end)
+        end
+        if not targetPed or targetPed == 0 then
+            targetPed = GTA.GetLocalPed()
+        end
+        if not targetPed or targetPed == 0 then
+            M.debug_print("[Gift Spawn] Error: No target ped available.")
+            spawnerSettings.inVehicle = originalInVehicle
+            return
+        end
+        -- Spawn in front of target
+        local spawnCoords = { x = 0.0, y = 0.0, z = 0.0 }
+        pcall(function()
+            local off = ENTITY.GET_OFFSET_FROM_ENTITY_IN_WORLD_COORDS(targetPed, 0, 5.0, 0)
+            spawnCoords.x = off.x or off[1] or 0.0
+            spawnCoords.y = off.y or off[2] or 0.0
+            spawnCoords.z = off.z or off[3] or 0.0
+            local foundGround, gz = GTA.GetGroundZ(spawnCoords.x, spawnCoords.y)
+            if foundGround then spawnCoords.z = gz end
+        end)
+        M.request_model_load(modelHash)
+        local vehicleHandle = nil
+        local ok, h = pcall(function() return GTA.SpawnVehicle(modelHash, spawnCoords.x, spawnCoords.y, spawnCoords.z, 0, true, true) end)
+        if ok and h and h ~= 0 then vehicleHandle = h end
+        if not vehicleHandle or vehicleHandle == 0 then
+            local fileName = filePath:match("([^/\\]+)$") or filePath
+            Logger.LogError("[Gift Spawn] Failed to spawn vehicle from '" .. fileName .. "'")
+            spawnerSettings.inVehicle = originalInVehicle
+            return
+        end
+        -- Attachments from INI
+        local mainVehicleSelfNumeration = M.safe_tonumber(mainVehicleSection.SelfNumeration, nil)
+        local parentHandleMap = {}
+        if mainVehicleSelfNumeration then
+            parentHandleMap[mainVehicleSelfNumeration] = vehicleHandle
+        else
+            parentHandleMap["main_vehicle_placeholder"] = vehicleHandle
+        end
+        local parsedAttachments = M.parse_ini_attachments(iniData, mainVehicleSelfNumeration)
+        local createdAttachments = {}
+        if parsedAttachments and #parsedAttachments > 0 then
+            createdAttachments = M.spawn_attachments(parsedAttachments, parentHandleMap, spawnCoords, spawnerSettings.disableCollision)
+        end
+        table.insert(spawnedVehicles, { vehicle = vehicleHandle, attachments = createdAttachments })
+        local fileName = filePath:match("([^/\\]+)$") or filePath
+        local tName = "Target"
+        if targetPlayerIndex then tName = Players.GetName(targetPlayerIndex) or "Target" end
+        pcall(function() GUI.AddToast("Gift Vehicle", fileName .. " spawned in front of " .. tName, 5000, 0) end)
+        spawnerSettings.inVehicle = originalInVehicle
+    end)
+end
+
+-- Apply mode: apply attachments to target's current vehicle from INI
+function M.applyVehicleAttachmentsFromINI(filePath, targetPlayerIndex)
+    Script.QueueJob(function()
+        if not filePath or not FileMgr.DoesFileExist(filePath) then
+            M.debug_print("[Apply Attachments] Error: INI file does not exist:", filePath)
+            return
+        end
+        local iniData = M.parse_ini_file(filePath)
+        if not iniData then
+            M.debug_print("[Apply Attachments] Error: Failed to parse INI file:", filePath)
+            return
+        end
+        -- Get target ped and their vehicle
+        local targetPed = nil
+        if targetPlayerIndex ~= nil then
+            pcall(function() targetPed = PLAYER.GET_PLAYER_PED_SCRIPT_INDEX(targetPlayerIndex) end)
+        end
+        if not targetPed or targetPed == 0 then
+            targetPed = GTA.PointerToHandle(GTA.GetLocalPed())
+        end
+        if not targetPed or targetPed == 0 then
+            M.debug_print("[Apply Attachments] Error: No target ped available.")
+            return
+        end
+        
+        -- Check if the ped entity exists
+        local pedExists = false
+        pcall(function()
+            pedExists = ENTITY.DOES_ENTITY_EXIST(targetPed)
+        end)
+        if not pedExists then
+            local tName = "Target"
+            if targetPlayerIndex then tName = Players.GetName(targetPlayerIndex) or "Target" end
+            GUI.AddToast("Apply Attachments", "Cannot find " .. tName, 5000, 0)
+            return
+        end
+        
+        if not targetVehicle or targetVehicle == 0 then
+            local tName = "Target"
+            if targetPlayerIndex then tName = Players.GetName(targetPlayerIndex) or "Target" end
+            GUI.AddToast("Apply Attachments", tName .. " is not in a vehicle", 5000, 0)
+            return
+        end
+        
+        local targetVehicle = nil
+        pcall(function()
+            targetVehicle = PED.GET_VEHICLE_PED_IS_IN(targetPed, false)
+        end)
+        
+        -- Additional check: verify vehicle entity exists
+        local vehicleExists = false
+        if targetVehicle and targetVehicle ~= 0 then
+            pcall(function()
+                vehicleExists = ENTITY.DOES_ENTITY_EXIST(targetVehicle)
+            end)
+        end
+        
+        -- Additional check: verify ped is actually IN the vehicle right now
+        local isActuallyInVehicle = false
+        if targetVehicle and targetVehicle ~= 0 and vehicleExists then
+            pcall(function()
+                isActuallyInVehicle = PED.IS_PED_IN_VEHICLE(targetPed, targetVehicle, false)
+            end)
+        end
+        
+        if not targetVehicle or targetVehicle == 0 or not vehicleExists or not isActuallyInVehicle then
+            local tName = "Target"
+            if targetPlayerIndex then tName = Players.GetName(targetPlayerIndex) or "Target" end
+            GUI.AddToast("Apply Attachments", tName .. " is not in a vehicle", 5000, 0)
+            return
+        end
+        local spawnCoords = { x = 0.0, y = 0.0, z = 0.0 }
+        pcall(function()
+            local coords = ENTITY.GET_ENTITY_COORDS(targetVehicle, true)
+            spawnCoords.x = coords.x or coords[1] or 0.0
+            spawnCoords.y = coords.y or coords[2] or 0.0
+            spawnCoords.z = coords.z or coords[3] or 0.0
+        end)
+        -- Identify main vehicle reference for attachments
+        local mainVehicleSection = iniData.Vehicle or iniData.Vehicle0
+        local mainVehicleSelfNumeration = nil
+        if mainVehicleSection then
+             mainVehicleSelfNumeration = M.safe_tonumber(mainVehicleSection.SelfNumeration, nil)
+        end
+        local parentHandleMap = {}
+        if mainVehicleSelfNumeration then
+            parentHandleMap[mainVehicleSelfNumeration] = targetVehicle
+        else
+            parentHandleMap["main_vehicle_placeholder"] = targetVehicle
+        end
+        local parsedAttachments = M.parse_ini_attachments(iniData, mainVehicleSelfNumeration)
+        local createdAttachments = {}
+        if parsedAttachments and #parsedAttachments > 0 then
+            createdAttachments = M.spawn_attachments(parsedAttachments, parentHandleMap, spawnCoords, spawnerSettings.disableCollision)
+            for _, h in ipairs(createdAttachments) do pcall(function() ENTITY.SET_ENTITY_INVINCIBLE(h, true) end) end
+        end
+        local fileName = filePath:match("([^/\\]+)$") or filePath
+        local tName = "Target"
+        if targetPlayerIndex then tName = Players.GetName(targetPlayerIndex) or "Target" end
+        pcall(function() GUI.AddToast("Apply Attachments", fileName .. " applied " .. #createdAttachments .. " attachments to " .. tName .. "'s vehicle", 5000, 0) end)
     end)
 end
 
@@ -3717,8 +4106,282 @@ function M.spawnMenyooAttackerFromJSON(filePath, targetPlayerIndex)
             table.insert(attachments, h)
         end
         table.insert(spawnedVehicles, { vehicle = vehicleHandle, attachments = attachments })
-        M.debug_print("[JSON Attacker] Spawn complete!")
+        local fileName = filePath:match("([^/\\]+)$") or filePath
+        local tName = "Target"
+        if targetPlayerIndex then tName = Players.GetName(targetPlayerIndex) or "Target" end
+        pcall(function() GUI.AddToast("Attacker Vehicle", fileName .. " sent to chase " .. tName, 5000, 0) end)
         spawnerSettings.inVehicle = originalInVehicle
+    end)
+end
+
+-- Gift mode: spawn vehicle in front of target player from JSON without attacker
+function M.spawnGiftVehicleFromJSON(filePath, targetPlayerIndex)
+    local originalInVehicle = spawnerSettings.inVehicle
+    spawnerSettings.inVehicle = false
+    Script.QueueJob(function()
+        if not filePath or not FileMgr.DoesFileExist(filePath) then
+            M.debug_print("[Gift Spawn] Error: JSON file does not exist:", filePath)
+            spawnerSettings.inVehicle = originalInVehicle
+            return
+        end
+        local jsonContent = FileMgr.ReadFileContent(filePath)
+        if not jsonContent or jsonContent == "" then
+            M.debug_print("[Gift Spawn] Error: Failed to read JSON file:", filePath)
+            spawnerSettings.inVehicle = originalInVehicle
+            return
+        end
+        local jsonData
+        local parseSuccess, parseResult = pcall(function()
+            local luaCode = jsonContent
+            luaCode = luaCode:gsub("%[", "{")
+            luaCode = luaCode:gsub("%]", "}")
+            luaCode = luaCode:gsub(":null", ":nil")
+            luaCode = luaCode:gsub(",null", ",nil")
+            luaCode = luaCode:gsub("{null", "{nil")
+            luaCode = luaCode:gsub('"([^"]+)"%s*:%s*', function(key)
+                if key:match("^[%a_][%w_]*$") then
+                    return key .. "="
+                else
+                    return '["' .. key .. '"]='
+                end
+            end)
+            luaCode = "return " .. luaCode
+            local func, err = load(luaCode)
+            if not func then error("Failed to parse JSON: " .. tostring(err)) end
+            return func()
+        end)
+        if not parseSuccess or not parseResult then
+            M.debug_print("[Gift Spawn] Parse failed:", tostring(parseResult))
+            spawnerSettings.inVehicle = originalInVehicle
+            return
+        end
+        jsonData = parseResult
+        if jsonData.type ~= "VEHICLE" then
+            M.debug_print("[Gift Spawn] Error: Not a VEHICLE type for gift, got:", tostring(jsonData.type))
+            spawnerSettings.inVehicle = originalInVehicle
+            return
+        end
+        local modelHash = jsonData.hash or jsonData.model
+        if not modelHash or modelHash == 0 then
+            M.debug_print("[Gift Spawn] Error: Invalid model hash for JSON gift")
+            spawnerSettings.inVehicle = originalInVehicle
+            return
+        end
+        -- Get target ped
+        local targetPed = nil
+        if targetPlayerIndex ~= nil then
+            pcall(function() targetPed = PLAYER.GET_PLAYER_PED_SCRIPT_INDEX(targetPlayerIndex) end)
+        end
+        if not targetPed or targetPed == 0 then
+            targetPed = GTA.GetLocalPed()
+        end
+        if not targetPed or targetPed == 0 then
+            M.debug_print("[Gift Spawn] Error: No target ped available.")
+            spawnerSettings.inVehicle = originalInVehicle
+            return
+        end
+        -- Spawn in front of target
+        local spawnCoords = { x = 0.0, y = 0.0, z = 0.0 }
+        pcall(function()
+            local off = ENTITY.GET_OFFSET_FROM_ENTITY_IN_WORLD_COORDS(targetPed, 0, 5.0, 0)
+            spawnCoords.x = off.x or off[1] or 0.0
+            spawnCoords.y = off.y or off[2] or 0.0
+            spawnCoords.z = off.z or off[3] or 0.0
+            local foundGround, gz = GTA.GetGroundZ(spawnCoords.x, spawnCoords.y)
+            if foundGround then spawnCoords.z = gz end
+        end)
+        M.request_model_load(modelHash)
+        local vehicleHandle = nil
+        local ok, h = pcall(function() return GTA.SpawnVehicle(modelHash, spawnCoords.x, spawnCoords.y, spawnCoords.z, 0, true, true) end)
+        if ok and h and h ~= 0 then vehicleHandle = h end
+        if not vehicleHandle or vehicleHandle == 0 then
+            local fileName = filePath:match("([^/\\]+)$") or filePath
+            Logger.LogError("[Gift Spawn] Failed to spawn vehicle from '" .. fileName .. "'")
+            spawnerSettings.inVehicle = originalInVehicle
+            return
+        end
+        -- Spawn and attach children objects
+        local attachedObjects = {}
+        if jsonData.children and #jsonData.children > 0 then
+            for i, child in ipairs(jsonData.children) do
+                local childModel = child.hash or child.model
+                if childModel then
+                    M.request_model_load(childModel)
+                    Script.Yield(50)
+                    local objectHandle
+                    if child.type == "VEHICLE" then
+                        local ok2, h2 = pcall(function() return GTA.SpawnVehicle(childModel, spawnCoords.x, spawnCoords.y, spawnCoords.z, 0, true, true) end)
+                        if ok2 and h2 and h2 ~= 0 then objectHandle = h2 end
+                    else
+                        local ok2, h2 = pcall(function() return GTA.CreateObject(childModel, spawnCoords.x, spawnCoords.y, spawnCoords.z, true, true) end)
+                        if ok2 and h2 and h2 ~= 0 then objectHandle = h2 end
+                    end
+                    if objectHandle and objectHandle ~= 0 then
+                        if child.options then
+                            local opts = child.options
+                            if opts.is_visible ~= nil then pcall(function() ENTITY.SET_ENTITY_VISIBLE(objectHandle, opts.is_visible, false) end) end
+                            if opts.has_collision ~= nil then pcall(function() ENTITY.SET_ENTITY_COLLISION(objectHandle, opts.has_collision, false) end) end
+                            if opts.is_invincible ~= nil then pcall(function() ENTITY.SET_ENTITY_INVINCIBLE(objectHandle, opts.is_invincible) end)
+                            else pcall(function() ENTITY.SET_ENTITY_INVINCIBLE(objectHandle, true) end) end
+                        end
+                        pcall(function()
+                            ENTITY.ATTACH_ENTITY_TO_ENTITY(
+                                objectHandle, vehicleHandle, 0,
+                                child.offset and child.offset.x or 0, child.offset and child.offset.y or 0, child.offset and child.offset.z or 0,
+                                child.rotation and child.rotation.x or 0, child.rotation and child.rotation.y or 0, child.rotation and child.rotation.z or 0,
+                                false, false, false, false, 2, true
+                            )
+                        end)
+                        table.insert(attachedObjects, objectHandle)
+                    end
+                end
+            end
+        end
+        table.insert(spawnedVehicles, { vehicle = vehicleHandle, attachments = attachedObjects })
+        local fileName = filePath:match("([^/\\]+)$") or filePath
+        local tName = "Target"
+        if targetPlayerIndex then tName = Players.GetName(targetPlayerIndex) or "Target" end
+        pcall(function() GUI.AddToast("Gift Vehicle", fileName .. " spawned in front of " .. tName, 5000, 0) end)
+        spawnerSettings.inVehicle = originalInVehicle
+    end)
+end
+
+-- Apply mode: apply attachments to target's current vehicle from JSON
+function M.applyVehicleAttachmentsFromJSON(filePath, targetPlayerIndex)
+    Script.QueueJob(function()
+        if not filePath or not FileMgr.DoesFileExist(filePath) then
+            M.debug_print("[Apply Attachments] Error: JSON file does not exist:", filePath)
+            return
+        end
+        local jsonContent = FileMgr.ReadFileContent(filePath)
+        if not jsonContent or jsonContent == "" then
+            M.debug_print("[Apply Attachments] Error: Failed to read JSON file:", filePath)
+            return
+        end
+        -- Get target ped and their vehicle
+        local targetPed = nil
+        if targetPlayerIndex ~= nil then
+            pcall(function() targetPed = PLAYER.GET_PLAYER_PED_SCRIPT_INDEX(targetPlayerIndex) end)
+        end
+        if not targetPed or targetPed == 0 then
+            targetPed = GTA.PointerToHandle(GTA.GetLocalPed())
+        end
+        if not targetPed or targetPed == 0 then
+            M.debug_print("[Apply Attachments] Error: No target ped available.")
+            return
+        end
+        
+        -- Check if the ped entity exists
+        local pedExists = false
+        pcall(function()
+            pedExists = ENTITY.DOES_ENTITY_EXIST(targetPed)
+        end)
+        if not pedExists then
+            local tName = "Target"
+            if targetPlayerIndex then tName = Players.GetName(targetPlayerIndex) or "Target" end
+            GUI.AddToast("Apply Attachments", "Cannot find " .. tName, 5000, 0)
+            return
+        end
+        
+        local targetVehicle = nil
+        pcall(function()
+            targetVehicle = PED.GET_VEHICLE_PED_IS_IN(targetPed, false)
+        end)
+        
+        -- Additional check: verify vehicle entity exists
+        local vehicleExists = false
+        if targetVehicle and targetVehicle ~= 0 then
+            pcall(function()
+                vehicleExists = ENTITY.DOES_ENTITY_EXIST(targetVehicle)
+            end)
+        end
+        
+        -- Additional check: verify ped is actually IN the vehicle right now
+        local isActuallyInVehicle = false
+        if targetVehicle and targetVehicle ~= 0 and vehicleExists then
+            pcall(function()
+                isActuallyInVehicle = PED.IS_PED_IN_VEHICLE(targetPed, targetVehicle, false)
+            end)
+        end
+        
+        if not targetVehicle or targetVehicle == 0 or not vehicleExists or not isActuallyInVehicle then
+            local tName = "Target"
+            if targetPlayerIndex then tName = Players.GetName(targetPlayerIndex) or "Target" end
+            GUI.AddToast("Apply Attachments", tName .. " is not in a vehicle", 5000, 0)
+            return
+        end
+        local parseSuccess, parseResult = pcall(function()
+            local luaCode = jsonContent
+            luaCode = luaCode:gsub("%[", "{")
+            luaCode = luaCode:gsub("%]", "}")
+            luaCode = luaCode:gsub(":null", ":nil")
+            luaCode = luaCode:gsub(",null", ",nil")
+            luaCode = luaCode:gsub("{null", "{nil")
+            luaCode = luaCode:gsub('"([^"]+)"%s*:%s*', function(key)
+                if key:match("^[%a_][%w_]*$") then
+                    return key .. "="
+                else
+                    return '["' .. key .. '"]='
+                end
+            end)
+            luaCode = "return " .. luaCode
+            local func, err = load(luaCode)
+            if not func then error("Failed to parse JSON: " .. tostring(err)) end
+            return func()
+        end)
+        if not parseSuccess or not parseResult then
+            M.debug_print("[Apply Attachments] Parse failed:", tostring(parseResult))
+            return
+        end
+        local jsonData = parseResult
+        local spawnCoords = { x = 0.0, y = 0.0, z = 0.0 }
+        pcall(function()
+            local coords = ENTITY.GET_ENTITY_COORDS(targetVehicle, true)
+            spawnCoords.x = coords.x or coords[1] or 0.0
+            spawnCoords.y = coords.y or coords[2] or 0.0
+            spawnCoords.z = coords.z or coords[3] or 0.0
+        end)
+        -- Spawn and attach children objects
+        local attachedObjects = {}
+        if jsonData.children and #jsonData.children > 0 then
+            for i, child in ipairs(jsonData.children) do
+                local childModel = child.hash or child.model
+                if childModel then
+                    M.request_model_load(childModel)
+                    Script.Yield(50)
+                    local objectHandle
+                     if child.type == "VEHICLE" then
+                        local ok2, h2 = pcall(function() return GTA.SpawnVehicle(childModel, spawnCoords.x, spawnCoords.y, spawnCoords.z, 0, true, true) end)
+                        if ok2 and h2 and h2 ~= 0 then objectHandle = h2 end
+                    else
+                        local ok2, h2 = pcall(function() return GTA.CreateObject(childModel, spawnCoords.x, spawnCoords.y, spawnCoords.z, true, true) end)
+                        if ok2 and h2 and h2 ~= 0 then objectHandle = h2 end
+                    end
+                    if objectHandle and objectHandle ~= 0 then
+                        if child.options then
+                            local opts = child.options
+                            if opts.is_visible ~= nil then pcall(function() ENTITY.SET_ENTITY_VISIBLE(objectHandle, opts.is_visible, false) end) end
+                            if opts.has_collision ~= nil then pcall(function() ENTITY.SET_ENTITY_COLLISION(objectHandle, opts.has_collision, false) end) end
+                            if opts.is_invincible ~= nil then pcall(function() ENTITY.SET_ENTITY_INVINCIBLE(objectHandle, opts.is_invincible) end)
+                            else pcall(function() ENTITY.SET_ENTITY_INVINCIBLE(objectHandle, true) end) end
+                        end
+                        pcall(function()
+                            ENTITY.ATTACH_ENTITY_TO_ENTITY(
+                                objectHandle, targetVehicle, 0,
+                                child.offset and child.offset.x or 0, child.offset and child.offset.y or 0, child.offset and child.offset.z or 0,
+                                child.rotation and child.rotation.x or 0, child.rotation and child.rotation.y or 0, child.rotation and child.rotation.z or 0,
+                                false, false, false, false, 2, true
+                            )
+                        end)
+                        table.insert(attachedObjects, objectHandle)
+                    end
+                end
+            end
+        end
+        local fileName = filePath:match("([^/\\]+)$") or filePath
+        local tName = "Target"
+        if targetPlayerIndex then tName = Players.GetName(targetPlayerIndex) or "Target" end
+        pcall(function() GUI.AddToast("Apply Attachments", fileName .. " applied " .. #attachedObjects .. " attachments to " .. tName .. "'s vehicle", 5000, 0) end)
     end)
 end
 

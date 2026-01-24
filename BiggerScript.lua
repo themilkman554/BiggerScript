@@ -10,7 +10,7 @@ Logger.Log(eLogColor.GREEN, "", " ░    ░  ▒ ░░ ░   ░ ░ ░   ░
 Logger.Log(eLogColor.GREEN, "", " ░       ░        ░       ░    ░  ░   ░           ░  ░ ░         ░      ░                    ")
 Logger.Log(eLogColor.GREEN, "", "      ░                                              ░                                       ")
 
-GUI.AddToast("BiggerScriptv6.3", "Added Apply Attachments to Current Vehicle\n Added Right Click Window to Delete/Move stuff\n Improved Ui Scrolling\n Added Spawn Map On Me toggle", 10000, 0)
+GUI.AddToast("BiggerScriptv6.4", "Added Gift and Apply vehicles", 10000, 0)
 
 if Cherax.GetEdition() == "LE" then
     GUI.AddToast("BiggerScript", "Legacy Version of Cherax breaks vehicles with too many attachments", 10000, 0)
@@ -68,7 +68,9 @@ local spawnerSettings = {
     deletePhotoCache = false,
     contextPreview = false,
     unloadLastIPL = false,
+    attackerSpawnMode = 0, -- 0 = Attacker, 1 = Gift, 2 = Apply
 }
+local attackerSpawnModeNames = {"Attacker", "Gift", "Apply"}
 local lastSpoonerState = false
 
 
@@ -1883,7 +1885,7 @@ ClickGUI.AddTab("Bigger Script", renderMenyooTab)
 
 
 ClickGUI.AddPlayerTab("Bigger Script", function()
-    if ClickGUI.BeginCustomChildWindow("Attacker Vehicles") then
+    if ClickGUI.BeginCustomChildWindow("Send Vehicles") then
 
         ClickGUI.RenderFeature(Utils.Joaat("DeleteMenyooAttackerVehicle"), Utils.GetSelectedPlayer())
         ImGui.Spacing()
@@ -1891,10 +1893,29 @@ ClickGUI.AddPlayerTab("Bigger Script", function()
         ImGui.PushStyleColor(ImGuiCol.Button, 0.36, 0.016, 0.157, 1.0)
         ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.46, 0.06, 0.22, 1.0)
         ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.26, 0.01, 0.10, 1.0)
-        if ImGui.Button("Delete All Attackers") then
+        if ImGui.Button("Delete All") then
             spawning.deleteAllSpawnedVehicles()
         end
         ImGui.PopStyleColor(3)
+        
+        ImGui.SameLine()
+        
+        -- Spawn Mode Dropdown
+        ImGui.SetNextItemWidth(150) -- Optional: set a fixed width for the combo to make it fit better
+        local currentModeName = attackerSpawnModeNames[spawnerSettings.attackerSpawnMode + 1] or "Attacker"
+        if ImGui.BeginCombo("##attackerSpawnMode", currentModeName) then
+            for i, modeName in ipairs(attackerSpawnModeNames) do
+                local isSelected = (spawnerSettings.attackerSpawnMode == (i - 1))
+                if ImGui.Selectable(modeName .. "##mode" .. i, isSelected) then
+                    spawnerSettings.attackerSpawnMode = i - 1
+                end
+            end
+            ImGui.EndCombo()
+        end
+        if ImGui.IsItemHovered() then
+            local targetName = PLAYER.GET_PLAYER_NAME(Utils.GetSelectedPlayer()) or "Target"
+            ImGui.SetTooltip("Attacker: Spawns vehicle with ped that chases " .. targetName .. "\nGift: Spawns vehicle in front of " .. targetName .. "\nApply: Applies attachments to " .. targetName .. "'s current vehicle")
+        end
         ImGui.Spacing()
 
         if ImGui.BeginTabBar("AttackerTypeTabs") then
@@ -1902,7 +1923,14 @@ ClickGUI.AddPlayerTab("Bigger Script", function()
                 local xmlFiles = getXmlFiles()
                 local targetPlayer = Utils.GetSelectedPlayer()
                 local attackerSpawnFunc = function(filePath)
-                    spawning.spawnMenyooAttackerFromXML(filePath, targetPlayer)
+                    local mode = spawnerSettings.attackerSpawnMode
+                    if mode == 0 then
+                        spawning.spawnMenyooAttackerFromXML(filePath, targetPlayer)
+                    elseif mode == 1 then
+                        spawning.spawnGiftVehicleFromXML(filePath, targetPlayer)
+                    elseif mode == 2 then
+                        spawning.applyVehicleAttachmentsFromXML(filePath, targetPlayer)
+                    end
                 end
                 local searchXmlAttackers = ImGui.InputText("##searchXmlAttackers", searchXmlAttackers or "", 256)
                 ImGui.Spacing()
@@ -1914,7 +1942,14 @@ ClickGUI.AddPlayerTab("Bigger Script", function()
                 local iniFiles = getIniVehicles()
                 local targetPlayer = Utils.GetSelectedPlayer()
                 local attackerSpawnFunc = function(filePath)
-                    spawning.spawnMenyooAttackerFromINI(filePath, targetPlayer)
+                    local mode = spawnerSettings.attackerSpawnMode
+                    if mode == 0 then
+                        spawning.spawnMenyooAttackerFromINI(filePath, targetPlayer)
+                    elseif mode == 1 then
+                        spawning.spawnGiftVehicleFromINI(filePath, targetPlayer)
+                    elseif mode == 2 then
+                        spawning.applyVehicleAttachmentsFromINI(filePath, targetPlayer)
+                    end
                 end
                 local searchIniAttackers = ImGui.InputText("##searchIniAttackers", searchIniAttackers or "", 256)
                 ImGui.Spacing()
@@ -1926,7 +1961,14 @@ ClickGUI.AddPlayerTab("Bigger Script", function()
                 local jsonFiles = getJsonVehicles()
                 local targetPlayer = Utils.GetSelectedPlayer()
                 local attackerSpawnFunc = function(filePath)
-                    spawning.spawnMenyooAttackerFromJSON(filePath, targetPlayer)
+                    local mode = spawnerSettings.attackerSpawnMode
+                    if mode == 0 then
+                        spawning.spawnMenyooAttackerFromJSON(filePath, targetPlayer)
+                    elseif mode == 1 then
+                        spawning.spawnGiftVehicleFromJSON(filePath, targetPlayer)
+                    elseif mode == 2 then
+                        spawning.applyVehicleAttachmentsFromJSON(filePath, targetPlayer)
+                    end
                 end
                 local searchJsonAttackers = ImGui.InputText("##searchJsonAttackers", searchJsonAttackers or "", 256)
                 ImGui.Spacing()
