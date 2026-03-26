@@ -25,4 +25,13 @@ M.make_entity_networked = function(attachment)
     NETWORK.SET_NETWORK_ID_CAN_MIGRATE(NETWORK.OBJ_TO_NET(attachment.handle), false)
 end
 
+M.delete_entity = function(handle)
+    if handle and handle ~= 0 and ENTITY.DOES_ENTITY_EXIST(handle) then
+        local ptr = Memory.AllocInt()
+        Memory.WriteInt(ptr, handle)
+        ENTITY.DELETE_ENTITY(ptr)
+        Memory.Free(ptr)
+    end
+end
+
 return M

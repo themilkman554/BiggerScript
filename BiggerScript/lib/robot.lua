@@ -1,3 +1,4 @@
+local constructor_lib = require("BiggerScript/lib/constructor_lib")
 local M = {}
 
 
@@ -103,7 +104,7 @@ function M.cleanupRobot()
         for i in pairs(robot_objects) do
             if robot_objects[i] and ENTITY.DOES_ENTITY_EXIST(robot_objects[i]) then
                 ENTITY.SET_ENTITY_AS_MISSION_ENTITY(robot_objects[i], false, true)
-                ENTITY.DELETE_ENTITY(robot_objects[i])
+                constructor_lib.delete_entity(robot_objects[i])
             end
         end
         robot_objects = {}

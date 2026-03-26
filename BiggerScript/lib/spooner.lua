@@ -1,6 +1,7 @@
 local M = {}
 local spawnerSettings
 local ConstructorLib = require("BiggerScript/lib/constructor_lib")
+local animPlayer = require("BiggerScript/lib/anim_player")
 
 -- State for the spooner
 local hoveredEntity = 0
@@ -27,7 +28,14 @@ local gizmoState = {
     arrowLength = 1.5,         -- Length of each arrow
     arrowHeadSize = 0.15,      -- Size of arrow head cone
     sensitivity = 0.02,        -- Mouse movement to offset conversion
-    jobRunning = false         -- Whether the render job is running
+    jobRunning = false,        -- Whether the render job is running
+    gizmoMode = "arrow",       -- Gizmo display mode: "arrow" (move) or "box" (scale)
+    -- Scale mode state
+    scaleEntity = 0,           -- Entity currently being scaled
+    currentLength = 1.0,       -- Current length scale (Y axis in box mode)
+    currentWidth = 1.0,        -- Current width scale (X axis in box mode)
+    currentHeight = 1.0,       -- Current height scale (Z axis in box mode)
+    scaleSensitivity = 0.005   -- Scale sensitivity for mouse movement
 }
 
 -- Helper to check GUI state and enforce browser visibility
@@ -736,6 +744,22 @@ function M.startDetectionLoop()
                          ENTITY.SET_ENTITY_ROTATION(selectedEntity, 0, 0, freeCamState.rotZ, 2, true)
                     end
                     
+                    -- R key to toggle gizmo mode (arrow vs box) when entity is selected
+                    if selectedEntity ~= 0 and PAD.IS_DISABLED_CONTROL_JUST_PRESSED(0, 45) then  -- R key
+                        if gizmoState.gizmoMode == "arrow" then
+                            gizmoState.gizmoMode = "box"
+                            -- Reset scale state for current entity
+                            gizmoState.scaleEntity = 0
+                            gizmoState.currentLength = 1.0
+                            gizmoState.currentWidth = 1.0
+                            gizmoState.currentHeight = 1.0
+                            GUI.AddToast("Spooner", "Scale Mode (R:Width, B:Height, G:Length)", 2000, 0)
+                        else
+                            gizmoState.gizmoMode = "arrow"
+                            GUI.AddToast("Spooner", "Move Mode", 1500, 0)
+                        end
+                    end
+                    
                     -- Disable player controls
                     PAD.DISABLE_ALL_CONTROL_ACTIONS(0)
                 end
@@ -854,10 +878,8 @@ function M.stopDetectionLoop()
             pcall(function()
                 if entityToDelete and entityToDelete ~= 0 and ENTITY.DOES_ENTITY_EXIST(entityToDelete) then
                     ENTITY.SET_ENTITY_AS_MISSION_ENTITY(entityToDelete, true, true)
-                    local ptr = Memory.AllocInt()
-                    Memory.WriteInt(ptr, entityToDelete)
-                    ENTITY.DELETE_ENTITY(ptr)
-                end
+                    ConstructorLib.delete_entity(entityToDelete)
+end
             end)
         end)
     end
@@ -2279,11 +2301,295 @@ function M.setVehicleCustomsVisible(visible)
     vehicleCustomsVisible = visible
 end
 
+local decalTypesList = {
+    {id = 1010, name = "splatters_blood"},
+    {id = 1015, name = "splatters_blood_dir"},
+    {id = 1017, name = "splatters_blood_mist"},
+    {id = 1020, name = "splatters_mud"},
+    {id = 1030, name = "splatters_paint"},
+    {id = 1040, name = "splatters_water"},
+    {id = 1050, name = "splatters_water_hydrant"},
+    {id = 1110, name = "splatters_blood2"},
+    {id = 4010, name = "weapImpact_metal"},
+    {id = 4020, name = "weapImpact_concrete"},
+    {id = 4030, name = "weapImpact_mattress"},
+    {id = 4032, name = "weapImpact_mud"},
+    {id = 4050, name = "weapImpact_wood"},
+    {id = 4053, name = "weapImpact_sand"},
+    {id = 4040, name = "weapImpact_cardboard"},
+    {id = 4100, name = "weapImpact_melee_glass"},
+    {id = 4102, name = "weapImpact_glass_blood"},
+    {id = 4104, name = "weapImpact_glass_blood2"},
+    {id = 4200, name = "weapImpact_shotgun_paper"},
+    {id = 4310, name = "weapImpact_melee_concrete"},
+    {id = 4312, name = "weapImpact_melee_wood"},
+    {id = 4314, name = "weapImpact_melee_metal"},
+    {id = 4421, name = "burn1"},
+    {id = 5000, name = "bang_concrete_bang"},
+    {id = 5004, name = "bang_bullet_bang2"},
+    {id = 5031, name = "bang_glass"},
+    {id = 9000, name = "solidPool_water"},
+    {id = 9050, name = "liquidTrail_water"}
+}
+
+local decalTypeNames = {}
+for i, v in ipairs(decalTypesList) do
+    table.insert(decalTypeNames, v.name)
+end
+
+local activeObjectDecals = {}
+
+-- Object Customizations State
+local objectCustomsVisible = false
+local objectCustomsState = {
+    targetEntity = nil,
+    isStandalone = false,
+    lightColor = {1.0, 1.0, 1.0, 1.0},
+    lightRadiusMultiplier = 1.5,
+    useRangeEx = false,
+    lightShadow = 0.0,
+    useAltMode = false,
+    useDecalMode = false,
+    decalTypeIndex = 1,
+    decalWidth = 1.0,
+    decalHeight = 1.0,
+    altLightColor = {0.0, 0.0, 0.0, 1.0},
+    altLightRadiusMultiplier = 0.8
+}
+local objectPreviewJobRunning = false
+
+local function startObjectPreviewLoop()
+    if objectPreviewJobRunning then return end
+    objectPreviewJobRunning = true
+    Script.QueueJob(function()
+        while objectPreviewJobRunning and objectCustomsVisible do
+            if selectedEntity and selectedEntity ~= 0 and ENTITY.DOES_ENTITY_EXIST(selectedEntity) then
+                local min = Memory.Alloc(24)
+                local max = Memory.Alloc(24)
+                MISC.GET_MODEL_DIMENSIONS(ENTITY.GET_ENTITY_MODEL(selectedEntity), min, max)
+                local minX = Memory.ReadFloat(min)
+                local minY = Memory.ReadFloat(min + 8)
+                local minZ = Memory.ReadFloat(min + 16)
+                local maxX = Memory.ReadFloat(max)
+                local maxY = Memory.ReadFloat(max + 8)
+                local maxZ = Memory.ReadFloat(max + 16)
+                Memory.Free(min)
+                Memory.Free(max)
+                
+                local sizeX = maxX - minX
+                local sizeY = maxY - minY
+                local sizeZ = maxZ - minZ
+                local radius = math.max(sizeX, sizeY, sizeZ) * objectCustomsState.lightRadiusMultiplier
+                if radius < 5.0 then radius = 5.0 end
+                
+                local pos = ENTITY.GET_ENTITY_COORDS(selectedEntity, true)
+                local r = math.floor(objectCustomsState.lightColor[1] * 255)
+                local g = math.floor(objectCustomsState.lightColor[2] * 255)
+                local b = math.floor(objectCustomsState.lightColor[3] * 255)
+                local intensity = objectCustomsState.lightColor[4] * 10.0
+                
+                if objectCustomsState.useAltMode then
+                    -- Alt mode: Draw light coming from each side (6 lights)
+                    local offsets = {
+                        {x = sizeX / 2, y = 0, z = 0},
+                        {x = -sizeX / 2, y = 0, z = 0},
+                        {x = 0, y = sizeY / 2, z = 0},
+                        {x = 0, y = -sizeY / 2, z = 0},
+                        {x = 0, y = 0, z = sizeZ / 2},
+                        {x = 0, y = 0, z = -sizeZ / 2}
+                    }
+                    
+                    -- Second set of offsets for the "black light" farther away
+                    local offsetsInner = {
+                        {x = sizeX * 1.5, y = 0, z = 0},
+                        {x = -sizeX * 1.5, y = 0, z = 0},
+                        {x = 0, y = sizeY * 1.5, z = 0},
+                        {x = 0, y = -sizeY * 1.5, z = 0},
+                        {x = 0, y = 0, z = sizeZ * 1.5},
+                        {x = 0, y = 0, z = -sizeZ * 1.5}
+                    }
+
+                    local altRadius = math.max(sizeX, sizeY, sizeZ) * objectCustomsState.altLightRadiusMultiplier
+                    if altRadius < 5.0 then altRadius = 5.0 end
+
+                    local altR = math.floor(objectCustomsState.altLightColor[1] * 255)
+                    local altG = math.floor(objectCustomsState.altLightColor[2] * 255)
+                    local altB = math.floor(objectCustomsState.altLightColor[3] * 255)
+                    local altIntensity = objectCustomsState.altLightColor[4] * 10.0
+                    
+                    for i, offset in ipairs(offsets) do
+                        local lightPos = ENTITY.GET_OFFSET_FROM_ENTITY_IN_WORLD_COORDS(selectedEntity, offset.x, offset.y, offset.z)
+                        local innerPos = ENTITY.GET_OFFSET_FROM_ENTITY_IN_WORLD_COORDS(selectedEntity, offsetsInner[i].x, offsetsInner[i].y, offsetsInner[i].z)
+                        
+                        if objectCustomsState.useRangeEx then
+                            -- Regular light
+                            GRAPHICS.DRAW_LIGHT_WITH_RANGEEX(lightPos.x, lightPos.y, lightPos.z, r, g, b, radius, intensity, objectCustomsState.lightShadow)
+                            -- Secondary alt light behind it
+                            GRAPHICS.DRAW_LIGHT_WITH_RANGEEX(innerPos.x, innerPos.y, innerPos.z, altR, altG, altB, altRadius, altIntensity, objectCustomsState.lightShadow * 2.0)
+                        else
+                            -- Regular light
+                            GRAPHICS.DRAW_LIGHT_WITH_RANGE(lightPos.x, lightPos.y, lightPos.z, r, g, b, radius, intensity)
+                            -- Secondary alt light behind it
+                            GRAPHICS.DRAW_LIGHT_WITH_RANGE(innerPos.x, innerPos.y, innerPos.z, altR, altG, altB, altRadius, altIntensity)
+                        end
+                    end
+                else
+                    -- Normal mode: Single light at the center
+                    if objectCustomsState.useRangeEx then
+                        GRAPHICS.DRAW_LIGHT_WITH_RANGEEX(pos.x, pos.y, pos.z, r, g, b, radius, intensity, objectCustomsState.lightShadow)
+                    else
+                        GRAPHICS.DRAW_LIGHT_WITH_RANGE(pos.x, pos.y, pos.z, r, g, b, radius, intensity)
+                    end
+                end
+            end
+            Script.Yield(0)
+        end
+        objectPreviewJobRunning = false
+    end)
+end
+
+function M.openObjectCustomizations()
+    objectCustomsVisible = true
+    if not objectCustomsState then objectCustomsState = {} end
+    objectCustomsState.isStandalone = false 
+    objectCustomsState.targetEntity = selectedEntity
+    if not objectCustomsState.lightColor then
+        objectCustomsState.lightColor = {1.0, 1.0, 1.0, 1.0}
+    end
+    if objectCustomsState.lightRadiusMultiplier == nil then
+        objectCustomsState.lightRadiusMultiplier = 1.5
+    end
+    if objectCustomsState.useRangeEx == nil then
+        objectCustomsState.useRangeEx = false
+    end
+    if objectCustomsState.lightShadow == nil then
+        objectCustomsState.lightShadow = 0.0
+    end
+    if objectCustomsState.useAltMode == nil then
+        objectCustomsState.useAltMode = false
+    end
+    if objectCustomsState.useDecalMode == nil then
+        objectCustomsState.useDecalMode = false
+    end
+    if objectCustomsState.decalTypeIndex == nil then
+        objectCustomsState.decalTypeIndex = 1
+    end
+    if objectCustomsState.decalWidth == nil then
+        objectCustomsState.decalWidth = 1.0
+    end
+    if objectCustomsState.decalHeight == nil then
+        objectCustomsState.decalHeight = 1.0
+    end
+    if objectCustomsState.decalOffsetX == nil then objectCustomsState.decalOffsetX = 0.0 end
+    if objectCustomsState.decalOffsetY == nil then objectCustomsState.decalOffsetY = 0.0 end
+    if objectCustomsState.decalOffsetZ == nil then objectCustomsState.decalOffsetZ = 0.0 end
+    if objectCustomsState.decalColor == nil then objectCustomsState.decalColor = {1.0, 1.0, 1.0, 1.0} end
+    if objectCustomsState.altLightColor == nil then
+        objectCustomsState.altLightColor = {0.0, 0.0, 0.0, 1.0}
+    end
+    if objectCustomsState.altLightRadiusMultiplier == nil then
+        objectCustomsState.altLightRadiusMultiplier = 0.8
+    end
+    startObjectPreviewLoop()
+end
+
+function M.closeObjectCustomizations()
+    objectCustomsVisible = false
+end
+
+function M.getObjectCustomsVisible()
+    return objectCustomsVisible
+end
+
+function M.setObjectCustomsVisible(visible)
+    objectCustomsVisible = visible
+end
+
+function M.applyObjectDecals()
+    if not ENTITY.DOES_ENTITY_EXIST(selectedEntity) then return end
+    
+
+    activeObjectDecals = {}
+    
+    local min = Memory.Alloc(24)
+    local max = Memory.Alloc(24)
+    MISC.GET_MODEL_DIMENSIONS(ENTITY.GET_ENTITY_MODEL(selectedEntity), min, max)
+    local minX = Memory.ReadFloat(min)
+    local minY = Memory.ReadFloat(min + 8)
+    local minZ = Memory.ReadFloat(min + 16)
+    local maxX = Memory.ReadFloat(max)
+    local maxY = Memory.ReadFloat(max + 8)
+    local maxZ = Memory.ReadFloat(max + 16)
+    Memory.Free(min)
+    Memory.Free(max)
+    
+    local sizeX = maxX - minX
+    local sizeY = maxY - minY
+    local sizeZ = maxZ - minZ
+    local maxSize = math.max(sizeX, sizeY, sizeZ)
+    
+    local pos = ENTITY.GET_ENTITY_COORDS(selectedEntity, true)
+    
+    local rightPos = ENTITY.GET_OFFSET_FROM_ENTITY_IN_WORLD_COORDS(selectedEntity, 1, 0, 0)
+    local fwdPos = ENTITY.GET_OFFSET_FROM_ENTITY_IN_WORLD_COORDS(selectedEntity, 0, 1, 0)
+    local upPos = ENTITY.GET_OFFSET_FROM_ENTITY_IN_WORLD_COORDS(selectedEntity, 0, 0, 1)
+
+    local function normalize(dx, dy, dz)
+        local m = math.sqrt(dx*dx + dy*dy + dz*dz)
+        if m > 0 then return {x=dx/m, y=dy/m, z=dz/m} else return {x=dx, y=dy, z=dz} end
+    end
+
+    local right = normalize(rightPos.x - pos.x, rightPos.y - pos.y, rightPos.z - pos.z)
+    local fwd = normalize(fwdPos.x - pos.x, fwdPos.y - pos.y, fwdPos.z - pos.z)
+    local up = normalize(upPos.x - pos.x, upPos.y - pos.y, upPos.z - pos.z)
+
+    local left = {x = -right.x, y = -right.y, z = -right.z}
+    local back = {x = -fwd.x, y = -fwd.y, z = -fwd.z}
+    local down = {x = -up.x, y = -up.y, z = -up.z}
+
+    -- Decal mode: Draw decals projecting onto exactly 6 faces of the object
+    local faces = {
+        {offset = {x = sizeX / 2 + 0.1 + objectCustomsState.decalOffsetX, y = objectCustomsState.decalOffsetY, z = objectCustomsState.decalOffsetZ}, dir = left, upVec = up, w = sizeY, h = sizeZ},
+        {offset = {x = -sizeX / 2 - 0.1 - objectCustomsState.decalOffsetX, y = objectCustomsState.decalOffsetY, z = objectCustomsState.decalOffsetZ}, dir = right, upVec = up, w = sizeY, h = sizeZ},
+        -- Front / Back faces (Projecting along Y axis, so width=X length, height=Z length)
+        {offset = {x = objectCustomsState.decalOffsetX, y = sizeY / 2 + 0.1 + objectCustomsState.decalOffsetY, z = objectCustomsState.decalOffsetZ}, dir = back, upVec = up, w = sizeX, h = sizeZ},
+        {offset = {x = objectCustomsState.decalOffsetX, y = -sizeY / 2 - 0.1 - objectCustomsState.decalOffsetY, z = objectCustomsState.decalOffsetZ}, dir = fwd, upVec = up, w = sizeX, h = sizeZ},
+        -- Top / Bottom faces (Projecting along Z axis, so width=X length, height=Y length)
+        {offset = {x = objectCustomsState.decalOffsetX, y = objectCustomsState.decalOffsetY, z = sizeZ / 2 + 0.1 + objectCustomsState.decalOffsetZ}, dir = down, upVec = fwd, w = sizeX, h = sizeY},
+        {offset = {x = objectCustomsState.decalOffsetX, y = objectCustomsState.decalOffsetY, z = -sizeZ / 2 - 0.1 - objectCustomsState.decalOffsetZ}, dir = up, upVec = fwd, w = sizeX, h = sizeY}
+    }
+    
+    local rCoef = objectCustomsState.decalColor[1]
+    local gCoef = objectCustomsState.decalColor[2]
+    local bCoef = objectCustomsState.decalColor[3]
+    local opacity = objectCustomsState.decalColor[4]
+    
+    local dIndex = objectCustomsState.decalTypeIndex
+    if dIndex < 1 or dIndex > #decalTypesList then dIndex = 1 end
+    local currentDecalId = decalTypesList[dIndex].id
+    
+    for _, face in ipairs(faces) do
+        local decalPos = ENTITY.GET_OFFSET_FROM_ENTITY_IN_WORLD_COORDS(selectedEntity, face.offset.x, face.offset.y, face.offset.z)
+        local dir = face.dir
+        local uv = face.upVec
+
+        local decalW = face.w * objectCustomsState.decalWidth
+        local decalH = face.h * objectCustomsState.decalHeight
+
+        local newId = GRAPHICS.ADD_DECAL(currentDecalId, decalPos.x, decalPos.y, decalPos.z, dir.x, dir.y, dir.z, uv.x, uv.y, uv.z, decalW, decalH, rCoef, gCoef, bCoef, opacity, 99999.0, true, false, true)
+        if newId > 0 then
+            table.insert(activeObjectDecals, newId)
+        end
+    end
+end
+
 -- Close all sub-windows (Browser, PED Customizations, Vehicle Customizations)
 function M.closeAllSubWindows()
     browserVisible = false
     pedCustomsVisible = false
     vehicleCustomsVisible = false
+    objectCustomsVisible = false
+    animPlayer.setAnimPlayerVisible(false)
 end
 
 -- Open PED Customizations with the player's own ped (for Spooner Tab access)
@@ -2490,7 +2796,6 @@ local function renderPedCustomizationsWindow()
                 pedCustomsVisible = false
             end
             ImGui.PopStyleColor(3)
-
             
             local ped = selectedEntity
             
@@ -2821,6 +3126,237 @@ local function renderPedCustomizationsWindow()
     
     if not success then
         M.debug_print("[Spooner] Ped Customizations error: " .. tostring(err))
+    end
+end
+
+-- Render the Object Customizations window
+local function renderObjectCustomizationsWindow()
+    if not objectCustomsVisible then return end
+    if selectedEntity == 0 or selectedEntityType ~= "object" then
+        objectCustomsVisible = false
+        return
+    end
+    
+    local success, err = pcall(function()
+        if not ENTITY.DOES_ENTITY_EXIST(selectedEntity) then
+            objectCustomsVisible = false
+            return
+        end
+        
+        local screenWidth, screenHeight = ImGui.GetDisplaySize()
+        if not screenWidth or not screenHeight then return end
+        
+        local windowWidth = 350
+        local windowHeight = 450
+        local posX = 235
+        local posY = 10
+        
+        if objectCustomsState.isStandalone then
+             posX = 10
+             posY = 10
+        end
+        
+        ImGui.SetNextWindowPos(posX, posY, ImGuiCond.Always)
+        ImGui.SetNextWindowSize(windowWidth, windowHeight, ImGuiCond.Always)
+        
+        local windowFlags = ImGuiWindowFlags.NoScrollbar + ImGuiWindowFlags.NoTitleBar + ImGuiWindowFlags.NoResize + ImGuiWindowFlags.NoCollapse + ImGuiWindowFlags.NoMove
+        
+        ImGui.PushStyleColor(ImGuiCol.WindowBg, 0.1, 0.1, 0.15, 0.85)
+        ImGui.PushStyleColor(ImGuiCol.Border, 0.4, 0.2, 0.6, 0.8)
+        ImGui.PushStyleVar(ImGuiStyleVar.WindowRounding, 8.0)
+        ImGui.PushStyleVar(ImGuiStyleVar.WindowBorderSize, 2.0)
+        ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, 12.0, 10.0)
+        
+        if ImGui.Begin("##ObjectCustoms", true, windowFlags) then
+            ImGui.PushStyleColor(ImGuiCol.Text, 0.9, 0.7, 1.0, 1.0)
+            ImGui.SetWindowFontScale(1.2)
+            ImGui.Text("Object Customizations")
+            ImGui.SetWindowFontScale(1.0)
+            ImGui.PopStyleColor()
+            
+            ImGui.SameLine(windowWidth - 30)
+            ImGui.PushStyleColor(ImGuiCol.Text, 1.0, 1.0, 1.0, 1.0)
+            ImGui.Text("X")
+            ImGui.PopStyleColor()
+            if ImGui.IsItemClicked() then
+                objectCustomsVisible = false
+            end
+            
+            ImGui.Separator()
+            ImGui.Spacing()
+            
+            ImGui.PushStyleColor(ImGuiCol.Text, 0.7, 0.7, 0.8, 1.0)
+            ImGui.Text("Light Color (RGB) & Intensity (A)")
+            ImGui.PopStyleColor()
+            ImGui.PushItemWidth(250)
+            local newColor, changed = ImGui.ColorEdit4("##lightCol", objectCustomsState.lightColor)
+            if changed and newColor then
+                objectCustomsState.lightColor = newColor
+            end
+            ImGui.PopItemWidth()
+            
+            ImGui.Spacing()
+            ImGui.PushStyleColor(ImGuiCol.Text, 0.7, 0.7, 0.8, 1.0)
+            ImGui.Text("Radius Multiplier")
+            ImGui.PopStyleColor()
+            ImGui.PushItemWidth(250)
+            local newRadius = ImGui.SliderFloat("##lightRadius", objectCustomsState.lightRadiusMultiplier, 0.1, 10.0)
+            if newRadius ~= objectCustomsState.lightRadiusMultiplier then
+                objectCustomsState.lightRadiusMultiplier = newRadius
+            end
+            ImGui.PopItemWidth()
+
+            ImGui.Spacing()
+            local useEx, changedEx = ImGui.Checkbox("Use DRAW_LIGHT_WITH_RANGEEX", objectCustomsState.useRangeEx)
+            if changedEx then
+                objectCustomsState.useRangeEx = useEx
+            end
+
+            local useDecal, changedDecal = ImGui.Checkbox("Decal Mode", objectCustomsState.useDecalMode)
+            if changedDecal then
+                objectCustomsState.useDecalMode = useDecal
+                if useDecal then
+                    objectCustomsState.useAltMode = false
+                end
+            end
+
+            ImGui.SameLine()
+            local useAlt, changedAlt = ImGui.Checkbox("Alt Mode (6 Lights)", objectCustomsState.useAltMode)
+            if changedAlt then
+                objectCustomsState.useAltMode = useAlt
+                if useAlt then
+                    objectCustomsState.useDecalMode = false
+                end
+            end
+            
+            if objectCustomsState.useDecalMode then
+                ImGui.Spacing()
+                ImGui.Separator()
+                ImGui.Spacing()
+
+                ImGui.PushStyleColor(ImGuiCol.Text, 0.7, 0.7, 0.8, 1.0)
+                ImGui.Text("Decal Type")
+                ImGui.PopStyleColor()
+                ImGui.PushItemWidth(250)
+                local decalListStr = table.concat(decalTypeNames, "\0") .. "\0"
+                local newIdx = ImGui.Combo("##decalType", objectCustomsState.decalTypeIndex - 1, decalListStr)
+                if newIdx ~= (objectCustomsState.decalTypeIndex - 1) then
+                    objectCustomsState.decalTypeIndex = newIdx + 1
+                end
+                ImGui.PopItemWidth()
+
+                ImGui.Spacing()
+                ImGui.PushStyleColor(ImGuiCol.Text, 0.7, 0.7, 0.8, 1.0)
+                ImGui.Text("Decal Color (RGB) & Opacity (A)")
+                ImGui.PopStyleColor()
+                ImGui.PushItemWidth(250)
+                local newDCol, changedDCol = ImGui.ColorEdit4("##decalCol", objectCustomsState.decalColor)
+                if changedDCol and newDCol then
+                    objectCustomsState.decalColor = newDCol
+                end
+                ImGui.PopItemWidth()
+
+                ImGui.Spacing()
+                ImGui.PushStyleColor(ImGuiCol.Text, 0.7, 0.7, 0.8, 1.0)
+                ImGui.Text("Decal Width Multiplier")
+                ImGui.PopStyleColor()
+                ImGui.PushItemWidth(250)
+                local newDW = ImGui.SliderFloat("##decalW", objectCustomsState.decalWidth, 0.01, 100.0)
+                if newDW ~= objectCustomsState.decalWidth then
+                    objectCustomsState.decalWidth = newDW
+                end
+                ImGui.PopItemWidth()
+
+                ImGui.Spacing()
+                ImGui.PushStyleColor(ImGuiCol.Text, 0.7, 0.7, 0.8, 1.0)
+                ImGui.Text("Decal Height Multiplier")
+                ImGui.PopStyleColor()
+                ImGui.PushItemWidth(250)
+                local newDH = ImGui.SliderFloat("##decalH", objectCustomsState.decalHeight, 0.01, 100.0)
+                if newDH ~= objectCustomsState.decalHeight then
+                    objectCustomsState.decalHeight = newDH
+                end
+                ImGui.PopItemWidth()
+                
+                ImGui.Spacing()
+                ImGui.PushStyleColor(ImGuiCol.Text, 0.7, 0.7, 0.8, 1.0)
+                ImGui.Text("Decal Offset X (Depth from Face)")
+                ImGui.PopStyleColor()
+                ImGui.PushItemWidth(250)
+                local newOffX = ImGui.SliderFloat("##decalOffX", objectCustomsState.decalOffsetX, -5.0, 5.0)
+                if newOffX ~= objectCustomsState.decalOffsetX then objectCustomsState.decalOffsetX = newOffX end
+                ImGui.PopItemWidth()
+
+                ImGui.Spacing()
+                ImGui.PushStyleColor(ImGuiCol.Text, 0.7, 0.7, 0.8, 1.0)
+                ImGui.Text("Decal Offset Y (Shift Side/Side)")
+                ImGui.PopStyleColor()
+                ImGui.PushItemWidth(250)
+                local newOffY = ImGui.SliderFloat("##decalOffY", objectCustomsState.decalOffsetY, -5.0, 5.0)
+                if newOffY ~= objectCustomsState.decalOffsetY then objectCustomsState.decalOffsetY = newOffY end
+                ImGui.PopItemWidth()
+
+                ImGui.Spacing()
+                ImGui.PushStyleColor(ImGuiCol.Text, 0.7, 0.7, 0.8, 1.0)
+                ImGui.Text("Decal Offset Z (Shift Up/Down)")
+                ImGui.PopStyleColor()
+                ImGui.PushItemWidth(250)
+                local newOffZ = ImGui.SliderFloat("##decalOffZ", objectCustomsState.decalOffsetZ, -5.0, 5.0)
+                if newOffZ ~= objectCustomsState.decalOffsetZ then objectCustomsState.decalOffsetZ = newOffZ end
+                ImGui.PopItemWidth()
+
+                ImGui.Spacing()
+                if ImGui.Button("Apply Decals (One-Time)", 160, 0) then
+                    M.applyObjectDecals()
+                end
+                
+            elseif objectCustomsState.useAltMode then
+                ImGui.Spacing()
+                ImGui.Separator()
+                ImGui.Spacing()
+                
+                ImGui.PushStyleColor(ImGuiCol.Text, 0.7, 0.7, 0.8, 1.0)
+                ImGui.Text("Alt Outer Light Color & Intensity")
+                ImGui.PopStyleColor()
+                ImGui.PushItemWidth(250)
+                local newAltColor, changedAltColor = ImGui.ColorEdit4("##altLightCol", objectCustomsState.altLightColor)
+                if changedAltColor and newAltColor then
+                    objectCustomsState.altLightColor = newAltColor
+                end
+                ImGui.PopItemWidth()
+                
+                ImGui.Spacing()
+                ImGui.PushStyleColor(ImGuiCol.Text, 0.7, 0.7, 0.8, 1.0)
+                ImGui.Text("Alt Outer Radius Multiplier")
+                ImGui.PopStyleColor()
+                ImGui.PushItemWidth(250)
+                local newAltRad = ImGui.SliderFloat("##altLightRadius", objectCustomsState.altLightRadiusMultiplier, 0.1, 10.0)
+                if newAltRad ~= objectCustomsState.altLightRadiusMultiplier then
+                    objectCustomsState.altLightRadiusMultiplier = newAltRad
+                end
+                ImGui.PopItemWidth()
+            end
+
+            if objectCustomsState.useRangeEx then
+                ImGui.Spacing()
+                ImGui.PushStyleColor(ImGuiCol.Text, 0.7, 0.7, 0.8, 1.0)
+                ImGui.Text("Shadow")
+                ImGui.PopStyleColor()
+                ImGui.PushItemWidth(250)
+                local newShadow = ImGui.SliderFloat("##lightShadow", objectCustomsState.lightShadow, 0.0, 1000.0)
+                if newShadow ~= objectCustomsState.lightShadow then
+                    objectCustomsState.lightShadow = newShadow
+                end
+                ImGui.PopItemWidth()
+            end
+            
+        end
+        ImGui.End()
+        ImGui.PopStyleColor(2)
+        ImGui.PopStyleVar(3)
+    end)
+    if not success then
+        M.debug_print("[Spooner] Object Customizations error: " .. tostring(err))
     end
 end
 
@@ -3561,6 +4097,126 @@ local function drawGizmoArrow(originX, originY, originZ, axisX, axisY, axisZ, le
 end
 
 
+-- Draw a solid 3D box/cube at the end of the axis line (scale gizmo style)
+local function drawGizmoBox(originX, originY, originZ, axisX, axisY, axisZ, length, r, g, b, alpha, isHovered)
+    -- Normalize the axis direction
+    local dirLen = math.sqrt(axisX * axisX + axisY * axisY + axisZ * axisZ)
+    if dirLen < 0.001 then return end
+    local dx, dy, dz = axisX / dirLen, axisY / dirLen, axisZ / dirLen
+    
+    -- Increase alpha and size if hovered
+    local drawAlpha = isHovered and 255 or alpha
+    local boxSize = isHovered and 0.18 or 0.12
+    
+    -- Calculate center of the box (at end of axis line)
+    local centerX = originX + dx * length
+    local centerY = originY + dy * length
+    local centerZ = originZ + dz * length
+    
+    -- Calculate perpendicular vectors for creating the 3D shape
+    local perpX, perpY, perpZ
+    if math.abs(dz) < 0.9 then
+        perpX = dy
+        perpY = -dx
+        perpZ = 0
+    else
+        perpX = dz
+        perpY = 0
+        perpZ = -dx
+    end
+    
+    -- Normalize perpendicular
+    local perpLen = math.sqrt(perpX * perpX + perpY * perpY + perpZ * perpZ)
+    if perpLen < 0.001 then perpLen = 1 end
+    perpX, perpY, perpZ = perpX / perpLen, perpY / perpLen, perpZ / perpLen
+    
+    -- Second perpendicular (cross product of direction and first perpendicular)
+    local perp2X = dy * perpZ - dz * perpY
+    local perp2Y = dz * perpX - dx * perpZ
+    local perp2Z = dx * perpY - dy * perpX
+    
+    -- Helper to draw a double-sided triangle
+    local function drawDoubleSidedPoly(x1, y1, z1, x2, y2, z2, x3, y3, z3)
+        GRAPHICS.DRAW_POLY(x1, y1, z1, x2, y2, z2, x3, y3, z3, r, g, b, drawAlpha)
+        GRAPHICS.DRAW_POLY(x1, y1, z1, x3, y3, z3, x2, y2, z2, r, g, b, drawAlpha)
+    end
+    
+    -- Calculate the 8 corners of the cube
+    local s = boxSize
+    local corners = {
+        -- Front face (toward origin side)
+        {centerX - dx*s + perpX*s + perp2X*s, centerY - dy*s + perpY*s + perp2Y*s, centerZ - dz*s + perpZ*s + perp2Z*s},
+        {centerX - dx*s - perpX*s + perp2X*s, centerY - dy*s - perpY*s + perp2Y*s, centerZ - dz*s - perpZ*s + perp2Z*s},
+        {centerX - dx*s - perpX*s - perp2X*s, centerY - dy*s - perpY*s - perp2Y*s, centerZ - dz*s - perpZ*s - perp2Z*s},
+        {centerX - dx*s + perpX*s - perp2X*s, centerY - dy*s + perpY*s - perp2Y*s, centerZ - dz*s + perpZ*s - perp2Z*s},
+        -- Back face (away from origin side)
+        {centerX + dx*s + perpX*s + perp2X*s, centerY + dy*s + perpY*s + perp2Y*s, centerZ + dz*s + perpZ*s + perp2Z*s},
+        {centerX + dx*s - perpX*s + perp2X*s, centerY + dy*s - perpY*s + perp2Y*s, centerZ + dz*s - perpZ*s + perp2Z*s},
+        {centerX + dx*s - perpX*s - perp2X*s, centerY + dy*s - perpY*s - perp2Y*s, centerZ + dz*s - perpZ*s - perp2Z*s},
+        {centerX + dx*s + perpX*s - perp2X*s, centerY + dy*s + perpY*s - perp2Y*s, centerZ + dz*s + perpZ*s - perp2Z*s}
+    }
+    
+    -- Draw front face (2 triangles)
+    drawDoubleSidedPoly(corners[1][1], corners[1][2], corners[1][3], corners[2][1], corners[2][2], corners[2][3], corners[3][1], corners[3][2], corners[3][3])
+    drawDoubleSidedPoly(corners[1][1], corners[1][2], corners[1][3], corners[3][1], corners[3][2], corners[3][3], corners[4][1], corners[4][2], corners[4][3])
+    
+    -- Draw back face (2 triangles)
+    drawDoubleSidedPoly(corners[5][1], corners[5][2], corners[5][3], corners[6][1], corners[6][2], corners[6][3], corners[7][1], corners[7][2], corners[7][3])
+    drawDoubleSidedPoly(corners[5][1], corners[5][2], corners[5][3], corners[7][1], corners[7][2], corners[7][3], corners[8][1], corners[8][2], corners[8][3])
+    
+    -- Draw side faces (4 faces, 8 triangles)
+    -- Top face (1-2-6-5)
+    drawDoubleSidedPoly(corners[1][1], corners[1][2], corners[1][3], corners[2][1], corners[2][2], corners[2][3], corners[6][1], corners[6][2], corners[6][3])
+    drawDoubleSidedPoly(corners[1][1], corners[1][2], corners[1][3], corners[6][1], corners[6][2], corners[6][3], corners[5][1], corners[5][2], corners[5][3])
+    
+    -- Bottom face (3-4-8-7)
+    drawDoubleSidedPoly(corners[3][1], corners[3][2], corners[3][3], corners[4][1], corners[4][2], corners[4][3], corners[8][1], corners[8][2], corners[8][3])
+    drawDoubleSidedPoly(corners[3][1], corners[3][2], corners[3][3], corners[8][1], corners[8][2], corners[8][3], corners[7][1], corners[7][2], corners[7][3])
+    
+    -- Left face (2-3-7-6)
+    drawDoubleSidedPoly(corners[2][1], corners[2][2], corners[2][3], corners[3][1], corners[3][2], corners[3][3], corners[7][1], corners[7][2], corners[7][3])
+    drawDoubleSidedPoly(corners[2][1], corners[2][2], corners[2][3], corners[7][1], corners[7][2], corners[7][3], corners[6][1], corners[6][2], corners[6][3])
+    
+    -- Right face (1-4-8-5)
+    drawDoubleSidedPoly(corners[1][1], corners[1][2], corners[1][3], corners[4][1], corners[4][2], corners[4][3], corners[8][1], corners[8][2], corners[8][3])
+    drawDoubleSidedPoly(corners[1][1], corners[1][2], corners[1][3], corners[8][1], corners[8][2], corners[8][3], corners[5][1], corners[5][2], corners[5][3])
+    
+    -- Also draw the shaft line from origin to box
+    local shaftLength = length - boxSize
+    if shaftLength > 0 then
+        local shaftEndX = originX + dx * shaftLength
+        local shaftEndY = originY + dy * shaftLength
+        local shaftEndZ = originZ + dz * shaftLength
+        
+        local shaftWidth = isHovered and 0.06 or 0.04
+        local sw = shaftWidth
+        
+        -- Shaft corners at origin
+        local shaftStart = {
+            {originX + perpX*sw + perp2X*sw, originY + perpY*sw + perp2Y*sw, originZ + perpZ*sw + perp2Z*sw},
+            {originX - perpX*sw + perp2X*sw, originY - perpY*sw + perp2Y*sw, originZ - perpZ*sw + perp2Z*sw},
+            {originX - perpX*sw - perp2X*sw, originY - perpY*sw - perp2Y*sw, originZ - perpZ*sw - perp2Z*sw},
+            {originX + perpX*sw - perp2X*sw, originY + perpY*sw - perp2Y*sw, originZ + perpZ*sw - perp2Z*sw}
+        }
+        
+        -- Shaft corners at shaft end
+        local shaftEnd = {
+            {shaftEndX + perpX*sw + perp2X*sw, shaftEndY + perpY*sw + perp2Y*sw, shaftEndZ + perpZ*sw + perp2Z*sw},
+            {shaftEndX - perpX*sw + perp2X*sw, shaftEndY - perpY*sw + perp2Y*sw, shaftEndZ - perpZ*sw + perp2Z*sw},
+            {shaftEndX - perpX*sw - perp2X*sw, shaftEndY - perpY*sw - perp2Y*sw, shaftEndZ - perpZ*sw - perp2Z*sw},
+            {shaftEndX + perpX*sw - perp2X*sw, shaftEndY + perpY*sw - perp2Y*sw, shaftEndZ + perpZ*sw - perp2Z*sw}
+        }
+        
+        -- Draw shaft sides
+        for i = 1, 4 do
+            local j = (i % 4) + 1
+            drawDoubleSidedPoly(shaftStart[i][1], shaftStart[i][2], shaftStart[i][3], shaftStart[j][1], shaftStart[j][2], shaftStart[j][3], shaftEnd[i][1], shaftEnd[i][2], shaftEnd[i][3])
+            drawDoubleSidedPoly(shaftStart[j][1], shaftStart[j][2], shaftStart[j][3], shaftEnd[j][1], shaftEnd[j][2], shaftEnd[j][3], shaftEnd[i][1], shaftEnd[i][2], shaftEnd[i][3])
+        end
+    end
+end
+
+
 
 
 
@@ -4008,29 +4664,74 @@ local function renderPositionGizmo()
                     end
                 end
                 
-
-                Script.QueueJob(function()
-                    pcall(function()
-                        if ENTITY.DOES_ENTITY_EXIST(capturedHandle) then
-                            local currentPos = ENTITY.GET_ENTITY_COORDS(capturedHandle, true)
-                            if currentPos then
-                                local newX = currentPos.x + (moveDirX * capturedDelta)
-                                local newY = currentPos.y + (moveDirY * capturedDelta)
-                                local newZ = currentPos.z + (moveDirZ * capturedDelta)
-                                
-                                -- Universal handling for all entities to prevent physics interference
-                                -- Freeze and zero velocity on every update
-                                -- Note: Peds are already frozen by selection, but redundant freeze is safe
-                                if ENTITY.IS_ENTITY_A_VEHICLE(capturedHandle) then
-                                    ENTITY.SET_ENTITY_VELOCITY(capturedHandle, 0, 0, 0)
-                                end
-                                
-                                -- Use NO_OFFSET version for everything to avoid ground snapping/physics
-                                ENTITY.SET_ENTITY_COORDS_NO_OFFSET(capturedHandle, newX, newY, newZ, false, false, false)
-                            end
+                -- Check if in box mode (scaling) or arrow mode (movement)
+                if gizmoState.gizmoMode == "box" then
+                    -- BOX MODE: Apply scaling instead of movement
+                    -- Red (X) = Width, Blue (Z) = Height, Green (Y) = Uniform
+                    local scaleDelta = capturedDelta * 25 * gizmoState.scaleSensitivity
+                    
+                    -- Initialize scale state for new entity
+                    if gizmoState.scaleEntity ~= capturedHandle then
+                        gizmoState.scaleEntity = capturedHandle
+                        gizmoState.currentLength = 1.0
+                        gizmoState.currentWidth = 1.0
+                        gizmoState.currentHeight = 1.0
+                    end
+                    
+                    -- Apply scale based on axis
+                    if capturedAxis == "x" then
+                        -- Red = Width only
+                        gizmoState.currentWidth = math.max(0.1, gizmoState.currentWidth + scaleDelta)
+                    elseif capturedAxis == "z" then
+                        -- Blue = Height only
+                        gizmoState.currentHeight = math.max(0.1, gizmoState.currentHeight + scaleDelta)
+                    elseif capturedAxis == "y" then
+                        -- Green = Length only
+                        gizmoState.currentLength = math.max(0.1, gizmoState.currentLength + scaleDelta)
+                    end
+                    
+                    local finalLength = gizmoState.currentLength
+                    local finalWidth = gizmoState.currentWidth
+                    local finalHeight = gizmoState.currentHeight
+                    
+                    if ENTITY.DOES_ENTITY_EXIST(capturedHandle) and GTA.HandleToPointer then
+                        local ptrObj = GTA.HandleToPointer(capturedHandle)
+                        local ptr = ptrObj and ptrObj:GetAddress()
+                        
+                        if ptr and ptr ~= 0 then
+                            local lOffset = spawnerSettings.scaleLengthOffset or 0x60
+                            local wOffset = spawnerSettings.scaleWidthOffset or 0x74
+                            local hOffset = spawnerSettings.scaleHeightOffset or 0x88
+                            Memory.WriteFloat(ptr + lOffset, finalLength)
+                            Memory.WriteFloat(ptr + wOffset, finalWidth)
+                            Memory.WriteFloat(ptr + hOffset, finalHeight)
                         end
+                    end
+                else
+                    -- ARROW MODE: Apply movement (original behavior)
+                    Script.QueueJob(function()
+                        pcall(function()
+                            if ENTITY.DOES_ENTITY_EXIST(capturedHandle) then
+                                local currentPos = ENTITY.GET_ENTITY_COORDS(capturedHandle, true)
+                                if currentPos then
+                                    local newX = currentPos.x + (moveDirX * capturedDelta)
+                                    local newY = currentPos.y + (moveDirY * capturedDelta)
+                                    local newZ = currentPos.z + (moveDirZ * capturedDelta)
+                                    
+                                    -- Universal handling for all entities to prevent physics interference
+                                    -- Freeze and zero velocity on every update
+                                    -- Note: Peds are already frozen by selection, but redundant freeze is safe
+                                    if ENTITY.IS_ENTITY_A_VEHICLE(capturedHandle) then
+                                        ENTITY.SET_ENTITY_VELOCITY(capturedHandle, 0, 0, 0)
+                                    end
+                                    
+                                    -- Use NO_OFFSET version for everything to avoid ground snapping/physics
+                                    ENTITY.SET_ENTITY_COORDS_NO_OFFSET(capturedHandle, newX, newY, newZ, false, false, false)
+                                end
+                            end
+                        end)
                     end)
-                end)
+                end
             end
 
 
@@ -4154,6 +4855,9 @@ startGizmoRenderLoop = function()
                     local yArrowOrigin = ENTITY.GET_OFFSET_FROM_ENTITY_IN_WORLD_COORDS(targetHandle, 0, maxY, 0)
                     local zArrowOrigin = ENTITY.GET_OFFSET_FROM_ENTITY_IN_WORLD_COORDS(targetHandle, 0, 0, maxZ)
                     
+                    -- In box/scale mode, green (Y) arrow stays at same position as move mode
+                    -- (no repositioning needed, yArrowOrigin already set to 0, maxY, 0)
+                    
                     -- Get arrow directions from rotation source (parent for attachments, self for selected)
                     local rotSource = isAttachment and parentEntity or targetHandle
                     local entityRot = rotSource and ENTITY.GET_ENTITY_ROTATION(rotSource, 2) or {x = 0, y = 0, z = 0}
@@ -4183,12 +4887,13 @@ startGizmoRenderLoop = function()
                     local arrowLength = gizmoState.arrowLength
                     local alpha = 200
                     
-                    -- Draw arrows
-                    drawGizmoArrow(xArrowOrigin.x, xArrowOrigin.y, xArrowOrigin.z, xDirX, xDirY, xDirZ, arrowLength, 255, 50, 50, alpha, 
+                    -- Draw arrows or boxes based on gizmo mode
+                    local drawFunc = gizmoState.gizmoMode == "box" and drawGizmoBox or drawGizmoArrow
+                    drawFunc(xArrowOrigin.x, xArrowOrigin.y, xArrowOrigin.z, xDirX, xDirY, xDirZ, arrowLength, 255, 50, 50, alpha, 
                         gizmoState.hoveredAxis == "x" or gizmoState.dragAxis == "x")
-                    drawGizmoArrow(yArrowOrigin.x, yArrowOrigin.y, yArrowOrigin.z, yDirX, yDirY, yDirZ, arrowLength, 50, 255, 50, alpha,
+                    drawFunc(yArrowOrigin.x, yArrowOrigin.y, yArrowOrigin.z, yDirX, yDirY, yDirZ, arrowLength, 50, 255, 50, alpha,
                         gizmoState.hoveredAxis == "y" or gizmoState.dragAxis == "y")
-                    drawGizmoArrow(zArrowOrigin.x, zArrowOrigin.y, zArrowOrigin.z, zDirX, zDirY, zDirZ, arrowLength, 50, 100, 255, alpha,
+                    drawFunc(zArrowOrigin.x, zArrowOrigin.y, zArrowOrigin.z, zDirX, zDirY, zDirZ, arrowLength, 50, 100, 255, alpha,
                         gizmoState.hoveredAxis == "z" or gizmoState.dragAxis == "z")
                 end
             end
@@ -4995,7 +5700,7 @@ local function renderControlsWindow()
     if not screenWidth or not screenHeight then return end
     
     -- Window size
-    local windowWidth = 450
+    local windowWidth = 600
     local windowHeight = 120
     
     -- Position in bottom right corner with some padding
@@ -5034,7 +5739,7 @@ local function renderControlsWindow()
         ImGui.Spacing()
         
         -- Keyboard controls
-        if ImGui.BeginTable("ControlsTable", 2, 0) then
+        if ImGui.BeginTable("ControlsTable", 3, 0) then
             -- Row 1, Col 1
             ImGui.TableNextColumn()
             ImGui.PushStyleColor(ImGuiCol.Text, 0.8, 0.8, 0.9, 1.0)
@@ -5053,6 +5758,16 @@ local function renderControlsWindow()
             ImGui.SameLine()
             ImGui.PushStyleColor(ImGuiCol.Text, 0.6, 0.6, 0.7, 1.0)
             ImGui.Text("Switch Modes")
+            ImGui.PopStyleColor()
+
+            -- Row 1, Col 3
+            ImGui.TableNextColumn()
+            ImGui.PushStyleColor(ImGuiCol.Text, 0.8, 0.8, 0.9, 1.0)
+            ImGui.Text("R")
+            ImGui.PopStyleColor()
+            ImGui.SameLine()
+            ImGui.PushStyleColor(ImGuiCol.Text, 0.6, 0.6, 0.7, 1.0)
+            ImGui.Text("Switch Arrow types")
             ImGui.PopStyleColor()
             
             -- Row 2, Col 1
@@ -5182,6 +5897,8 @@ local function renderEntityOptionsWindow()
             customLabel = "Vehicle Customizations"
         elseif selectedEntityType == "ped" then
             customLabel = "Ped Customizations"
+        elseif selectedEntityType == "object" then
+            customLabel = "Object Customizations"
         end
         
         ImGui.PushStyleColor(ImGuiCol.Button, 0.1, 0.15, 0.35, 1.0)
@@ -5194,6 +5911,8 @@ local function renderEntityOptionsWindow()
                 else
                     saveWindowVisible = false
                     pedCustomsVisible = false
+                    objectCustomsVisible = false
+                    animPlayer.setAnimPlayerVisible(false)
                     vehicleCustomsState.targetEntity = selectedEntity
                     M.openVehicleCustomizations()
                 end
@@ -5203,13 +5922,44 @@ local function renderEntityOptionsWindow()
                 else
                     saveWindowVisible = false
                     vehicleCustomsVisible = false
+                    objectCustomsVisible = false
+                    animPlayer.setAnimPlayerVisible(false)
                     pedCustomsState.targetEntity = selectedEntity
                     M.openPedCustomizations()
+                end
+            elseif selectedEntityType == "object" then
+                if objectCustomsVisible and objectCustomsState.targetEntity == selectedEntity then
+                    objectCustomsVisible = false
+                else
+                    saveWindowVisible = false
+                    vehicleCustomsVisible = false
+                    pedCustomsVisible = false
+                    animPlayer.setAnimPlayerVisible(false)
+                    objectCustomsState.targetEntity = selectedEntity
+                    M.openObjectCustomizations()
                 end
             end
         end
         ImGui.PopStyleColor(3)
 
+        -- Animations button (only for peds) - deep purple
+        if selectedEntityType == "ped" then
+            ImGui.PushStyleColor(ImGuiCol.Button, 0.3, 0.15, 0.45, 1.0)
+            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.4, 0.2, 0.55, 1.0)
+            ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.25, 0.1, 0.35, 1.0)
+            if ImGui.Button("Animations", windowWidth - 25, 0) then
+                if animPlayer.getAnimPlayerVisible() then
+                    animPlayer.setAnimPlayerVisible(false)
+                else
+                    saveWindowVisible = false
+                    vehicleCustomsVisible = false
+                    pedCustomsVisible = false
+                    animPlayer.openAnimPlayer(selectedEntity)
+                end
+            end
+            ImGui.PopStyleColor(3)
+            ImGui.Spacing()
+        end
         
         -- Save button (only for vehicles and peds, not objects) - yellow/orange
         if selectedEntityType == "vehicle" or selectedEntityType == "ped" then
@@ -5226,6 +5976,7 @@ local function renderEntityOptionsWindow()
                     -- Close other windows (mutual exclusivity)
                     vehicleCustomsVisible = false
                     pedCustomsVisible = false
+                    animPlayer.setAnimPlayerVisible(false)
                     attachWindowVisible = false
                     attachmentsWindowVisible = false
                     -- Open save window
@@ -5328,10 +6079,8 @@ local function renderEntityOptionsWindow()
                     pcall(function()
                         if ENTITY.DOES_ENTITY_EXIST(entToDelete) then
                             ENTITY.SET_ENTITY_AS_MISSION_ENTITY(entToDelete, true, true)
-                            local ptr = Memory.AllocInt()
-                            Memory.WriteInt(ptr, entToDelete)
-                            ENTITY.DELETE_ENTITY(ptr)
-                        end
+                            ConstructorLib.delete_entity(entToDelete)
+end
                     end)
                 end)
             end
@@ -5538,6 +6287,8 @@ function M.onPresent()
                     browserVisible = false
                     vehicleCustomsVisible = false
                     pedCustomsVisible = false
+                    objectCustomsVisible = false
+                    animPlayer.setAnimPlayerVisible(false)
                     attachWindowVisible = false
                     attachmentsWindowVisible = false
                     saveWindowVisible = false
@@ -5563,6 +6314,8 @@ function M.renderSubWindows()
     -- These windows can be opened from the Spooner Tab without free camera mode
     renderVehicleCustomizationsWindow()
     renderPedCustomizationsWindow()
+    renderObjectCustomizationsWindow()
+    animPlayer.renderAnimPlayerWindow()
 end
 
 
@@ -6640,10 +7393,8 @@ local function deletePreviewEntity()
             pcall(function()
                 if entityToDelete and entityToDelete ~= 0 and ENTITY.DOES_ENTITY_EXIST(entityToDelete) then
                     ENTITY.SET_ENTITY_AS_MISSION_ENTITY(entityToDelete, true, true)
-                    local ptr = Memory.AllocInt()
-                    Memory.WriteInt(ptr, entityToDelete)
-                    ENTITY.DELETE_ENTITY(ptr)
-                end
+                    ConstructorLib.delete_entity(entityToDelete)
+end
             end)
         end)
     end
@@ -6793,10 +7544,8 @@ local function spawnPreviewEntity(modelName, entityType)
                     else
                         -- Model changed, delete this one
                         ENTITY.SET_ENTITY_AS_MISSION_ENTITY(newEntity, true, true)
-                        local ptr = Memory.AllocInt()
-                        Memory.WriteInt(ptr, newEntity)
-                        ENTITY.DELETE_ENTITY(ptr)
-                    end
+                        ConstructorLib.delete_entity(newEntity)
+end
                 end
                 
                 STREAMING.SET_MODEL_AS_NO_LONGER_NEEDED(hash)
@@ -7620,6 +8369,14 @@ function M.renderCrosshair()
     
     ImGui.PopStyleVar(2)
     ImGui.PopStyleColor()
+end
+
+M.isEntityCaptured = function()
+    return selectedEntity ~= 0 and ENTITY.DOES_ENTITY_EXIST(selectedEntity)
+end
+
+M.getCapturedEntity = function()
+    return selectedEntity
 end
 
 return M

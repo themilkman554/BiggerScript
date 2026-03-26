@@ -10,7 +10,7 @@ Logger.Log(eLogColor.GREEN, "", " ░    ░  ▒ ░░ ░   ░ ░ ░   ░
 Logger.Log(eLogColor.GREEN, "", " ░       ░        ░       ░    ░  ░   ░           ░  ░ ░         ░      ░                    ")
 Logger.Log(eLogColor.GREEN, "", "      ░                                              ░                                       ")
 
-GUI.AddToast("BiggerScriptv6.4", "Added Gift and Apply vehicles\n Added Send to All\n Added more json support (peds can spawn in helicopters)", 10000, 0)
+GUI.AddToast("BiggerScriptv7.1", "Lots of Fixes\n Code Rewrite\n New Maps", 10000, 0)
 
 if Cherax.GetEdition() == "LE" then
     GUI.AddToast("BiggerScript", "Legacy Version of Cherax breaks vehicles with too many attachments", 10000, 0)
@@ -25,6 +25,10 @@ local vehicle_fly = require("BiggerScript/lib/vehicle_fly")
 local spooner = require("BiggerScript/lib/spooner")
 local asset_loader = require("BiggerScript/lib/asset_loader")
 local iplloader = require("BiggerScript/lib/iplloader")
+local PaidTier = require("BiggerScript/lib/paid_tier")
+local Sentry = require("BiggerScript/lib/Sentry")
+local Hoverboard = require("BiggerScript/lib/Hoverboard")
+local animPlayer = require("BiggerScript/lib/anim_player")
 
 local menuRootPath = FileMgr.GetMenuRootPath()
 local biggerScriptRootPath = menuRootPath .. "\\Lua\\BiggerScript"
@@ -69,6 +73,9 @@ local spawnerSettings = {
     contextPreview = false,
     unloadLastIPL = false,
     attackerSpawnMode = 0, -- 0 = Attacker, 1 = Gift, 2 = Apply
+    scaleLengthOffset = 0x60,
+    scaleWidthOffset = 0x74,
+    scaleHeightOffset = 0x88, -- Initial values for scale memory modification (length, width, height)
 }
 local attackerSpawnModeNames = {"Attacker", "Gift", "Apply"}
 local lastSpoonerState = false
@@ -284,7 +291,12 @@ end
 
 local folderStates = {}
 local preSearchFolderStates = nil
-local activeSearchField = nil
+local memoryScannerState = {
+    rangeStart = 0x0,
+    rangeEnd = 0x300,
+    results = {},
+    lastScanTime = 0
+}
 
 -- Context menu state
 local contextMenuFile = nil  -- { path = string, type = string ("vehicle"/"map"/"outfit") }
@@ -292,6 +304,8 @@ local contextMenuOpen = false
 local contextKeyConsumed = false  -- Prevent multiple activations per key press
 local mouseRightConsumed = false  -- Prevent multiple activations per right-click
 local contextMenuPos = { x = 0, y = 0 }  -- Store position where menu was opened
+local wasGuiOpen = false  -- Track GUI open state to detect reopens
+local menuJustReopened = false  -- True only on the first render frame after menu reopens
 
 -- Helper function to get !favs folder path based on item type and base folder
 local function getFavsFolder(itemType, originalPath)
@@ -435,15 +449,19 @@ local function renderFolder(folderName, folderData, spawnFunction, filterText, p
     end
 
     local isOpen
+    local treeLabel = folderName .. "##" .. currentPath
     if isSearching then
         ImGui.SetNextItemOpen(true, ImGuiCond.Always)
-        isOpen = ImGui.TreeNode(folderName)
+        isOpen = ImGui.TreeNode(treeLabel)
     else
-        local currentState = folderStates[currentPath]
-        if currentState ~= nil then
-            ImGui.SetNextItemOpen(currentState, ImGuiCond.Always)
+        -- Only force-restore folder states on the first frame after menu reopens
+        if menuJustReopened then
+            local currentState = folderStates[currentPath]
+            if currentState ~= nil then
+                ImGui.SetNextItemOpen(currentState, ImGuiCond.Always)
+            end
         end
-        isOpen = ImGui.TreeNode(folderName)
+        isOpen = ImGui.TreeNode(treeLabel)
         folderStates[currentPath] = isOpen
     end
 
@@ -695,6 +713,19 @@ local function Initialize()
         end)
 
         initialized = true
+
+        -- Check donors remotely
+        if PaidTier.CheckRemote then
+            PaidTier.CheckRemote()
+        end
+
+        -- Set active menu tab to LuaTab
+        ClickGUI.SetActiveMenuTab(ClickTab.LuaTab)
+
+        -- Start sentry loop
+        Sentry.StartLoop()
+        -- Start hoverboard tick loop
+        Hoverboard.StartLoop()
     end
 
     -- Perform Asset Check/Update
@@ -777,11 +808,27 @@ end
 
 EventMgr.RegisterHandler(eLuaEvent.ON_PRESENT, renderLogoFadeIn)
 
+-- Detect menu open/close globally (runs every frame)
+EventMgr.RegisterHandler(eLuaEvent.ON_PRESENT, function()
+    local guiOpen = GUI.IsOpen()
+    if guiOpen and not wasGuiOpen then
+        contextMenuOpen = false
+        contextMenuFile = nil
+        menuJustReopened = true  -- Signal renderFolder to restore saved states this frame
+    elseif not guiOpen and wasGuiOpen then
+        -- Force close context menu when main menu is closed
+        contextMenuOpen = false
+        contextMenuFile = nil
+    end
+    wasGuiOpen = guiOpen
+end)
+
 local function renderMenyooTab()
     if not initialized then
         ImGui.Text("Loading libraries... Please wait.")
         return
     end
+
     local hoveredFileThisFrame = nil
     local function hoverCallback(file)
         hoveredFileThisFrame = file
@@ -862,6 +909,73 @@ local function renderMenyooTab()
     end
 
     if ImGui.BeginTabBar("MenyooTabs") then
+        -- SETTINGS TAB (first tab)
+        if ImGui.BeginTabItem("Settings") then
+            local columns = 2
+            if ImGui.BeginTable("SettingsTable", columns, ImGuiTableFlags.SizingStretchSame) then
+                ImGui.TableNextRow()
+                ImGui.TableSetColumnIndex(0)
+
+                -- Donor Info
+                if ClickGUI.BeginCustomChildWindow("Donor Info") then
+                    ImGui.Text("UID: " .. tostring(Cherax.GetUID()))
+                    ImGui.SameLine()
+                    if ImGui.Button("Clipboard##UID") then
+                        Utils.SetClipBoardText(tostring(Cherax.GetUID()), "")
+                    end
+
+                    ImGui.Text("Tier: ")
+                    ImGui.SameLine()
+
+                    if PaidTier.IsPaid() then
+                        ImGui.PushStyleColor(0, 0.0, 1.0, 0.0, 1.0)
+                        ImGui.Text("Donor")
+                        ImGui.PopStyleColor()
+                    else
+                        ImGui.Text("Free")
+                    end
+
+                    if not PaidTier.IsPaid() then
+                        ImGui.Separator()
+                        ImGui.Text("To Purchase Donor Join Discord")
+                        ImGui.SameLine()
+                        if ImGui.Button("Clipboard##Discord") then
+                            Utils.SetClipBoardText("https://discord.gg/ctnbevsz54", "")
+                        end
+                    end
+
+                    ClickGUI.EndCustomChildWindow()
+                end
+
+                -- Debug (moved from Special tab)
+                if ClickGUI.BeginCustomChildWindow("Debug") then
+                    spawnerSettings.printToDebug = ImGui.Checkbox("Debug Mode", spawnerSettings.printToDebug)
+                    spawnerSettings.spawnIn000Vehicle = ImGui.Checkbox("Spawn in Network v1 0 0 0 Vehicle", spawnerSettings.spawnIn000Vehicle)
+                    ClickGUI.EndCustomChildWindow()
+                end
+
+                ImGui.TableSetColumnIndex(1)
+
+                -- Credits (moved from Special tab)
+                if ClickGUI.BeginCustomChildWindow("Credits") then
+                    ImGui.Text("Menyoo")
+                    ImGui.Text("Constructor by hexarobi")
+                    ImGui.Text("Lance Spooner")
+                    ImGui.Text("Kek's Lua")
+                    ImGui.Text("2take1script")
+                    ImGui.Text("YimMenu")
+                    ImGui.Text("anonymous50000")
+                    ImGui.Text("Prisuhm")
+                    ImGui.Text("Everyone who made and shared their creations")
+                    ImGui.Text("Ai Free Usage")
+                    ClickGUI.EndCustomChildWindow()
+                end
+
+                ImGui.EndTable()
+            end
+            ImGui.EndTabItem()
+        end
+
         -- VEHICLES TAB (combines XML, INI, JSON)
         if ImGui.BeginTabItem("Vehicles") then
             local columns = 2
@@ -1641,7 +1755,7 @@ local function renderMenyooTab()
             if ImGui.BeginTable("SpecialTable", columns, ImGuiTableFlags.SizingStretchSame) then
                 ImGui.TableNextRow()
                 ImGui.TableSetColumnIndex(0)
-                if ClickGUI.BeginCustomChildWindow("Special Stuff") then
+                if ClickGUI.BeginCustomChildWindow("Free") then
                     ImGui.SetWindowFontScale(1.0)
                     
                     if ImGui.Button("Spawn Robot") then
@@ -1666,26 +1780,60 @@ local function renderMenyooTab()
                     ClickGUI.EndCustomChildWindow()
                 end
 
-                if ClickGUI.BeginCustomChildWindow("Debug") then
-                    spawnerSettings.printToDebug = ImGui.Checkbox("Print Debug to Console", spawnerSettings.printToDebug)
-                    spawnerSettings.spawnIn000Vehicle = ImGui.Checkbox("Spawn in Network v1 0 0 0 Vehicle", spawnerSettings.spawnIn000Vehicle)
+                ImGui.TableSetColumnIndex(1)
+                
+                ImGui.PushStyleColor(ImGuiCol.Text, 0.0, 1.0, 0.0, 1.0)
+                local windowName = PaidTier.IsPaid() and "Hoverboard" or "Donor"
+                local showDonor = ClickGUI.BeginCustomChildWindow(windowName)
+                ImGui.PopStyleColor()
+
+                if showDonor then
+                    if PaidTier.IsPaid() then
+                        -- Sync with actual state in case it was toggled by hotkey
+                        if spawnerSettings.hoverboard ~= Hoverboard.Active then
+                            spawnerSettings.hoverboard = Hoverboard.Active
+                        end
+                        local prevHoverboard = spawnerSettings.hoverboard
+                        spawnerSettings.hoverboard = ImGui.Checkbox("Hoverboard", spawnerSettings.hoverboard or false)
+                        if spawnerSettings.hoverboard ~= prevHoverboard then
+                            Hoverboard.Toggle(spawnerSettings.hoverboard)
+                        end
+                        if ImGui.IsItemHovered() then
+                            ImGui.SetTooltip("Controls: Shift to boost, Space to jump, E to do tricks")
+                        end
+
+                        -- Board variation slider (1-9: prop_boogieboard_01 to _09)
+                        if spawnerSettings.boardVariation == nil then
+                            spawnerSettings.boardVariation = 1
+                        end
+                        local newVar, changed = ImGui.SliderInt("Board Style", spawnerSettings.boardVariation, 1, 9)
+                        if changed then
+                            spawnerSettings.boardVariation = newVar
+                            Hoverboard.SetBoardVariation(newVar)
+                        end
+                    else
+                        ImGui.Text("More features are available")
+                        ImGui.Text("in the donor edition")
+                        ImGui.Separator()
+                        if ImGui.Button("Copy Discord Link") then
+                            Utils.SetClipBoardText("https://discord.gg/ctnbevsz54", "")
+                        end
+                    end
                     ClickGUI.EndCustomChildWindow()
                 end
 
-                ImGui.TableSetColumnIndex(1)
-                if ClickGUI.BeginCustomChildWindow("Credits") then
-                    ImGui.Text("Menyoo")
-                    ImGui.Text("Constructor by hexarobi")
-                    ImGui.Text("Lance Spooner")
-                    ImGui.Text("Kek's Lua")
-                    ImGui.Text("2take1script")
-                    ImGui.Text("YimMenu")
-                    ImGui.Text("anonymous50000")
-                    ImGui.Text("Prisuhm")
-                    ImGui.Text("Everyone who made and shared their creations")
-                    ImGui.Text("Ai Free Usage")
-                    ClickGUI.EndCustomChildWindow()
+                if PaidTier.IsPaid() then
+                    ImGui.PushStyleColor(ImGuiCol.Text, 0.0, 1.0, 0.0, 1.0)
+                    local showSentry = ClickGUI.BeginCustomChildWindow("Sentry Gun")
+                    ImGui.PopStyleColor()
+
+                    if showSentry then
+                        Sentry.RenderUI()
+                        ClickGUI.EndCustomChildWindow()
+                    end
                 end
+
+
                 
                 ImGui.EndTable()
             end
@@ -1714,7 +1862,156 @@ local function renderMenyooTab()
                         ImGui.SetTooltip("Show the Spooner Controls info window in the bottom right")
                     end
                     
+                    if spawnerSettings.printToDebug then
+                        ImGui.Spacing()
+                        ImGui.Text("Scale Offsets (Hex)")
+                        
+                        -- Scale Length Offset Input
+                        local lengthHex = string.format("%X", spawnerSettings.scaleLengthOffset)
+                        local newLengthHex, changedLength = ImGui.InputText("Length Offset", lengthHex, 16)
+                        if newLengthHex ~= lengthHex then
+                            local val = tonumber(newLengthHex, 16)
+                            if val then
+                                spawnerSettings.scaleLengthOffset = val
+                            end
+                        end
+                        if ImGui.IsItemHovered() then
+                            ImGui.SetTooltip("Memory offset for length scaling (Default: 60)")
+                        end
 
+                        -- Scale Width Offset Input
+                        local widthHex = string.format("%X", spawnerSettings.scaleWidthOffset)
+                        local newWidthHex, changedWidth = ImGui.InputText("Width Offset", widthHex, 16)
+                        if newWidthHex ~= widthHex then
+                            local val = tonumber(newWidthHex, 16)
+                            if val then
+                                spawnerSettings.scaleWidthOffset = val
+                            end
+                        end
+                        if ImGui.IsItemHovered() then
+                            ImGui.SetTooltip("Memory offset for width scaling (Default: 74)")
+                        end
+
+                        -- Scale Height Offset Input
+                        local heightHex = string.format("%X", spawnerSettings.scaleHeightOffset)
+                        local newHeightHex, changedHeight = ImGui.InputText("Height Offset", heightHex, 16)
+                        if newHeightHex ~= heightHex then
+                            local val = tonumber(newHeightHex, 16)
+                            if val then
+                                spawnerSettings.scaleHeightOffset = val
+                            end
+                        end
+                        if ImGui.IsItemHovered() then
+                            ImGui.SetTooltip("Memory offset for height scaling (Default: 88)")
+                        end
+                        
+                        ImGui.Spacing()
+                        ImGui.Separator()
+                        ImGui.Spacing()
+                        
+                        -- Memory Scanner
+                        ImGui.PushStyleColor(ImGuiCol.Text, 0.9, 0.7, 1.0, 1.0)
+                        ImGui.Text("Memory Scanner")
+                        ImGui.PopStyleColor()
+                        
+                        if spooner.isEntityCaptured() then
+                            local handle = spooner.getCapturedEntity()
+                            local ptrObj = GTA.HandleToPointer(handle)
+                            local addr = ptrObj and ptrObj:GetAddress() or 0
+                            ImGui.Text("Entity Address: " .. string.format("0x%X", addr))
+                            
+                            -- Scanner Range Inputs
+                            local startHex = string.format("%X", memoryScannerState.rangeStart)
+                            local newStart, changedStart = ImGui.InputText("Start Offset", startHex, 16)
+                            if newStart ~= startHex then
+                                local val = tonumber(newStart, 16)
+                                if val then memoryScannerState.rangeStart = val end
+                            end
+                            
+                            local endHex = string.format("%X", memoryScannerState.rangeEnd)
+                            local newEnd, changedEnd = ImGui.InputText("End Offset", endHex, 16)
+                            if newEnd ~= endHex then
+                                local val = tonumber(newEnd, 16)
+                                if val then memoryScannerState.rangeEnd = val end
+                            end
+                            
+                            if ImGui.Button("Scan Memory", -1, 0) then
+                                memoryScannerState.results = {}
+                                if addr ~= 0 then
+                                    for offset = memoryScannerState.rangeStart, memoryScannerState.rangeEnd, 4 do
+                                        local fVal = Memory.ReadFloat(addr + offset)
+                                        local iVal = Memory.ReadInt(addr + offset)
+                                        
+                                        -- Filter interesting values (floats between 0.1 and 10.0, excluding exactly 0)
+                                        if fVal and fVal > 0.1 and fVal < 10.0 then
+                                            table.insert(memoryScannerState.results, {
+                                                offset = offset,
+                                                float = fVal,
+                                                int = iVal,
+                                                isLikely = (fVal >= 0.9 and fVal <= 1.1) -- Highlight values near 1.0
+                                            })
+                                        end
+                                    end
+                                    spawning.debug_print("[Scanner] Found " .. #memoryScannerState.results .. " potential values")
+                                end
+                            end
+                            
+                            -- Results List
+                            if #memoryScannerState.results > 0 then
+                                ImGui.Spacing()
+                                ImGui.Text("Potential Matches (" .. #memoryScannerState.results .. "):")
+                                ImGui.BeginChild("ScannerResults", 0, 200, true)
+                                
+                                local columns = 3
+                                if ImGui.BeginTable("ScannerTable", columns, ImGuiTableFlags.SizingStretchSame + ImGuiTableFlags.Borders) then
+                                     -- Manually render headers since TableSetupColumn might be causing issues
+                                     ImGui.TableNextRow()
+                                     ImGui.TableSetColumnIndex(0)
+                                     ImGui.Text("Offset")
+                                     ImGui.TableSetColumnIndex(1)
+                                     ImGui.Text("Value")
+                                     ImGui.TableSetColumnIndex(2)
+                                     ImGui.Text("Action")
+                                     
+                                     for _, res in ipairs(memoryScannerState.results) do
+                                        ImGui.TableNextRow()
+                                        ImGui.TableSetColumnIndex(0)
+                                        
+                                        -- Highlight likely candidates (near 1.0)
+                                        if res.isLikely then
+                                            ImGui.PushStyleColor(ImGuiCol.Text, 0.0, 1.0, 0.0, 1.0)
+                                        end
+                                        ImGui.Text(string.format("0x%X", res.offset))
+                                        if res.isLikely then ImGui.PopStyleColor() end
+                                        
+                                        ImGui.TableSetColumnIndex(1)
+                                        ImGui.Text(string.format("%.3f", res.float))
+                                        if ImGui.IsItemHovered() then
+                                            ImGui.SetTooltip("Int: " .. res.int)
+                                        end
+                                        
+                                        ImGui.TableSetColumnIndex(2)
+                                        if ImGui.Button("Test L##" .. res.offset) then
+                                            spawnerSettings.scaleLengthOffset = res.offset
+                                        end
+                                        ImGui.SameLine()
+                                        if ImGui.Button("Test W##" .. res.offset) then
+                                            spawnerSettings.scaleWidthOffset = res.offset
+                                        end
+                                        ImGui.SameLine()
+                                        if ImGui.Button("Test H##" .. res.offset) then
+                                            spawnerSettings.scaleHeightOffset = res.offset
+                                        end
+                                    end
+                                    ImGui.EndTable()
+                                end
+                                ImGui.EndChild()
+                            end
+                        else
+                            ImGui.TextDisabled("Select an entity with Spooner to scan")
+                        end
+                        ImGui.Spacing()
+                    end
                     spawnerSettings.deletePhotoCache = ImGui.Checkbox("Delete Photo Cache After Exit", spawnerSettings.deletePhotoCache)
                     if ImGui.IsItemHovered() then
                         ImGui.SetTooltip("When enabled, deletes all files in BiggerScript\\SpoonerAssets\\gtahashru\\objects and subfolders when script unloads")
@@ -1863,6 +2160,35 @@ local function renderMenyooTab()
                             end
                         end
                         ImGui.PopStyleColor(3)
+
+                        ImGui.Spacing()
+
+                        -- Animations button (dark purple when off, light purple when on)
+                        local animPlayerVisible = animPlayer.getAnimPlayerVisible()
+                        if animPlayerVisible then
+                            -- Light purple when on
+                            ImGui.PushStyleColor(ImGuiCol.Button, 0.5, 0.3, 0.7, 1.0)
+                            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.6, 0.4, 0.8, 1.0)
+                            ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.4, 0.2, 0.6, 1.0)
+                        else
+                            -- Dark purple when off
+                            ImGui.PushStyleColor(ImGuiCol.Button, 0.3, 0.15, 0.45, 1.0)
+                            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.4, 0.2, 0.55, 1.0)
+                            ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.25, 0.1, 0.35, 1.0)
+                        end
+
+                        if ImGui.Button("Animations", -1, 30) then
+                            if animPlayerVisible then
+                                -- Toggle off
+                                animPlayer.setAnimPlayerVisible(false)
+                            else
+                                -- Close other windows first (mutual exclusivity)
+                                spooner.closeAllSubWindows()
+                                -- Target the player's ped directly for this standalone button
+                                animPlayer.openAnimPlayer(PLAYER.PLAYER_PED_ID())
+                            end
+                        end
+                        ImGui.PopStyleColor(3)
                     else
                         ImGui.TextDisabled("Available when Spooner is OFF")
                     end
@@ -1879,6 +2205,7 @@ local function renderMenyooTab()
         ImGui.EndTabBar()
     end
     spawning.managePreview(hoveredFileThisFrame)
+    menuJustReopened = false  -- Clear after all folders have been rendered this frame
 end
 
 ClickGUI.AddTab("Bigger Script", renderMenyooTab)
@@ -1913,7 +2240,7 @@ ClickGUI.AddPlayerTab("Bigger Script", function()
             ImGui.EndCombo()
         end
         if ImGui.IsItemHovered() then
-            ImGui.SetTooltip("Attacker: Spawns vehicle with ped that chases Target\nGift: Spawns vehicle in front of Target\nApply: Applies attachments to Target's current vehicle")
+            ImGui.SetTooltip("Attacker: Spawns vehicle with ped that chases Target\nSpawn: Spawns vehicle in front of Target\nApply: Applies attachments to Target's current vehicle")
         end
         ImGui.SameLine()
         if spawnerSettings.sendToAllPlayers == nil then spawnerSettings.sendToAllPlayers = false end
@@ -2036,4 +2363,3 @@ ClickGUI.AddPlayerTab("Bigger Script", function()
         ClickGUI.EndCustomChildWindow()
     end
 end)
-
