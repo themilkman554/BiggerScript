@@ -10,7 +10,7 @@ Logger.Log(eLogColor.GREEN, "", " ░    ░  ▒ ░░ ░   ░ ░ ░   ░
 Logger.Log(eLogColor.GREEN, "", " ░       ░        ░       ░    ░  ░   ░           ░  ░ ░         ░      ░                    ")
 Logger.Log(eLogColor.GREEN, "", "      ░                                              ░                                       ")
 
-GUI.AddToast("BiggerScriptv7.1", "Lots of Fixes\n Code Rewrite\n New Maps", 10000, 0)
+GUI.AddToast("BiggerScriptv7.2", "Translation Support", 10000, 0)
 
 if Cherax.GetEdition() == "LE" then
     GUI.AddToast("BiggerScript", "Legacy Version of Cherax breaks vehicles with too many attachments", 10000, 0)
@@ -767,6 +767,12 @@ if FileMgr.DoesFileExist(logoPath) then
     end
 end
 
+local watermelonPath = biggerScriptRootPath .. "\\watermelon.png"
+local watermelonTexture = nil
+if FileMgr.DoesFileExist(watermelonPath) then
+    watermelonTexture = Texture.LoadTexture(watermelonPath)
+end
+
 local function renderLogoFadeIn()
     if not logoState.active or not logoState.textureId or logoState.textureId == 0 then
         return
@@ -823,6 +829,109 @@ EventMgr.RegisterHandler(eLuaEvent.ON_PRESENT, function()
     wasGuiOpen = guiOpen
 end)
 
+local function RenderCustomCheckboxFeature(label, featureName, hashStr, settingsTable, settingKey, tooltipText, onChange)
+    local hash = Utils.Joaat(hashStr)
+    if not FeatureMgr.GetFeature(hash) then
+        local featDesc = tooltipText or ""
+        local customFeat = FeatureMgr.AddFeature(hash, featureName, eFeatureType.Custom, featDesc, function(feat)
+            local oldVal = settingsTable[settingKey]
+            local displayName = feat:GetName(true)-- to get translated name
+            settingsTable[settingKey] = ImGui.Checkbox(displayName, settingsTable[settingKey])
+            if tooltipText and ImGui.IsItemHovered() then
+                ImGui.SetTooltip(tooltipText)
+            end
+            if onChange and oldVal ~= settingsTable[settingKey] then
+                onChange(settingsTable[settingKey])
+            end
+        end, false)
+        if customFeat then
+            customFeat:SetNoCallbackOnPress(true)
+        end
+    end
+    ClickGUI.RenderFeature(hash)
+end
+
+local function RenderCustomButtonFeature(label, featureName, hashStr, colorScheme, tooltipText, onClick)
+    local hash = Utils.Joaat(hashStr)
+    if not FeatureMgr.GetFeature(hash) then
+        local featDesc = tooltipText or ""
+        local customFeat = FeatureMgr.AddFeature(hash, featureName, eFeatureType.Custom, featDesc, function(feat)
+            local displayName = feat:GetName(true)
+            
+            -- Default Red color scheme if none provided
+            local normal = {0.36, 0.016, 0.016, 1.0}
+            local hover = {0.46, 0.06, 0.06, 1.0}
+            local active = {0.26, 0.01, 0.01, 1.0}
+            
+            if colorScheme == "PurpleRed" then
+                normal = {0.36, 0.016, 0.157, 1.0}
+                hover = {0.46, 0.06, 0.22, 1.0}
+                active = {0.26, 0.01, 0.10, 1.0}
+            elseif colorScheme == "Green" then
+                normal = {0.016, 0.36, 0.157, 1.0}
+                hover = {0.06, 0.46, 0.22, 1.0}
+                active = {0.01, 0.26, 0.10, 1.0}
+            elseif colorScheme == "Blue" then
+                normal = {0.016, 0.157, 0.36, 1.0}
+                hover = {0.06, 0.22, 0.46, 1.0}
+                active = {0.01, 0.10, 0.26, 1.0}
+            elseif colorScheme == "DarkBlue" then
+                normal = {0.1, 0.2, 0.4, 1.0}
+                hover = {0.15, 0.3, 0.5, 1.0}
+                active = {0.08, 0.18, 0.35, 1.0}
+            elseif colorScheme == "LightBlue" then
+                normal = {0.2, 0.6, 0.9, 1.0}
+                hover = {0.3, 0.7, 1.0, 1.0}
+                active = {0.15, 0.55, 0.85, 1.0}
+            elseif colorScheme == "SpoonerRed" then
+                normal = {0.5, 0.1, 0.1, 1.0}
+                hover = {0.6, 0.15, 0.15, 1.0}
+                active = {0.45, 0.08, 0.08, 1.0}
+            elseif colorScheme == "SpoonerGreen" then
+                normal = {0.1, 0.5, 0.15, 1.0}
+                hover = {0.15, 0.6, 0.2, 1.0}
+                active = {0.08, 0.45, 0.12, 1.0}
+            elseif colorScheme == "LightPurple" then
+                normal = {0.5, 0.3, 0.7, 1.0}
+                hover = {0.6, 0.4, 0.8, 1.0}
+                active = {0.4, 0.2, 0.6, 1.0}
+            elseif colorScheme == "DarkPurple" then
+                normal = {0.3, 0.15, 0.45, 1.0}
+                hover = {0.4, 0.2, 0.55, 1.0}
+                active = {0.25, 0.1, 0.35, 1.0}
+            end
+
+            ImGui.PushStyleColor(ImGuiCol.Button, normal[1], normal[2], normal[3], normal[4])
+            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, hover[1], hover[2], hover[3], hover[4])
+            ImGui.PushStyleColor(ImGuiCol.ButtonActive, active[1], active[2], active[3], active[4])
+            
+            if ImGui.Button(displayName .. "##btn" .. hashStr) then
+                if onClick then onClick() end
+            end
+            ImGui.PopStyleColor(3)
+            
+            if tooltipText and ImGui.IsItemHovered() then
+                ImGui.SetTooltip(tooltipText)
+            end
+        end, false)
+        if customFeat then
+            customFeat:SetNoCallbackOnPress(true)
+        end
+    end
+    ClickGUI.RenderFeature(hash)
+end
+
+local function RenderStandardButtonFeature(featureName, hashStr, tooltipText, onClick) --since I put it custom imgui
+    local hash = Utils.Joaat(hashStr)
+    if not FeatureMgr.GetFeature(hash) then
+        local featDesc = tooltipText or ""
+        FeatureMgr.AddFeature(hash, featureName, eFeatureType.Button, featDesc, function(feat)
+            if onClick then onClick() end
+        end, false)
+    end
+    ClickGUI.RenderFeature(hash)
+end
+
 local function renderMenyooTab()
     if not initialized then
         ImGui.Text("Loading libraries... Please wait.")
@@ -869,26 +978,18 @@ local function renderMenyooTab()
             ImGui.Spacing()
             
             -- Move to Favorites button (green)
-            ImGui.PushStyleColor(ImGuiCol.Button, 0.016, 0.36, 0.157, 1.0)
-            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.06, 0.46, 0.22, 1.0)
-            ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.01, 0.26, 0.10, 1.0)
-            if ImGui.Button("Move to Favorites") then
+            RenderCustomButtonFeature("Move to Favorites", "Move File to Favorites", "BiggerScript_File_Favorite", "Green", nil, function()
                 moveToFavorites(contextMenuFile.path, contextMenuFile.type)
                 contextMenuOpen = false
                 contextMenuFile = nil
-            end
-            ImGui.PopStyleColor(3)
+            end)
             
             -- Delete button (red)
-            ImGui.PushStyleColor(ImGuiCol.Button, 0.36, 0.016, 0.016, 1.0)
-            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.46, 0.06, 0.06, 1.0)
-            ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.26, 0.01, 0.01, 1.0)
-            if ImGui.Button("Delete") then
+            RenderCustomButtonFeature("Delete", "Delete File", "BiggerScript_File_Delete", nil, nil, function()
                 deleteFile(contextMenuFile.path, contextMenuFile.type)
                 contextMenuOpen = false
                 contextMenuFile = nil
-            end
-            ImGui.PopStyleColor(3)
+            end)
             
             ImGui.Spacing()
             
@@ -949,8 +1050,8 @@ local function renderMenyooTab()
 
                 -- Debug (moved from Special tab)
                 if ClickGUI.BeginCustomChildWindow("Debug") then
-                    spawnerSettings.printToDebug = ImGui.Checkbox("Debug Mode", spawnerSettings.printToDebug)
-                    spawnerSettings.spawnIn000Vehicle = ImGui.Checkbox("Spawn in Network v1 0 0 0 Vehicle", spawnerSettings.spawnIn000Vehicle)
+                    RenderCustomCheckboxFeature("Debug Mode", "Debug Mode", "BiggerScript_Settings_DebugMode", spawnerSettings, "printToDebug")
+                    RenderCustomCheckboxFeature("Spawn in Network v1 0 0 0 Vehicle", "Spawn v1 0 0 0 Vehicle", "BiggerScript_Settings_Spawn1000", spawnerSettings, "spawnIn000Vehicle")
                     ClickGUI.EndCustomChildWindow()
                 end
 
@@ -968,6 +1069,20 @@ local function renderMenyooTab()
                     ImGui.Text("Prisuhm")
                     ImGui.Text("Everyone who made and shared their creations")
                     ImGui.Text("Ai Free Usage")
+                    ImGui.Text("Rabai WaterMelon")
+                    ImGui.Text(" |")
+                    ImGui.Text("V")
+                    
+                    if watermelonTexture and watermelonTexture ~= 0 and Texture.IsTextureValid(watermelonTexture) then
+                        local d3dTex = Texture.GetTexture(watermelonTexture)
+                        if d3dTex then
+                            local texHandle = d3dTex:GetCurrent()
+                            local cp_x, cp_y = ImGui.GetCursorScreenPos()
+                            local imgSize = 160
+                            ImGui.AddImage(texHandle, cp_x, cp_y, cp_x + imgSize, cp_y + imgSize)
+                            ImGui.Dummy(0, imgSize) 
+                        end
+                    end
                     ClickGUI.EndCustomChildWindow()
                 end
 
@@ -987,45 +1102,28 @@ local function renderMenyooTab()
                     ImGui.SetWindowFontScale(1.0)
                     ImGui.Spacing()
 
-                    spawnerSettings.contextPreview = ImGui.Checkbox("Context Preview", spawnerSettings.contextPreview)
-                    if ImGui.IsItemHovered() then
-                        ImGui.SetTooltip("Light Blue = Networkable (under 80)\nOrange = Not everything will network")
-                    end
-                    spawnerSettings.previewVehicle = ImGui.Checkbox("Preview Vehicle", spawnerSettings.previewVehicle)
-                    spawnerSettings.onlyApplyAttachments = ImGui.Checkbox("Apply Attachments to Current Vehicle", spawnerSettings.onlyApplyAttachments)
-                    if ImGui.IsItemHovered() then
-                        ImGui.SetTooltip("Instead of spawning a new vehicle, attach objects to the vehicle you're currently in")
-                    end
-                    spawnerSettings.inVehicle = ImGui.Checkbox("In Vehicle", spawnerSettings.inVehicle)
-                    spawnerSettings.spawnPlaneInTheAir = ImGui.Checkbox("Spawn Aircraft In The Air", spawnerSettings.spawnPlaneInTheAir)
-                    spawnerSettings.deleteOldVehicle = ImGui.Checkbox("Delete Old Vehicle", spawnerSettings.deleteOldVehicle)
-                    spawnerSettings.vehicleGodMode = ImGui.Checkbox("Vehicle God Mode", spawnerSettings.vehicleGodMode)
-                    spawnerSettings.vehicleEngineOn = ImGui.Checkbox("Vehicle Engine On", spawnerSettings.vehicleEngineOn)
-                    spawnerSettings.radioOff = ImGui.Checkbox("Radio Off", spawnerSettings.radioOff)
-                    spawnerSettings.upgradedVehicle = ImGui.Checkbox("Upgraded Vehicle", spawnerSettings.upgradedVehicle)
-                    spawnerSettings.randomColor = ImGui.Checkbox("Random Color", spawnerSettings.randomColor)
-                    spawnerSettings.randomLivery = ImGui.Checkbox("Random Livery", spawnerSettings.randomLivery)
-
+                    RenderCustomCheckboxFeature("Context Preview", "Context Preview", "BiggerScript_TestCustomFeature", spawnerSettings, "contextPreview", "Light Blue = Networkable (under 80)\nOrange = Not everything will network")
+                    RenderCustomCheckboxFeature("Preview Vehicle", "Preview Vehicle", "BiggerScript_Veh_PreviewVehicle", spawnerSettings, "previewVehicle")
+                    RenderCustomCheckboxFeature("Apply Attachments to Current Vehicle", "Apply Attachments", "BiggerScript_Veh_ApplyAttachments", spawnerSettings, "onlyApplyAttachments", "Instead of spawning a new vehicle, attach objects to the vehicle you're currently in")
+                    RenderCustomCheckboxFeature("In Vehicle", "In Vehicle", "BiggerScript_Veh_InVehicle", spawnerSettings, "inVehicle")
+                    RenderCustomCheckboxFeature("Spawn Aircraft In The Air", "Spawn Aircraft", "BiggerScript_Veh_SpawnAircraftInTheAir", spawnerSettings, "spawnPlaneInTheAir")
+                    RenderCustomCheckboxFeature("Delete Old Vehicle", "Delete Old Vehicle", "BiggerScript_Veh_DeleteOldVehicle", spawnerSettings, "deleteOldVehicle")
+                    RenderCustomCheckboxFeature("Vehicle God Mode", "Vehicle God Mode", "BiggerScript_Veh_VehicleGodMode", spawnerSettings, "vehicleGodMode")
+                    RenderCustomCheckboxFeature("Vehicle Engine On", "Vehicle Engine On", "BiggerScript_Veh_VehicleEngineOn", spawnerSettings, "vehicleEngineOn")
+                    RenderCustomCheckboxFeature("Radio Off", "Radio Off", "BiggerScript_Veh_RadioOff", spawnerSettings, "radioOff")
+                    RenderCustomCheckboxFeature("Upgraded Vehicle", "Upgraded Vehicle", "BiggerScript_Veh_UpgradedVehicle", spawnerSettings, "upgradedVehicle")
+                    RenderCustomCheckboxFeature("Random Color", "Random Color", "BiggerScript_Veh_RandomColor", spawnerSettings, "randomColor")
+                    RenderCustomCheckboxFeature("Random Livery", "Random Livery", "BiggerScript_Veh_RandomLivery", spawnerSettings, "randomLivery")
                     
-                    local oldFly = spawnerSettings.vehicleFly
-                    spawnerSettings.vehicleFly = ImGui.Checkbox("Vehicle Fly", spawnerSettings.vehicleFly)
-                    if spawnerSettings.vehicleFly ~= oldFly then
-                        vehicle_fly.toggle_vehicle_fly(spawnerSettings.vehicleFly)
-                    end
+                    RenderCustomCheckboxFeature("Vehicle Fly", "Vehicle Fly", "BiggerScript_Veh_VehicleFly", spawnerSettings, "vehicleFly", nil, function(newVal)
+                        vehicle_fly.toggle_vehicle_fly(newVal)
+                    end)
 
                     ImGui.Spacing()
 
-                    ImGui.PushStyleColor(ImGuiCol.Button, 0.36, 0.016, 0.157, 1.0) 
-                    ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.46, 0.06, 0.22, 1.0)
-                    ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.26, 0.01, 0.10, 1.0)
-                    if ImGui.Button("Delete All Spawned Vehicles") then
+                    RenderCustomButtonFeature("Delete All Spawned Vehicles", "Delete All Vehicles", "BiggerScript_Veh_DeleteAll", "PurpleRed", "Delete all previously spawned vehicles and their attachments", function()
                         spawning.deleteAllSpawnedVehicles()
-                    end
-                    ImGui.PopStyleColor(3)
-
-                    if ImGui.IsItemHovered() then
-                        ImGui.SetTooltip("Delete all previously spawned vehicles and their attachments")
-                    end
+                    end)
 
                     ImGui.Spacing()
 
@@ -1042,26 +1140,18 @@ local function renderMenyooTab()
                             ImGui.SameLine()
                             
                             -- Green Drive button
-                            ImGui.PushStyleColor(ImGuiCol.Button, 0.016, 0.36, 0.157, 1.0)
-                            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.06, 0.46, 0.22, 1.0)
-                            ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.01, 0.26, 0.10, 1.0)
-                            if ImGui.Button("Drive##veh" .. i) then
+                            RenderCustomButtonFeature("Drive##veh" .. i, "Drive", "BiggerScript_Veh_" .. i .. "_Drive", "Green", nil, function()
                                 if vehicleData.vehicle and vehicleData.vehicle ~= 0 then
                                     spawning.driveVehicle(vehicleData.vehicle)
                                 end
-                            end
-                            ImGui.PopStyleColor(3)
+                            end)
                             
                             ImGui.SameLine()
                             
                             -- Red Delete button
-                            ImGui.PushStyleColor(ImGuiCol.Button, 0.36, 0.016, 0.016, 1.0)
-                            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.46, 0.06, 0.06, 1.0)
-                            ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.26, 0.01, 0.01, 1.0)
-                            if ImGui.Button("Delete##veh" .. i) then
+                            RenderCustomButtonFeature("Delete##veh" .. i, "Delete", "BiggerScript_Veh_" .. i .. "_Delete", nil, nil, function()
                                 spawning.deleteVehicleByIndex(i)
-                            end
-                            ImGui.PopStyleColor(3)
+                            end)
                         end
                         ClickGUI.EndCustomChildWindow()
                     end
@@ -1073,9 +1163,9 @@ local function renderMenyooTab()
                         if ImGui.BeginTabItem("XML") then
                             searchXmlVehicles, _ = ImGui.InputText("##searchXmlVehicles", searchXmlVehicles, 256)
                             ImGui.SameLine()
-                            if ImGui.Button("Refresh##xmlVeh") then
+                            RenderStandardButtonFeature("Refresh", "BiggerScript_Veh_RefreshXML", nil, function()
                                 refreshXmlVehicles()
-                            end
+                            end)
                             ImGui.Spacing()
 
                             -- Scrollable child region for file list
@@ -1089,9 +1179,9 @@ local function renderMenyooTab()
                         if ImGui.BeginTabItem("INI") then
                             searchIniVehicles, _ = ImGui.InputText("##searchIniVehicles", searchIniVehicles, 256)
                             ImGui.SameLine()
-                            if ImGui.Button("Refresh##iniVeh") then
+                            RenderStandardButtonFeature("Refresh", "BiggerScript_Veh_RefreshINI", nil, function()
                                 refreshIniVehicles()
-                            end
+                            end)
                             ImGui.Spacing()
 
                             -- Scrollable child region for file list
@@ -1105,9 +1195,9 @@ local function renderMenyooTab()
                         if ImGui.BeginTabItem("JSON") then
                             searchJsonVehicles, _ = ImGui.InputText("##searchJsonVehicles", searchJsonVehicles, 256)
                             ImGui.SameLine()
-                            if ImGui.Button("Refresh##jsonVeh") then
+                            RenderStandardButtonFeature("Refresh", "BiggerScript_Veh_RefreshJSON", nil, function()
                                 refreshJsonVehicles()
-                            end
+                            end)
                             ImGui.Spacing()
 
                             -- Scrollable child region for file list
@@ -1121,9 +1211,9 @@ local function renderMenyooTab()
                         if ImGui.BeginTabItem("CHRX") then
                             searchChrxVehicles, _ = ImGui.InputText("##searchChrxVehicles", searchChrxVehicles, 256)
                             ImGui.SameLine()
-                            if ImGui.Button("Refresh##chrxVeh") then
+                            RenderStandardButtonFeature("Refresh", "BiggerScript_Veh_RefreshCHRX", nil, function()
                                 refreshChrxVehicles()
-                            end
+                            end)
                             ImGui.Spacing()
 
                             -- Scrollable child region for file list
@@ -1163,71 +1253,31 @@ local function renderMenyooTab()
                     ImGui.SetWindowFontScale(1.0)
                     ImGui.Spacing()
 
-                    spawnerSettings.contextPreview = ImGui.Checkbox("Context Preview", spawnerSettings.contextPreview)
-                    if ImGui.IsItemHovered() then
-                        ImGui.SetTooltip("Light Blue = Networkable (under 80)\nOrange = Not everything will network")
-                    end
-                    spawnerSettings.teleportToMap = ImGui.Checkbox("Teleport to Map", spawnerSettings.teleportToMap)
-                    if ImGui.IsItemHovered() then
-                        ImGui.SetTooltip("Teleport to the map's reference coordinates when spawning (if available)")
-                    end
-                    spawnerSettings.spawnMapOnMe = ImGui.Checkbox("Spawn Map on Me", spawnerSettings.spawnMapOnMe)
-                    if ImGui.IsItemHovered() then
-                        ImGui.SetTooltip("Spawn the map at your current position instead of its original coordinates")
-                    end
-
-                    spawnerSettings.networkMapsV2Enabled = ImGui.Checkbox("Network Maps V2", spawnerSettings.networkMapsV2Enabled)
-                    if ImGui.IsItemHovered() then
-                        ImGui.SetTooltip("Uses a few networking natives to hopefully network better")
-                    end
-                    spawnerSettings.networkMapsV1Enabled = ImGui.Checkbox("Network Maps V1", spawnerSettings.networkMapsV1Enabled)
-                    if ImGui.IsItemHovered() then
-                        ImGui.SetTooltip("Don't use seems broken after the latest update")
-                    end
-
-                    spawnerSettings.deleteOldMap = ImGui.Checkbox("Delete Old Map", spawnerSettings.deleteOldMap)
-                    if ImGui.IsItemHovered() then
-                        ImGui.SetTooltip("Delete the previously spawned map when a new one is spawned")
-                    end
+                    RenderCustomCheckboxFeature("Context Preview", "Map Context Preview", "BiggerScript_Maps_ContextPreview", spawnerSettings, "contextPreview", "Light Blue = Networkable (under 80)\nOrange = Not everything will network")
+                    RenderCustomCheckboxFeature("Teleport to Map", "Teleport to Map", "BiggerScript_Maps_TeleportToMap", spawnerSettings, "teleportToMap", "Teleport to the map's reference coordinates when spawning (if available)")
+                    RenderCustomCheckboxFeature("Spawn Map on Me", "Spawn Map on Me", "BiggerScript_Maps_SpawnMapOnMe", spawnerSettings, "spawnMapOnMe", "Spawn the map at your current position instead of its original coordinates")
+                    RenderCustomCheckboxFeature("Network Maps V2", "Network Maps V2", "BiggerScript_Maps_NetworkV2", spawnerSettings, "networkMapsV2Enabled", "Uses a few networking natives to hopefully network better")
+                    RenderCustomCheckboxFeature("Network Maps V1", "Network Maps V1", "BiggerScript_Maps_NetworkV1", spawnerSettings, "networkMapsV1Enabled", "Don't use seems broken after the latest update")
+                    RenderCustomCheckboxFeature("Delete Old Map", "Delete Old Map", "BiggerScript_Maps_DeleteOldMap", spawnerSettings, "deleteOldMap", "Delete the previously spawned map when a new one is spawned")
 
                     ImGui.Spacing()
 
-                    ImGui.PushStyleColor(ImGuiCol.Button, 0.36, 0.016, 0.157, 1.0)
-                    ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.46, 0.06, 0.22, 1.0)
-                    ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.26, 0.01, 0.10, 1.0)
-                    if ImGui.Button("Delete All Spawned Maps") then
+                    RenderCustomButtonFeature("Delete All Spawned Maps", "Delete All Maps", "BiggerScript_Maps_DeleteAll", "PurpleRed", "Delete all previously spawned map objects", function()
                         spawning.deleteAllSpawnedMaps()
-                    end
-                    ImGui.PopStyleColor(3)
-
-                    if ImGui.IsItemHovered() then
-                        ImGui.SetTooltip("Delete all previously spawned map objects")
-                    end
+                    end)
 
                     ImGui.Spacing()
 
-                    ImGui.PushStyleColor(ImGuiCol.Button, 0.016, 0.36, 0.157, 1.0)
-                    ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.06, 0.46, 0.22, 1.0)
-                    ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.01, 0.26, 0.10, 1.0)
-                    if ImGui.Button("Teleport All Players To Me") then
+                    RenderCustomButtonFeature("Teleport All Players To Me", "Teleport All to Me", "BiggerScript_Maps_TeleportAll", "Green", nil, function()
                         FeatureMgr.GetFeatureByName("Teleport All To Me"):TriggerCallback()
-                    end
-                    ImGui.PopStyleColor(3)
+                    end)
 
                     ImGui.Spacing()
 
-                    ImGui.PushStyleColor(ImGuiCol.Button, 0.016, 0.157, 0.36, 1.0)
-                    ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.06, 0.22, 0.46, 1.0)
-                    ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.01, 0.10, 0.26, 1.0)
-                    if ImGui.Button("Clear Area") then
+                    RenderCustomButtonFeature("Clear Area", "Clear Area Action", "BiggerScript_Maps_ClearArea", "Blue", "Useful to clear the objects pool/network more map props", function()
                         FeatureMgr.GetFeatureByName("Clear Distance"):SetIntValue(1000)
                         FeatureMgr.GetFeatureByName("Clear Area"):TriggerCallback()
-                    end
-                    ImGui.PopStyleColor(3)
-
-                    if ImGui.IsItemHovered() then
-                        ImGui.SetTooltip("Useful to clear the objects pool/network more map props")
-                    end
+                    end)
 
                     if hasMarkers then
                         ImGui.Spacing()
@@ -1268,10 +1318,7 @@ local function renderMenyooTab()
                             ImGui.SameLine()
                             
                             -- Green Teleport button
-                            ImGui.PushStyleColor(ImGuiCol.Button, 0.016, 0.36, 0.157, 1.0)
-                            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.06, 0.46, 0.22, 1.0)
-                            ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.01, 0.26, 0.10, 1.0)
-                            if ImGui.Button("Teleport##map" .. i) then
+                            RenderCustomButtonFeature("Teleport##map" .. i, "Teleport to Map " .. i, "BiggerScript_Map_" .. i .. "_TP", "Green", nil, function()
                                 if mapData.refCoords then
                                     spawning.teleportToMapRefCoords(mapData.refCoords)
                                 else
@@ -1284,30 +1331,21 @@ local function renderMenyooTab()
                                         end
                                     end
                                 end
-                            end
-                            ImGui.PopStyleColor(3)
+                            end)
                             
                             ImGui.SameLine()
                             
                             -- Blue Bring button (move map to player)
-                            ImGui.PushStyleColor(ImGuiCol.Button, 0.016, 0.157, 0.36, 1.0)
-                            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.06, 0.22, 0.46, 1.0)
-                            ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.01, 0.10, 0.26, 1.0)
-                            if ImGui.Button("Bring##map" .. i) then
+                            RenderCustomButtonFeature("Bring##map" .. i, "Bring Map " .. i, "BiggerScript_Map_" .. i .. "_Bring", "Blue", nil, function()
                                 spawning.bringMapToPlayer(i)
-                            end
-                            ImGui.PopStyleColor(3)
+                            end)
                             
                             ImGui.SameLine()
                             
                             -- Red Delete button
-                            ImGui.PushStyleColor(ImGuiCol.Button, 0.36, 0.016, 0.016, 1.0)
-                            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.46, 0.06, 0.06, 1.0)
-                            ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.26, 0.01, 0.01, 1.0)
-                            if ImGui.Button("Delete##map" .. i) then
+                            RenderCustomButtonFeature("Delete##map" .. i, "Delete Map " .. i, "BiggerScript_Map_" .. i .. "_Delete", nil, nil, function()
                                 spawning.deleteMapByIndex(i)
-                            end
-                            ImGui.PopStyleColor(3)
+                            end)
                         end
                         ClickGUI.EndCustomChildWindow()
                     end
@@ -1319,9 +1357,9 @@ local function renderMenyooTab()
                         if ImGui.BeginTabItem("XML") then
                             searchXmlMaps, _ = ImGui.InputText("##searchXmlMaps", searchXmlMaps, 256)
                             ImGui.SameLine()
-                            if ImGui.Button("Refresh##xmlMaps") then
+                            RenderStandardButtonFeature("Refresh", "BiggerScript_Maps_RefreshXML", nil, function()
                                 refreshXmlMaps()
-                            end
+                            end)
                             ImGui.Spacing()
 
                             -- Scrollable child region for file list
@@ -1335,9 +1373,9 @@ local function renderMenyooTab()
                         if ImGui.BeginTabItem("JSON") then
                             searchJsonMaps, _ = ImGui.InputText("##searchJsonMaps", searchJsonMaps, 256)
                             ImGui.SameLine()
-                            if ImGui.Button("Refresh##jsonMaps") then
+                            RenderStandardButtonFeature("Refresh", "BiggerScript_Maps_RefreshJSON", nil, function()
                                 refreshJsonMaps()
-                            end
+                            end)
                             ImGui.Spacing()
 
                             -- Scrollable child region for file list
@@ -1369,18 +1407,10 @@ local function renderMenyooTab()
                     ImGui.SetWindowFontScale(1.0)
                     ImGui.Spacing()
 
-                    spawnerSettings.contextPreview = ImGui.Checkbox("Context Preview", spawnerSettings.contextPreview)
-                    if ImGui.IsItemHovered() then
-                        ImGui.SetTooltip("Light Blue = Networkable (under 80)\nOrange = Not everything will network")
-                    end
-                    spawnerSettings.previewOutfit = ImGui.Checkbox("Preview Outfit", spawnerSettings.previewOutfit)
-                    
-                    spawnerSettings.onlyApplyAttachments = ImGui.Checkbox("Only Apply Attachments", spawnerSettings.onlyApplyAttachments)
-                    if ImGui.IsItemHovered() then
-                        ImGui.SetTooltip("May Break Positioning")
-                    end
-                    
-                    spawnerSettings.deleteLastOutfitAttachments = ImGui.Checkbox("Delete Last Outfit Attachments", spawnerSettings.deleteLastOutfitAttachments)
+                    RenderCustomCheckboxFeature("Context Preview", "Outfit Context Preview", "BiggerScript_Outfits_ContextPreview", spawnerSettings, "contextPreview", "Light Blue = Networkable (under 80)\nOrange = Not everything will network")
+                    RenderCustomCheckboxFeature("Preview Outfit", "Preview Outfit", "BiggerScript_Outfits_PreviewOutfit", spawnerSettings, "previewOutfit")
+                    RenderCustomCheckboxFeature("Only Apply Attachments", "Outfit Apply Attachments", "BiggerScript_Outfits_ApplyAttachments", spawnerSettings, "onlyApplyAttachments", "May Break Positioning")
+                    RenderCustomCheckboxFeature("Delete Last Outfit Attachments", "Delete Last Outfit Attachments", "BiggerScript_Outfits_DeleteLastAttachments", spawnerSettings, "deleteLastOutfitAttachments")
                     
                     ImGui.Spacing()
                     
@@ -1395,14 +1425,11 @@ local function renderMenyooTab()
                         end
                         
                         -- Toggle to enable/disable FOV
-                        local oldFOVEnabled = spawnerSettings.thirdPersonFOVEnabled
-                        spawnerSettings.thirdPersonFOVEnabled = ImGui.Checkbox("FOV Changer", spawnerSettings.thirdPersonFOVEnabled)
-                        
-                        if spawnerSettings.thirdPersonFOVEnabled ~= oldFOVEnabled then
+                        RenderCustomCheckboxFeature("FOV Changer", "Third Person FOV Toggle", "BiggerScript_Outfits_FOVChanger", spawnerSettings, "thirdPersonFOVEnabled", nil, function(newVal)
                             -- Toggle the Cherax menu feature
                             thirdPersonFOVFeature:Toggle()
                             
-                            if spawnerSettings.thirdPersonFOVEnabled then
+                            if newVal then
                                 -- Get current value or default to 50
                                 local currentValue = spawnerSettings.thirdPersonFOVValue or 50
                                 thirdPersonFOVFeature:SetIntValue(currentValue)
@@ -1412,7 +1439,7 @@ local function renderMenyooTab()
                                 thirdPersonFOVFeature:SetIntValue(0)
                                 thirdPersonAimFOVFeature:SetIntValue(0)
                             end
-                        end
+                        end)
                         
                         -- Single slider that controls both FOV values
                         if spawnerSettings.thirdPersonFOVEnabled then
@@ -1432,17 +1459,9 @@ local function renderMenyooTab()
                     
                     ImGui.Spacing()
 
-                    ImGui.PushStyleColor(ImGuiCol.Button, 0.36, 0.016, 0.157, 1.0)
-                    ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.46, 0.06, 0.22, 1.0)
-                    ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.26, 0.01, 0.10, 1.0)
-                    if ImGui.Button("Delete All Spawned Outfits") then
+                    RenderCustomButtonFeature("Delete All Spawned Outfits", "Delete All Outfits", "BiggerScript_Outfits_DeleteAll", "PurpleRed", "Delete all previously spawned outfit attachments", function()
                         spawning.deleteAllSpawnedOutfits()
-                    end
-                    ImGui.PopStyleColor(3)
-
-                    if ImGui.IsItemHovered() then
-                        ImGui.SetTooltip("Delete all previously spawned outfit attachments")
-                    end
+                    end)
 
                     ImGui.Spacing()
 
@@ -1457,9 +1476,9 @@ local function renderMenyooTab()
                         if ImGui.BeginTabItem("XML") then
                             searchXmlOutfits, _ = ImGui.InputText("##searchXmlOutfits", searchXmlOutfits, 256)
                             ImGui.SameLine()
-                            if ImGui.Button("Refresh##xmlOutfits") then
+                            RenderStandardButtonFeature("Refresh", "BiggerScript_Outfits_RefreshXML", nil, function()
                                 refreshXmlOutfits()
-                            end
+                            end)
                             ImGui.Spacing()
 
                             -- Scrollable child region for file list
@@ -1473,9 +1492,9 @@ local function renderMenyooTab()
                         if ImGui.BeginTabItem("JSON") then
                             searchJsonOutfits, _ = ImGui.InputText("##searchJsonOutfits", searchJsonOutfits, 256)
                             ImGui.SameLine()
-                            if ImGui.Button("Refresh##jsonOutfits") then
+                            RenderStandardButtonFeature("Refresh", "BiggerScript_Outfits_RefreshJSON", nil, function()
                                 refreshJsonOutfits()
-                            end
+                            end)
                             ImGui.Spacing()
 
                             -- Scrollable child region for file list
@@ -1489,9 +1508,9 @@ local function renderMenyooTab()
                         if ImGui.BeginTabItem("CHRX") then
                             searchChrxOutfits, _ = ImGui.InputText("##searchChrxOutfits", searchChrxOutfits, 256)
                             ImGui.SameLine()
-                            if ImGui.Button("Refresh##chrxOutfits") then
+                            RenderStandardButtonFeature("Refresh", "BiggerScript_Outfits_RefreshCHRX", nil, function()
                                 refreshChrxOutfits()
-                            end
+                            end)
                             ImGui.Spacing()
 
                             -- Scrollable child region for file list
@@ -1524,25 +1543,13 @@ local function renderMenyooTab()
                     ImGui.SetWindowFontScale(1.0)
                     ImGui.Spacing()
                     
-                    spawnerSettings.unloadLastIPL = ImGui.Checkbox("Unload Last IPL", spawnerSettings.unloadLastIPL)
-                    if ImGui.IsItemHovered() then
-                        ImGui.SetTooltip("Unload the previously loaded IPL group when loading a new one")
-                    end
+                    RenderCustomCheckboxFeature("Unload Last IPL", "Unload Last IPL", "BiggerScript_IPL_UnloadLast", spawnerSettings, "unloadLastIPL", "Unload the previously loaded IPL group when loading a new one")
                     
                     ImGui.Spacing()
                     
-                    -- Unload All button
-                    ImGui.PushStyleColor(ImGuiCol.Button, 0.36, 0.016, 0.157, 1.0)
-                    ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.46, 0.06, 0.22, 1.0)
-                    ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.26, 0.01, 0.10, 1.0)
-                    if ImGui.Button("Unload All IPLs") then
+                    RenderCustomButtonFeature("Unload All IPLs", "Unload All IPLs", "BiggerScript_IPL_UnloadAll", "PurpleRed", "Unload all currently loaded IPL groups", function()
                         iplloader.unloadAllGroups()
-                    end
-                    ImGui.PopStyleColor(3)
-                    
-                    if ImGui.IsItemHovered() then
-                        ImGui.SetTooltip("Unload all currently loaded IPL groups")
-                    end
+                    end)
                     
                     ImGui.Spacing()
                     ClickGUI.EndCustomChildWindow()
@@ -1758,22 +1765,20 @@ local function renderMenyooTab()
                 if ClickGUI.BeginCustomChildWindow("Free") then
                     ImGui.SetWindowFontScale(1.0)
                     
-                    if ImGui.Button("Spawn Robot") then
+                    RenderStandardButtonFeature("Spawn Robot", "BiggerScript_Special_SpawnRobot", nil, function()
                         robot.spawnRobot()
-                    end
+                    end)
 
-                    if ImGui.Button("Self Destruction") then
+                    RenderStandardButtonFeature("Self Destruction", "BiggerScript_Special_RobotSelfDestruct", nil, function()
                         robot.selfDestructRobot()
-                    end
+                    end)
 
 
 
                     ImGui.Spacing()
-                    local oldUpsideDown = spawnerSettings.upsideDownMap
-                    spawnerSettings.upsideDownMap = ImGui.Checkbox("Upside Down Map v3", spawnerSettings.upsideDownMap)
-                    if spawnerSettings.upsideDownMap ~= oldUpsideDown then
-                        upsidedownmap.toggle_upside_down_map(spawnerSettings.upsideDownMap)
-                    end
+                    RenderCustomCheckboxFeature("Upside Down Map v3", "Upside Down Map", "BiggerScript_Maps_UpsideDown", spawnerSettings, "upsideDownMap", nil, function(newVal)
+                        upsidedownmap.toggle_upside_down_map(newVal)
+                    end)
 
 
 
@@ -1793,14 +1798,9 @@ local function renderMenyooTab()
                         if spawnerSettings.hoverboard ~= Hoverboard.Active then
                             spawnerSettings.hoverboard = Hoverboard.Active
                         end
-                        local prevHoverboard = spawnerSettings.hoverboard
-                        spawnerSettings.hoverboard = ImGui.Checkbox("Hoverboard", spawnerSettings.hoverboard or false)
-                        if spawnerSettings.hoverboard ~= prevHoverboard then
-                            Hoverboard.Toggle(spawnerSettings.hoverboard)
-                        end
-                        if ImGui.IsItemHovered() then
-                            ImGui.SetTooltip("Controls: Shift to boost, Space to jump, E to do tricks")
-                        end
+                        RenderCustomCheckboxFeature("Hoverboard", "Hoverboard Toggle", "BiggerScript_Donor_Hoverboard", spawnerSettings, "hoverboard", "Controls: Shift to boost, Space to jump, E to do tricks", function(newVal)
+                            Hoverboard.Toggle(newVal)
+                        end)
 
                         -- Board variation slider (1-9: prop_boogieboard_01 to _09)
                         if spawnerSettings.boardVariation == nil then
@@ -1852,15 +1852,8 @@ local function renderMenyooTab()
                     ImGui.SetWindowFontScale(1.0)
                     ImGui.Spacing()
                     
-                    spawnerSettings.enableGizmo = ImGui.Checkbox("Enable Gizmo Arrows", spawnerSettings.enableGizmo)
-                    if ImGui.IsItemHovered() then
-                        ImGui.SetTooltip("Show 3D gizmo arrows on selected entities for positioning")
-                    end
-                    
-                    spawnerSettings.showSpoonerControls = ImGui.Checkbox("Show Controls", spawnerSettings.showSpoonerControls)
-                    if ImGui.IsItemHovered() then
-                        ImGui.SetTooltip("Show the Spooner Controls info window in the bottom right")
-                    end
+                    RenderCustomCheckboxFeature("Enable Gizmo Arrows", "Spooner Gizmo Arrows", "BiggerScript_Spooner_Gizmo", spawnerSettings, "enableGizmo", "Show 3D gizmo arrows on selected entities for positioning")
+                    RenderCustomCheckboxFeature("Show Controls", "Spooner Show Controls", "BiggerScript_Spooner_Controls", spawnerSettings, "showSpoonerControls", "Show the Spooner Controls info window in the bottom right")
                     
                     if spawnerSettings.printToDebug then
                         ImGui.Spacing()
@@ -2012,10 +2005,7 @@ local function renderMenyooTab()
                         end
                         ImGui.Spacing()
                     end
-                    spawnerSettings.deletePhotoCache = ImGui.Checkbox("Delete Photo Cache After Exit", spawnerSettings.deletePhotoCache)
-                    if ImGui.IsItemHovered() then
-                        ImGui.SetTooltip("When enabled, deletes all files in BiggerScript\\SpoonerAssets\\gtahashru\\objects and subfolders when script unloads")
-                    end
+                    RenderCustomCheckboxFeature("Delete Photo Cache After Exit", "Delete Photo Cache", "BiggerScript_Spooner_PhotoCache", spawnerSettings, "deletePhotoCache", "When enabled, deletes all files in BiggerScript\\SpoonerAssets\\gtahashru\\objects and subfolders when script unloads")
                     
                     ImGui.Spacing()
                     ClickGUI.EndCustomChildWindow()
@@ -2030,33 +2020,16 @@ local function renderMenyooTab()
                     -- Spooner toggle button (green when off = ready to launch, red when on = exit)
                     local spoonerEnabled = spawnerSettings.enableSpooner
                     local spoonerButtonText = spoonerEnabled and "Exit Spooner" or "Launch Spooner"
-                    if spoonerEnabled then
-                        -- Red when enabled (exit)
-                        ImGui.PushStyleColor(ImGuiCol.Button, 0.5, 0.1, 0.1, 1.0)
-                        ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.6, 0.15, 0.15, 1.0)
-                        ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.45, 0.08, 0.08, 1.0)
-                    else
-                        -- Green when disabled (launch)
-                        ImGui.PushStyleColor(ImGuiCol.Button, 0.1, 0.5, 0.15, 1.0)
-                        ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.15, 0.6, 0.2, 1.0)
-                        ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.08, 0.45, 0.12, 1.0)
-                    end
+                    local spoonerColor = spoonerEnabled and "SpoonerRed" or "SpoonerGreen"
                     
-                    if ImGui.Button(spoonerButtonText, -1, 30) then
+                    RenderCustomButtonFeature(spoonerButtonText, spoonerButtonText, "BiggerScript_Spooner_MainToggle", spoonerColor, nil, function()
                         spawnerSettings.enableSpooner = not spawnerSettings.enableSpooner
                         if spawnerSettings.enableSpooner then
-                            spooner.startDetectionLoop()
-                            -- Close PED/Vehicle customization windows and open Browser when Spooner mode is enabled
-                            spooner.setPedCustomsVisible(false)
-                            spooner.setVehicleCustomsVisible(false)
-                            spooner.openBrowserExpanded()
+                            spooner.launchSpooner()
                         else
-                            spooner.stopDetectionLoop()
-                            -- Close all sub-windows when Spooner mode is disabled
-                            spooner.closeAllSubWindows()
+                            spooner.exitSpooner()
                         end
-                    end
-                    ImGui.PopStyleColor(3)
+                    end)
                     
                     if ImGui.IsItemHovered() then
                         ImGui.SetTooltip("Enable entity detection and management (Free Cam mode)")
@@ -2076,19 +2049,9 @@ local function renderMenyooTab()
                     if not spoonerEnabled then
                         -- Browser button (dark blue when off, light blue when on)
                         local browserVisible = spooner.getBrowserVisible()
-                        if browserVisible then
-                            -- Light blue when on
-                            ImGui.PushStyleColor(ImGuiCol.Button, 0.2, 0.6, 0.9, 1.0)
-                            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.3, 0.7, 1.0, 1.0)
-                            ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.15, 0.55, 0.85, 1.0)
-                        else
-                            -- Dark blue when off
-                            ImGui.PushStyleColor(ImGuiCol.Button, 0.1, 0.2, 0.4, 1.0)
-                            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.15, 0.3, 0.5, 1.0)
-                            ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.08, 0.18, 0.35, 1.0)
-                        end
+                        local browserColor = browserVisible and "LightBlue" or "DarkBlue"
                         
-                        if ImGui.Button("Browser", -1, 30) then
+                        RenderCustomButtonFeature("Browser", "Browser", "BiggerScript_Spooner_Browser", browserColor, nil, function()
                             if browserVisible then
                                 -- Toggle off
                                 spooner.setBrowserVisible(false)
@@ -2097,98 +2060,55 @@ local function renderMenyooTab()
                                 spooner.closeAllSubWindows()
                                 spooner.setBrowserVisible(true)
                             end
-                        end
-                        ImGui.PopStyleColor(3)
+                        end)
                         
                         ImGui.Spacing()
                         
                         -- PED Customizations button (dark blue when off, light blue when on)
                         local pedCustomsVisible = spooner.getPedCustomsVisible()
-                        if pedCustomsVisible then
-                            -- Light blue when on
-                            ImGui.PushStyleColor(ImGuiCol.Button, 0.2, 0.6, 0.9, 1.0)
-                            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.3, 0.7, 1.0, 1.0)
-                            ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.15, 0.55, 0.85, 1.0)
-                        else
-                            -- Dark blue when off
-                            ImGui.PushStyleColor(ImGuiCol.Button, 0.1, 0.2, 0.4, 1.0)
-                            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.15, 0.3, 0.5, 1.0)
-                            ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.08, 0.18, 0.35, 1.0)
-                        end
-                        
-                        if ImGui.Button("PED Customizations", -1, 30) then
+                        local pedColor = pedCustomsVisible and "LightBlue" or "DarkBlue"
+
+                        RenderCustomButtonFeature("Ped Customs", "Ped Customs", "BiggerScript_Spooner_PedCustoms", pedColor, nil, function()
                             if pedCustomsVisible then
-                                -- Toggle off
                                 spooner.setPedCustomsVisible(false)
                             else
-                                -- Close other windows first (mutual exclusivity)
                                 spooner.closeAllSubWindows()
-                                -- Open ped customizations with player's ped
-                                spooner.openPlayerPedCustomizations()
+                                spooner.setPedCustomsVisible(true)
                             end
-                        end
-                        ImGui.PopStyleColor(3)
-                    
+                        end)
+                        
                         ImGui.Spacing()
                         
                         -- Vehicle Customizations button (dark blue when off, light blue when on)
                         local vehicleCustomsVisible = spooner.getVehicleCustomsVisible()
-                        if vehicleCustomsVisible then
-                            -- Light blue when on
-                            ImGui.PushStyleColor(ImGuiCol.Button, 0.2, 0.6, 0.9, 1.0)
-                            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.3, 0.7, 1.0, 1.0)
-                            ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.15, 0.55, 0.85, 1.0)
-                        else
-                            -- Dark blue when off
-                            ImGui.PushStyleColor(ImGuiCol.Button, 0.1, 0.2, 0.4, 1.0)
-                            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.15, 0.3, 0.5, 1.0)
-                            ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.08, 0.18, 0.35, 1.0)
-                        end
+                        local vehColor = vehicleCustomsVisible and "LightBlue" or "DarkBlue"
                         
-                        if ImGui.Button("Vehicle Customizations", -1, 30) then
+                        RenderCustomButtonFeature("Vehicle Customizations", "Vehicle Customizations", "BiggerScript_Spooner_VehCustoms", vehColor, nil, function()
                             if vehicleCustomsVisible then
-                                -- Toggle off
                                 spooner.setVehicleCustomsVisible(false)
                             else
-                                -- Close other windows first (mutual exclusivity)
                                 spooner.closeAllSubWindows()
-                                -- Try to open vehicle customizations
                                 local success, errorMsg = spooner.openPlayerVehicleCustomizations()
                                 if not success then
                                     GUI.AddToast("Spooner", errorMsg or "You need to be in a vehicle", 2000, 0)
                                 end
                             end
-                        end
-                        ImGui.PopStyleColor(3)
-
+                        end)
+                        
                         ImGui.Spacing()
-
+                        
                         -- Animations button (dark purple when off, light purple when on)
                         local animPlayerVisible = animPlayer.getAnimPlayerVisible()
-                        if animPlayerVisible then
-                            -- Light purple when on
-                            ImGui.PushStyleColor(ImGuiCol.Button, 0.5, 0.3, 0.7, 1.0)
-                            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.6, 0.4, 0.8, 1.0)
-                            ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.4, 0.2, 0.6, 1.0)
-                        else
-                            -- Dark purple when off
-                            ImGui.PushStyleColor(ImGuiCol.Button, 0.3, 0.15, 0.45, 1.0)
-                            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.4, 0.2, 0.55, 1.0)
-                            ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.25, 0.1, 0.35, 1.0)
-                        end
-
-                        if ImGui.Button("Animations", -1, 30) then
+                        local animColor = animPlayerVisible and "LightPurple" or "DarkPurple"
+                        
+                        RenderCustomButtonFeature("Animations", "Animations", "BiggerScript_Spooner_Anims", animColor, nil, function()
                             if animPlayerVisible then
-                                -- Toggle off
                                 animPlayer.setAnimPlayerVisible(false)
                             else
-                                -- Close other windows first (mutual exclusivity)
                                 spooner.closeAllSubWindows()
-                                -- Target the player's ped directly for this standalone button
                                 animPlayer.openAnimPlayer(PLAYER.PLAYER_PED_ID())
                             end
-                        end
-                        ImGui.PopStyleColor(3)
+                        end)
                     else
                         ImGui.TextDisabled("Available when Spooner is OFF")
                     end
@@ -2217,13 +2137,9 @@ ClickGUI.AddPlayerTab("Bigger Script", function()
         ClickGUI.RenderFeature(Utils.Joaat("DeleteMenyooAttackerVehicle"), Utils.GetSelectedPlayer())
         ImGui.Spacing()
 
-        ImGui.PushStyleColor(ImGuiCol.Button, 0.36, 0.016, 0.157, 1.0)
-        ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.46, 0.06, 0.22, 1.0)
-        ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.26, 0.01, 0.10, 1.0)
-        if ImGui.Button("Delete All") then
+        RenderCustomButtonFeature("Delete All", "Attacker Delete All", "BiggerScript_Attacker_DeleteAll", "PurpleRed", nil, function()
             spawning.deleteAllSpawnedVehicles()
-        end
-        ImGui.PopStyleColor(3)
+        end)
         
         ImGui.SameLine()
         
@@ -2244,10 +2160,7 @@ ClickGUI.AddPlayerTab("Bigger Script", function()
         end
         ImGui.SameLine()
         if spawnerSettings.sendToAllPlayers == nil then spawnerSettings.sendToAllPlayers = false end
-        spawnerSettings.sendToAllPlayers = ImGui.Checkbox("Send to All", spawnerSettings.sendToAllPlayers)
-        if ImGui.IsItemHovered() then
-            ImGui.SetTooltip("Send vehicle to all players in the session (excluding you)")
-        end
+        RenderCustomCheckboxFeature("Send to All", "Attacker Send to All", "BiggerScript_Attacker_SendToAll", spawnerSettings, "sendToAllPlayers", "Send vehicle to all players in the session (excluding you)")
         ImGui.Spacing()
 
         if ImGui.BeginTabBar("AttackerTypeTabs") then
@@ -2351,10 +2264,10 @@ ClickGUI.AddPlayerTab("Bigger Script", function()
             end
 
             if ImGui.BeginTabItem("Robot Attacker") then
-                if ImGui.Button("Spawn Robot Attacker") then
+                RenderStandardButtonFeature("Spawn Robot Attacker", "BiggerScript_Attacker_Robot", nil, function()
                     local targetPlayer = Utils.GetSelectedPlayer()
                     robot.spawnRobotAttacker(targetPlayer)
-                end
+                end)
                 ImGui.EndTabItem()
             end
             ImGui.EndTabBar()
