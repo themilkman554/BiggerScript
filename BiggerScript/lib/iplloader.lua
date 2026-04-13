@@ -516,13 +516,15 @@ M.curatedLocations = {
         name = "North Yankton",
         type = "group",
         groupName = "North Yankton",
-        description = "Prologue location"
+        description = "Prologue location",
+        customTeleport = { X = 3210.0, Y = -4833.0, Z = 111.0 }
     },
     {
         name = "Cayo Perico",
         type = "dlc",
         dlcName = "mpheist4",
-        description = "Heist island"
+        description = "Heist island",
+        customTeleport = { X = 4482.0, Y = -4497.0, Z = 4.0 }
     }
 }
 
@@ -532,9 +534,19 @@ function M.loadCuratedLocation(index, shouldTeleport)
     if not loc then return end
     
     if loc.type == "group" then
-        M.loadIPLGroup(loc.groupName)
+        if loc.customTeleport and shouldTeleport then
+            M.loadIPLGroup(loc.groupName, true)
+            M.teleportToPosition(loc.customTeleport)
+        else
+            M.loadIPLGroup(loc.groupName, not shouldTeleport)
+        end
     elseif loc.type == "dlc" then
-        M.loadByDlc(loc.dlcName, loc.name, shouldTeleport)
+        if loc.customTeleport and shouldTeleport then
+            M.loadByDlc(loc.dlcName, loc.name, false)
+            M.teleportToPosition(loc.customTeleport)
+        else
+            M.loadByDlc(loc.dlcName, loc.name, shouldTeleport)
+        end
     end
 end
 
