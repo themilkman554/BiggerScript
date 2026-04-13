@@ -21,8 +21,30 @@ end
 M.make_entity_networked = function(attachment)
     ENTITY.SET_ENTITY_AS_MISSION_ENTITY(attachment.handle, false, true)
     ENTITY.SET_ENTITY_SHOULD_FREEZE_WAITING_ON_COLLISION(attachment.handle, false)
-    M.constantize_network_id(attachment)
-    NETWORK.SET_NETWORK_ID_CAN_MIGRATE(NETWORK.OBJ_TO_NET(attachment.handle), false)
+    -- Skip network functions in singleplayer
+    if NETWORK.NETWORK_IS_SESSION_STARTED() then
+        M.constantize_network_id(attachment)
+        -- NETWORK.SET_NETWORK_ID_CAN_MIGRATE(NETWORK.OBJ_TO_NET(attachment.handle), false) #Shitty native
+        M.set_can_migrate(attachment.handle, false)
+    end
+end
+
+-- Credits GuseXenvious (Probably sainan too)
+M.set_can_migrate = function(entity, canMigrate)
+    local Pointer = GTA.HandleToPointer(entity):GetAddress()
+    if Pointer ~= 0 then
+        Pointer = Memory.ReadLong(Pointer+0xD0)
+        if Pointer ~= 0 then
+            local Bits = Memory.ReadByte(Pointer+0x4E)
+            if not canMigrate and Bits | 1 == 0 then
+                Bits = Bits + 1
+                Memory.WriteByte(Pointer+0x4E, Bits)
+            elseif Bits | 1 == 1 then
+                Bits = Bits - 1
+                Memory.WriteByte(Pointer+0x4E, Bits)
+            end
+        end
+    end
 end
 
 M.delete_entity = function(handle)
