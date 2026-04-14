@@ -132,6 +132,109 @@ end
 -- Context Preview state
 local contextPreviewCache = {} -- Cache for file metadata: path -> {modelName, attachmentCount, entityCount, fileType, lastModified}
 
+-- Photo Preview state
+local photoTextureCache = {} -- Cache for photo textures: pngPath -> textureId or "loading" or "failed" or "none"
+local MAX_PHOTO_TEXTURES = 20 -- Limit loaded photo textures
+local loadedPhotoTextureCount = 0
+
+-- Helper: find a matching .png for a given file path (same name, same directory)
+local function findMatchingPng(filePath)
+    if not filePath then return nil end
+    -- Strip the extension and replace with .png
+    local basePath = filePath:match("^(.+)%.[^%.]+$")
+    if not basePath then return nil end
+    local pngPath = basePath .. ".png"
+    if FileMgr.DoesFileExist(pngPath) then
+        return pngPath
+    end
+    return nil
+end
+
+-- Load a photo texture (async, cached)
+local function loadPhotoTexture(pngPath)
+    if not pngPath then return nil end
+    
+    local cached = photoTextureCache[pngPath]
+    if cached then
+        return cached -- textureId, "loading", "failed", or "none"
+    end
+    
+    -- Hard limit
+    if loadedPhotoTextureCount >= MAX_PHOTO_TEXTURES then
+        return "limit_reached"
+    end
+    
+    -- Mark as loading and start async load
+    photoTextureCache[pngPath] = "loading"
+    
+    Script.QueueJob(function()
+        pcall(function()
+            local safePath = pngPath:gsub("/", "\\")
+            if FileMgr.DoesFileExist(safePath) then
+                local texId = Texture.LoadTextureAsync(safePath)
+                if texId and texId ~= 0 then
+                    photoTextureCache[pngPath] = texId
+                    loadedPhotoTextureCount = loadedPhotoTextureCount + 1
+                else
+                    photoTextureCache[pngPath] = "failed"
+                end
+            else
+                photoTextureCache[pngPath] = "none"
+            end
+        end)
+    end)
+    
+    return "loading"
+end
+
+-- Render a photo preview image inside a tooltip (call between BeginTooltip/EndTooltip)
+local function renderPhotoPreviewInTooltip(pngPath)
+    if not pngPath then return end
+    
+    local texResult = loadPhotoTexture(pngPath)
+    
+    if texResult == "loading" then
+        ImGui.PushStyleColor(ImGuiCol.Text, 0.7, 0.7, 0.7, 1.0)
+        ImGui.Text("Loading preview...")
+        ImGui.PopStyleColor()
+        return
+    end
+    
+    if texResult == "failed" or texResult == "none" or texResult == "limit_reached" then
+        return
+    end
+    
+    -- texResult should be a texture ID
+    local texId = texResult
+    if type(texId) ~= "number" or texId == 0 then return end
+    
+    if not Texture.IsTextureValid(texId) then return end
+    
+    local d3dTex = Texture.GetTexture(texId)
+    if not d3dTex then return end
+    
+    local gpuTex = d3dTex:GetCurrent()
+    if not gpuTex then return end
+    
+    -- Get texture dimensions for aspect ratio
+    local texW = d3dTex:GetWidth()
+    local texH = d3dTex:GetHeight()
+    local imgWidth = spawnerSettings and spawnerSettings.photoPreviewWidth or 256
+    local imgHeight = imgWidth -- default square
+    
+    if texW > 0 and texH > 0 then
+        local aspect = texW / texH
+        imgHeight = imgWidth / aspect
+        if imgHeight > imgWidth * 1.5 then
+            imgHeight = imgWidth * 1.5
+        end
+    end
+    
+    local cp_x, cp_y = ImGui.GetCursorScreenPos()
+    ImGui.AddImage(gpuTex, cp_x, cp_y, cp_x + imgWidth, cp_y + imgHeight)
+    ImGui.Dummy(imgWidth, imgHeight)
+end
+
 -- Helper function to get element content from XML (local for context preview)
 local function getXmlElementContentLocal(xml, tagName)
     if not xml or not tagName then return nil end
@@ -328,86 +431,114 @@ end
 
 -- Render context preview tooltip
 local function renderContextPreviewTooltip(filePath, itemType)
-    if not spawnerSettings or not spawnerSettings.contextPreview then return end
+    local showContext = spawnerSettings and spawnerSettings.contextPreview
+    local showPhoto = spawnerSettings and spawnerSettings.photoPreview and itemType == "map"
+    
+    if not showContext and not showPhoto then return end
     if not filePath then return end
     
-    local metadata = parseFileMetadata(filePath, itemType)
-    if not metadata then return end
+    -- Check for matching photo
+    local pngPath = nil
+    if showPhoto then
+        pngPath = findMatchingPng(filePath)
+    end
     
-    -- Get network limits using natives
-    local maxObjects = NETWORK.GET_MAX_NUM_NETWORK_OBJECTS()
-    local maxVehicles = NETWORK.GET_MAX_NUM_NETWORK_VEHICLES()
-    local maxPeds = NETWORK.GET_MAX_NUM_NETWORK_PEDS()
+    -- If only photo preview is enabled but no photo exists, and context is off, skip
+    if not showContext and not pngPath then return end
     
-    -- Helper to determine if count is under limit
-    local function isUnderLimit(count, limit)
-        if limit <= 0 then return true end -- If we can't get the limit, assume ok
-        return count < limit
+    local metadata = nil
+    if showContext then
+        metadata = parseFileMetadata(filePath, itemType)
+        if not metadata and not pngPath then return end
     end
     
     ImGui.BeginTooltip()
     
-    -- Display model name for vehicles/outfits
-    if metadata.itemType ~= "map" then
-        if metadata.modelName then
-            ImGui.PushStyleColor(ImGuiCol.Text, 0.9, 0.7, 1.0, 1.0)
-            ImGui.SetWindowFontScale(1.1)
-            ImGui.Text(metadata.modelName)
-            ImGui.SetWindowFontScale(1.0)
-            ImGui.PopStyleColor()
-        elseif metadata.modelHash then
-            ImGui.PushStyleColor(ImGuiCol.Text, 0.9, 0.7, 1.0, 1.0)
-            ImGui.SetWindowFontScale(1.1)
-            ImGui.Text(tostring(metadata.modelHash))
-            ImGui.SetWindowFontScale(1.0)
+    -- Render photo preview first (above stats)
+    if pngPath then
+        renderPhotoPreviewInTooltip(pngPath)
+        if showContext and metadata then
+            ImGui.Spacing()
+            ImGui.Separator()
+            ImGui.Spacing()
+        end
+    end
+    
+    -- Render context preview stats
+    if showContext and metadata then
+        -- Get network limits using natives
+        local maxObjects = NETWORK.GET_MAX_NUM_NETWORK_OBJECTS()
+        local maxVehicles = NETWORK.GET_MAX_NUM_NETWORK_VEHICLES()
+        local maxPeds = NETWORK.GET_MAX_NUM_NETWORK_PEDS()
+        
+        -- Helper to determine if count is under limit
+        local function isUnderLimit(count, limit)
+            if limit <= 0 then return true end -- If we can't get the limit, assume ok
+            return count < limit
+        end
+        
+        -- Display model name for vehicles/outfits
+        if metadata.itemType ~= "map" then
+            if metadata.modelName then
+                ImGui.PushStyleColor(ImGuiCol.Text, 0.9, 0.7, 1.0, 1.0)
+                ImGui.SetWindowFontScale(1.1)
+                ImGui.Text(metadata.modelName)
+                ImGui.SetWindowFontScale(1.0)
+                ImGui.PopStyleColor()
+            elseif metadata.modelHash then
+                ImGui.PushStyleColor(ImGuiCol.Text, 0.9, 0.7, 1.0, 1.0)
+                ImGui.SetWindowFontScale(1.1)
+                ImGui.Text(tostring(metadata.modelHash))
+                ImGui.SetWindowFontScale(1.0)
+                ImGui.PopStyleColor()
+            end
+            
+            ImGui.Separator()
+        end
+        
+        -- Display Objects count with color based on limit
+        local objectCount = metadata.objectCount or 0
+        if objectCount > 0 then
+            if isUnderLimit(objectCount, maxObjects) then
+                ImGui.PushStyleColor(ImGuiCol.Text, 0.4, 0.8, 1.0, 1.0) -- Light blue
+            else
+                ImGui.PushStyleColor(ImGuiCol.Text, 1.0, 0.6, 0.2, 1.0) -- Orange
+            end
+            ImGui.Text("Objects: " .. tostring(objectCount))
             ImGui.PopStyleColor()
         end
         
-        ImGui.Separator()
-    end
-    
-    -- Display Objects count with color based on limit
-    local objectCount = metadata.objectCount or 0
-    if objectCount > 0 then
-        if isUnderLimit(objectCount, maxObjects) then
-            ImGui.PushStyleColor(ImGuiCol.Text, 0.4, 0.8, 1.0, 1.0) -- Light blue
-        else
-            ImGui.PushStyleColor(ImGuiCol.Text, 1.0, 0.6, 0.2, 1.0) -- Orange
+        -- Display Vehicles count with color based on limit
+        local vehicleCount = metadata.vehicleCount or 0
+        if vehicleCount > 0 then
+            if isUnderLimit(vehicleCount, maxVehicles) then
+                ImGui.PushStyleColor(ImGuiCol.Text, 0.4, 0.8, 1.0, 1.0) -- Light blue
+            else
+                ImGui.PushStyleColor(ImGuiCol.Text, 1.0, 0.6, 0.2, 1.0) -- Orange
+            end
+            ImGui.Text("Vehicles: " .. tostring(vehicleCount))
+            ImGui.PopStyleColor()
         end
-        ImGui.Text("Objects: " .. tostring(objectCount))
-        ImGui.PopStyleColor()
-    end
-    
-    -- Display Vehicles count with color based on limit
-    local vehicleCount = metadata.vehicleCount or 0
-    if vehicleCount > 0 then
-        if isUnderLimit(vehicleCount, maxVehicles) then
-            ImGui.PushStyleColor(ImGuiCol.Text, 0.4, 0.8, 1.0, 1.0) -- Light blue
-        else
-            ImGui.PushStyleColor(ImGuiCol.Text, 1.0, 0.6, 0.2, 1.0) -- Orange
+        
+        -- Display Peds count with color based on limit
+        local pedCount = metadata.pedCount or 0
+        if pedCount > 0 then
+            if isUnderLimit(pedCount, maxPeds) then
+                ImGui.PushStyleColor(ImGuiCol.Text, 0.4, 0.8, 1.0, 1.0) -- Light blue
+            else
+                ImGui.PushStyleColor(ImGuiCol.Text, 1.0, 0.6, 0.2, 1.0) -- Orange
+            end
+            ImGui.Text("Peds: " .. tostring(pedCount))
+            ImGui.PopStyleColor()
         end
-        ImGui.Text("Vehicles: " .. tostring(vehicleCount))
-        ImGui.PopStyleColor()
-    end
-    
-    -- Display Peds count with color based on limit
-    local pedCount = metadata.pedCount or 0
-    if pedCount > 0 then
-        if isUnderLimit(pedCount, maxPeds) then
-            ImGui.PushStyleColor(ImGuiCol.Text, 0.4, 0.8, 1.0, 1.0) -- Light blue
-        else
-            ImGui.PushStyleColor(ImGuiCol.Text, 1.0, 0.6, 0.2, 1.0) -- Orange
+        
+        -- If all counts are 0 for a map, show total entity count
+        if metadata.itemType == "map" and objectCount == 0 and vehicleCount == 0 and pedCount == 0 then
+            local totalEntities = metadata.entityCount or 0
+            ImGui.PushStyleColor(ImGuiCol.Text, 0.7, 0.7, 0.8, 1.0)
+            ImGui.Text("Entities: " .. tostring(totalEntities))
+            ImGui.PopStyleColor()
         end
-        ImGui.Text("Peds: " .. tostring(pedCount))
-        ImGui.PopStyleColor()
-    end
-    
-    -- If all counts are 0 for a map, show total entity count
-    if metadata.itemType == "map" and objectCount == 0 and vehicleCount == 0 and pedCount == 0 then
-        local totalEntities = metadata.entityCount or 0
-        ImGui.PushStyleColor(ImGuiCol.Text, 0.7, 0.7, 0.8, 1.0)
-        ImGui.Text("Entities: " .. tostring(totalEntities))
-        ImGui.PopStyleColor()
     end
     
     ImGui.EndTooltip()
@@ -415,7 +546,10 @@ end
 
 -- Public function to handle hover callback for context preview
 function M.handleContextPreviewHover(fileInfo)
-    if not spawnerSettings or not spawnerSettings.contextPreview then return end
+    local showContext = spawnerSettings and spawnerSettings.contextPreview
+    local showPhoto = spawnerSettings and spawnerSettings.photoPreview
+    
+    if not showContext and not showPhoto then return end
     if not fileInfo or not fileInfo.path then return end
     
     renderContextPreviewTooltip(fileInfo.path, fileInfo.type)

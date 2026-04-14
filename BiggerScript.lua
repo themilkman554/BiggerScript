@@ -10,7 +10,7 @@ Logger.Log(eLogColor.GREEN, "", " ░    ░  ▒ ░░ ░   ░ ░ ░   ░
 Logger.Log(eLogColor.GREEN, "", " ░       ░        ░       ░    ░  ░   ░           ░  ░ ░         ░      ░                    ")
 Logger.Log(eLogColor.GREEN, "", "      ░                                              ░                                       ")
 
-GUI.AddToast("BiggerScriptv7.2.1", "Translation Support\n Fixed Credits", 10000, 0)
+GUI.AddToast("BiggerScriptv7.3", "Map Photo Previews\n Improved Map Networking\n More Maps \n Some bug fixes", 10000, 0)
 
 if Cherax.GetEdition() == "LE" then
     GUI.AddToast("BiggerScript", "Legacy Version of Cherax breaks vehicles with too many attachments", 10000, 0)
@@ -70,7 +70,9 @@ local spawnerSettings = {
     enableGizmo = true, 
     showSpoonerControls = true,
     deletePhotoCache = false,
-    contextPreview = false,
+    contextPreview = true,
+    photoPreview = true,
+    photoPreviewWidth = 256,
     unloadLastIPL = false,
     attackerSpawnMode = 0, -- 0 = Attacker, 1 = Gift, 2 = Apply
     scaleLengthOffset = 0x60,
@@ -971,8 +973,8 @@ local function renderMenyooTab()
     local hoveredFileThisFrame = nil
     local function hoverCallback(file)
         hoveredFileThisFrame = file
-        -- Call context preview handler if enabled
-        if spawnerSettings.contextPreview and spawning then
+        -- Call context preview handler if enabled (context preview or photo preview)
+        if (spawnerSettings.contextPreview or spawnerSettings.photoPreview) and spawning then
             spawning.handleContextPreviewHover(file)
         end
     end
@@ -1120,6 +1122,7 @@ local function renderMenyooTab()
             end
             ImGui.EndTabItem()
         end
+
 
         -- VEHICLES TAB (combines XML, INI, JSON)
         if ImGui.BeginTabItem("Vehicles") then
@@ -1284,6 +1287,7 @@ local function renderMenyooTab()
                     ImGui.Spacing()
 
                     RenderCustomCheckboxFeature("Context Preview", "Map Context Preview", "BiggerScript_Maps_ContextPreview", spawnerSettings, "contextPreview", "Light Blue = Networkable (under 80)\nOrange = Not everything will network")
+                    RenderCustomCheckboxFeature("Photo Preview", "Map Photo Preview", "BiggerScript_Maps_PhotoPreview", spawnerSettings, "photoPreview", "Show a preview image when hovering over maps (requires matching .png file)")
                     RenderCustomCheckboxFeature("Teleport to Map", "Teleport to Map", "BiggerScript_Maps_TeleportToMap", spawnerSettings, "teleportToMap", "Teleport to the map's reference coordinates when spawning (if available)")
                     RenderCustomCheckboxFeature("Spawn Map on Me", "Spawn Map on Me", "BiggerScript_Maps_SpawnMapOnMe", spawnerSettings, "spawnMapOnMe", "Spawn the map at your current position instead of its original coordinates")
                     RenderCustomCheckboxFeature("Network Maps V2", "Network Maps V2", "BiggerScript_Maps_NetworkV2", spawnerSettings, "networkMapsV2Enabled", "Uses a few networking natives to hopefully network better")
@@ -1348,7 +1352,7 @@ local function renderMenyooTab()
                             ImGui.SameLine()
                             
                             -- Green Teleport button
-                            RenderCustomButtonFeature("Teleport##map" .. i, "Teleport to Map " .. i, "BiggerScript_Map_" .. i .. "_TP", "Green", nil, function()
+                            RenderCustomButtonFeature("Teleport##map" .. i, "Teleport", "BiggerScript_Map_" .. i .. "_TP", "Green", nil, function()
                                 if mapData.refCoords then
                                     spawning.teleportToMapRefCoords(mapData.refCoords)
                                 else
@@ -1366,14 +1370,14 @@ local function renderMenyooTab()
                             ImGui.SameLine()
                             
                             -- Blue Bring button (move map to player)
-                            RenderCustomButtonFeature("Bring##map" .. i, "Bring Map " .. i, "BiggerScript_Map_" .. i .. "_Bring", "Blue", nil, function()
+                            RenderCustomButtonFeature("Bring##map" .. i, "Bring", "BiggerScript_Map_" .. i .. "_Bring", "Blue", nil, function()
                                 spawning.bringMapToPlayer(i)
                             end)
                             
                             ImGui.SameLine()
                             
                             -- Red Delete button
-                            RenderCustomButtonFeature("Delete##map" .. i, "Delete Map " .. i, "BiggerScript_Map_" .. i .. "_Delete", nil, nil, function()
+                            RenderCustomButtonFeature("Delete##map" .. i, "Delete", "BiggerScript_Map_" .. i .. "_Delete", nil, nil, function()
                                 spawning.deleteMapByIndex(i)
                             end)
                         end
