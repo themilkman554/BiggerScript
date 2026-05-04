@@ -10,7 +10,7 @@ Logger.Log(eLogColor.GREEN, "", " ░    ░  ▒ ░░ ░   ░ ░ ░   ░
 Logger.Log(eLogColor.GREEN, "", " ░       ░        ░       ░    ░  ░   ░           ░  ░ ░         ░      ░                    ")
 Logger.Log(eLogColor.GREEN, "", "      ░                                              ░                                       ")
 
-GUI.AddToast("BiggerScriptv7.3", "Map Photo Previews\n Improved Map Networking\n More Maps \n Some bug fixes", 10000, 0)
+GUI.AddToast("BiggerScriptv7.3.1", "IPL text telling you doesn't sync\n bug fix", 10000, 0)
 
 if Cherax.GetEdition() == "LE" then
     GUI.AddToast("BiggerScript", "Legacy Version of Cherax breaks vehicles with too many attachments", 10000, 0)
@@ -938,7 +938,12 @@ local function RenderCustomButtonFeature(label, featureName, hashStr, colorSchem
             ImGui.PushStyleColor(ImGuiCol.ButtonActive, active[1], active[2], active[3], active[4])
             
             if ImGui.Button(displayName .. "##btn" .. hashStr) then
-                if onClick then onClick() end
+                if onClick then
+                    local success, err = pcall(onClick)
+                    if not success then
+                        print("[BiggerScript] Error in button callback: " .. tostring(err))
+                    end
+                end
             end
             ImGui.PopStyleColor(3)
             
@@ -951,6 +956,63 @@ local function RenderCustomButtonFeature(label, featureName, hashStr, colorSchem
         end
     end
     ClickGUI.RenderFeature(hash)
+end
+
+-- Helper for immediate-mode dynamic buttons that need to change text/color every frame
+local function RenderDynamicButton(label, colorScheme, width, height, onClick)
+    local normal, hover, active = {0.36, 0.016, 0.016, 1.0}, {0.46, 0.06, 0.06, 1.0}, {0.26, 0.01, 0.01, 1.0}
+    
+    if colorScheme == "PurpleRed" then
+        normal = {0.36, 0.016, 0.157, 1.0}
+        hover = {0.46, 0.06, 0.22, 1.0}
+        active = {0.26, 0.01, 0.10, 1.0}
+    elseif colorScheme == "Green" then
+        normal = {0.016, 0.36, 0.157, 1.0}
+        hover = {0.06, 0.46, 0.22, 1.0}
+        active = {0.01, 0.26, 0.10, 1.0}
+    elseif colorScheme == "Blue" then
+        normal = {0.016, 0.157, 0.36, 1.0}
+        hover = {0.06, 0.22, 0.46, 1.0}
+        active = {0.01, 0.10, 0.26, 1.0}
+    elseif colorScheme == "DarkBlue" then
+        normal = {0.1, 0.2, 0.4, 1.0}
+        hover = {0.15, 0.3, 0.5, 1.0}
+        active = {0.08, 0.18, 0.35, 1.0}
+    elseif colorScheme == "LightBlue" then
+        normal = {0.2, 0.6, 0.9, 1.0}
+        hover = {0.3, 0.7, 1.0, 1.0}
+        active = {0.15, 0.55, 0.85, 1.0}
+    elseif colorScheme == "SpoonerRed" then
+        normal = {0.5, 0.1, 0.1, 1.0}
+        hover = {0.6, 0.15, 0.15, 1.0}
+        active = {0.45, 0.08, 0.08, 1.0}
+    elseif colorScheme == "SpoonerGreen" then
+        normal = {0.1, 0.5, 0.15, 1.0}
+        hover = {0.15, 0.6, 0.2, 1.0}
+        active = {0.08, 0.45, 0.12, 1.0}
+    elseif colorScheme == "LightPurple" then
+        normal = {0.5, 0.3, 0.7, 1.0}
+        hover = {0.6, 0.4, 0.8, 1.0}
+        active = {0.4, 0.2, 0.6, 1.0}
+    elseif colorScheme == "DarkPurple" then
+        normal = {0.3, 0.15, 0.45, 1.0}
+        hover = {0.4, 0.2, 0.55, 1.0}
+        active = {0.25, 0.1, 0.35, 1.0}
+    end
+
+    ImGui.PushStyleColor(ImGuiCol.Button, normal[1], normal[2], normal[3], normal[4])
+    ImGui.PushStyleColor(ImGuiCol.ButtonHovered, hover[1], hover[2], hover[3], hover[4])
+    ImGui.PushStyleColor(ImGuiCol.ButtonActive, active[1], active[2], active[3], active[4])
+    
+    if ImGui.Button(label, width or 0, height or 0) then
+        if onClick then 
+            local success, err = pcall(onClick)
+            if not success then
+                print("[BiggerScript] Error in dynamic button: " .. tostring(err))
+            end
+        end
+    end
+    ImGui.PopStyleColor(3)
 end
 
 local function RenderStandardButtonFeature(featureName, hashStr, tooltipText, onClick) --since I put it custom imgui
@@ -1588,7 +1650,7 @@ local function renderMenyooTab()
                     ImGui.Spacing()
                     ClickGUI.EndCustomChildWindow()
                 end
-                
+                ImGui.Text("IPLS do not sync/network")
                 -- Currently Loaded IPLs (only show if there are loaded groups)
                 local loadedIPLGroups = iplloader.getLoadedGroups()
                 if #loadedIPLGroups > 0 then
@@ -2056,12 +2118,18 @@ local function renderMenyooTab()
                     local spoonerButtonText = spoonerEnabled and "Exit Spooner" or "Launch Spooner"
                     local spoonerColor = spoonerEnabled and "SpoonerRed" or "SpoonerGreen"
                     
-                    RenderCustomButtonFeature(spoonerButtonText, spoonerButtonText, "BiggerScript_Spooner_MainToggle", spoonerColor, nil, function()
+                    RenderDynamicButton(spoonerButtonText, spoonerColor, -1, 30, function()
                         spawnerSettings.enableSpooner = not spawnerSettings.enableSpooner
                         if spawnerSettings.enableSpooner then
-                            spooner.launchSpooner()
+                            spooner.startDetectionLoop()
+                            -- Close PED/Vehicle customization windows and open Browser when Spooner mode is enabled
+                            spooner.setPedCustomsVisible(false)
+                            spooner.setVehicleCustomsVisible(false)
+                            spooner.openBrowserExpanded()
                         else
-                            spooner.exitSpooner()
+                            spooner.stopDetectionLoop()
+                            -- Close all sub-windows when Spooner mode is disabled
+                            spooner.closeAllSubWindows()
                         end
                     end)
                     
@@ -2085,7 +2153,7 @@ local function renderMenyooTab()
                         local browserVisible = spooner.getBrowserVisible()
                         local browserColor = browserVisible and "LightBlue" or "DarkBlue"
                         
-                        RenderCustomButtonFeature("Browser", "Browser", "BiggerScript_Spooner_Browser", browserColor, nil, function()
+                        RenderDynamicButton("Browser", browserColor, -1, 30, function()
                             if browserVisible then
                                 -- Toggle off
                                 spooner.setBrowserVisible(false)
@@ -2102,7 +2170,7 @@ local function renderMenyooTab()
                         local pedCustomsVisible = spooner.getPedCustomsVisible()
                         local pedColor = pedCustomsVisible and "LightBlue" or "DarkBlue"
 
-                        RenderCustomButtonFeature("Ped Customs", "Ped Customs", "BiggerScript_Spooner_PedCustoms", pedColor, nil, function()
+                        RenderDynamicButton("Ped Customs", pedColor, -1, 30, function()
                             if pedCustomsVisible then
                                 spooner.setPedCustomsVisible(false)
                             else
@@ -2117,7 +2185,7 @@ local function renderMenyooTab()
                         local vehicleCustomsVisible = spooner.getVehicleCustomsVisible()
                         local vehColor = vehicleCustomsVisible and "LightBlue" or "DarkBlue"
                         
-                        RenderCustomButtonFeature("Vehicle Customizations", "Vehicle Customizations", "BiggerScript_Spooner_VehCustoms", vehColor, nil, function()
+                        RenderDynamicButton("Vehicle Customizations", vehColor, -1, 30, function()
                             if vehicleCustomsVisible then
                                 spooner.setVehicleCustomsVisible(false)
                             else
@@ -2135,7 +2203,7 @@ local function renderMenyooTab()
                         local animPlayerVisible = animPlayer.getAnimPlayerVisible()
                         local animColor = animPlayerVisible and "LightPurple" or "DarkPurple"
                         
-                        RenderCustomButtonFeature("Animations", "Animations", "BiggerScript_Spooner_Anims", animColor, nil, function()
+                        RenderDynamicButton("Animations", animColor, -1, 30, function()
                             if animPlayerVisible then
                                 animPlayer.setAnimPlayerVisible(false)
                             else
@@ -2171,7 +2239,7 @@ ClickGUI.AddPlayerTab("Bigger Script", function()
         ClickGUI.RenderFeature(Utils.Joaat("DeleteMenyooAttackerVehicle"), Utils.GetSelectedPlayer())
         ImGui.Spacing()
 
-        RenderCustomButtonFeature("Delete All", "Attacker Delete All", "BiggerScript_Attacker_DeleteAll", "PurpleRed", nil, function()
+        RenderCustomButtonFeature("Delete All", "Delete All", "BiggerScript_Attacker_DeleteAll", "PurpleRed", nil, function()
             spawning.deleteAllSpawnedVehicles()
         end)
         
@@ -2194,7 +2262,7 @@ ClickGUI.AddPlayerTab("Bigger Script", function()
         end
         ImGui.SameLine()
         if spawnerSettings.sendToAllPlayers == nil then spawnerSettings.sendToAllPlayers = false end
-        RenderCustomCheckboxFeature("Send to All", "Attacker Send to All", "BiggerScript_Attacker_SendToAll", spawnerSettings, "sendToAllPlayers", "Send vehicle to all players in the session (excluding you)")
+        RenderCustomCheckboxFeature("Send to All", "Send to All", "BiggerScript_Attacker_SendToAll", spawnerSettings, "sendToAllPlayers", "Send vehicle to all players in the session (excluding you)")
         ImGui.Spacing()
 
         if ImGui.BeginTabBar("AttackerTypeTabs") then

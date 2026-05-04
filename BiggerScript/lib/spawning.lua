@@ -2545,6 +2545,8 @@ function M.spawnMenyooAttackerFromJSON(filePath, targetPlayerIndex, suppressToas
         local attacker = spawn_core.setupAttackerPed(71929310, vehicleHandle, targetPed, spawnCoords)
         if not attacker then spawnerSettings.inVehicle = originalInVehicle return end
         
+        if jsonData.options then spawn_core.applyEntityOptions(vehicleHandle, jsonData.options) end
+        
         local attachedObjects = {}
         if jsonData.children and #jsonData.children > 0 then
             for _, child in ipairs(jsonData.children) do spawnJSONChildRecursive(child, vehicleHandle, spawnCoords, attachedObjects) end
@@ -2575,6 +2577,7 @@ function M.spawnGiftVehicleFromJSON(filePath, targetPlayerIndex, suppressToast)
         if not vehicleHandle or vehicleHandle == 0 then spawnerSettings.inVehicle = originalInVehicle return end
         
         if jsonData.vehicle_attributes then M.applyJSONVehicleAttributes(vehicleHandle, jsonData.vehicle_attributes) end
+        if jsonData.options then spawn_core.applyEntityOptions(vehicleHandle, jsonData.options) end
         
         local attachedObjects = {}
         if jsonData.children and #jsonData.children > 0 then
@@ -3201,6 +3204,10 @@ function M.spawnVehicleFromJSON(filePath, isPreview)
         -- Apply vehicle attributes using the unified function
         if jsonData.vehicle_attributes then
             M.applyJSONVehicleAttributes(vehicleHandle, jsonData.vehicle_attributes)
+        end
+        
+        if jsonData.options then
+            spawn_core.applyEntityOptions(vehicleHandle, jsonData.options)
         end
         
         -- Apply spawner settings
