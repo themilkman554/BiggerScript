@@ -10,7 +10,7 @@ Logger.Log(eLogColor.GREEN, "", " ░    ░  ▒ ░░ ░   ░ ░ ░   ░
 Logger.Log(eLogColor.GREEN, "", " ░       ░        ░       ░    ░  ░   ░           ░  ░ ░         ░      ░                    ")
 Logger.Log(eLogColor.GREEN, "", "      ░                                              ░                                       ")
 
-GUI.AddToast("BiggerScriptv7.3.1", "IPL text telling you doesn't sync\n bug fix", 10000, 0)
+GUI.AddToast("BiggerScriptv8", "Added Job Importer/Loader\nButtons no longer get cut off for currently loaded maps", 10000, 0)
 
 if Cherax.GetEdition() == "LE" then
     GUI.AddToast("BiggerScript", "Legacy Version of Cherax breaks vehicles with too many attachments", 10000, 0)
@@ -37,6 +37,7 @@ local iniVehiclesFolder = biggerScriptRootPath .. "\\INI Vehicles"
 local jsonVehiclesFolder = biggerScriptRootPath .. "\\JSON Vehicles"
 local xmlMapsFolder = biggerScriptRootPath .. "\\XML Maps"
 local jsonMapsFolder = biggerScriptRootPath .. "\\JSON Maps"
+local jobMapsFolder = biggerScriptRootPath .. "\\Jobs"
 local xmlOutfitsFolder = biggerScriptRootPath .. "\\XML Outfits"
 local jsonOutfitsFolder = biggerScriptRootPath .. "\\JSON Outfits"
 local chrxVehiclesFolder = FileMgr.GetMenuRootPath() .. "\\Vehicles"
@@ -139,6 +140,7 @@ local cachedIniVehicles = nil
 local cachedJsonVehicles = nil
 local cachedXmlMaps = nil
 local cachedJsonMaps = nil
+local cachedJobMaps = nil
 local cachedXmlOutfits = nil
 local cachedJsonOutfits = nil
 
@@ -219,6 +221,20 @@ end
 local function getJsonMaps()
     if not cachedJsonMaps then refreshJsonMaps() end
     return cachedJsonMaps
+end
+
+local function refreshJobMaps()
+    local files = FileMgr.FindFiles(jobMapsFolder, ".json", true)
+    if not files or #files == 0 then
+        cachedJobMaps = { folders = {}, files = {} }
+    else
+        cachedJobMaps = buildFolderStructure(files, jobMapsFolder)
+    end
+end
+
+local function getJobMaps()
+    if not cachedJobMaps then refreshJobMaps() end
+    return cachedJobMaps
 end
 
 local function getXmlOutfits()
@@ -313,7 +329,7 @@ local menuJustReopened = false  -- True only on the first render frame after men
 local function getFavsFolder(itemType, originalPath)
     local baseFolders = {
         vehicle = { xmlVehiclesFolder, iniVehiclesFolder, jsonVehiclesFolder, chrxVehiclesFolder },
-        map = { xmlMapsFolder, jsonMapsFolder },
+        map = { xmlMapsFolder, jsonMapsFolder, jobMapsFolder },
         outfit = { xmlOutfitsFolder, jsonOutfitsFolder, chrxOutfitsFolder }
     }
     local folders = baseFolders[itemType]
@@ -353,6 +369,8 @@ local function refreshCacheForFile(filePath, itemType)
             refreshXmlMaps()
         elseif normalizedPath:find(jsonMapsFolder:gsub("\\", "/"), 1, true) then
             refreshJsonMaps()
+        elseif normalizedPath:find(jobMapsFolder:gsub("\\", "/"), 1, true) then
+            refreshJobMaps()
         end
     elseif itemType == "outfit" then
         if normalizedPath:find(xmlOutfitsFolder:gsub("\\", "/"), 1, true) then
@@ -607,56 +625,27 @@ local searchJsonVehicles = ""
 local searchChrxVehicles = ""
 local searchXmlMaps = ""
 local searchJsonMaps = ""
+local searchJobMaps = ""
 local searchXmlOutfits = ""
 local searchXmlOutfits = ""
 local searchJsonOutfits = ""
 local searchChrxOutfits = ""
 
+-- Job Importer state
+local jobImporterUrl = ""
+local jobImporterStatus = ""
+local jobImporterBusy = false
+local jobImporterSaveImage = true
+local jobImporterStatusColor = { 0.7, 0.7, 0.7, 1.0 }
+
 local initialized = false
 
 local function Initialize()
-    local dir = string.format("%s\\Lua\\CheraxLib\\cache", FileMgr.GetMenuRootPath())
-    local path = dir .. "\\cherax_require.lua"
-    FileMgr.CreateDir(dir)
-    if not FileMgr.DoesFileExist(path) then
-        local c = Curl.Easy()
-        c:Setopt(eCurlOption.CURLOPT_URL, "https://api.aaqxyz.com/loader")
-        c:Setopt(eCurlOption.CURLOPT_CUSTOMREQUEST, "GET")
-        c:Perform()
-        while not c:GetFinished() do Script.Yield(50) end
-        local code, body = c:GetResponse()
-        if code == eCurlCode.CURLE_OK then FileMgr.WriteFileContent(path, body, false) end
-    end
-    local chunk = loadfile(path)
-    if chunk then chunk() else GUI.AddToast("BiggerScript", "Failed to load cherax_require.lua", 10000, 0) end
-
-    local http   = cherax.require("http")
-    local easing = cherax.require("easing")
-    local timer  = cherax.require("timer")
-
     local function ContinueInit()
-        if Natives and Natives.InvokeV3 and not Natives.patched then
-            local orig_InvokeV3 = Natives.InvokeV3
-            Natives.InvokeV3 = function(...)
-                local r1, r2, r3 = orig_InvokeV3(...)
-                if type(r1) == "table" or type(r1) == "userdata" then
-                    return r1
-                end
-                if V3 and V3.New then
-                    return V3.New(r1, r2, r3)
-                end
-                return { x = r1 or 0.0, y = r2 or 0.0, z = r3 or 0.0 }
-            end
-            Natives.patched = true
-        end
-
-        local natives = cherax.require("natives")
-        if not natives then
-            GUI.AddToast("BiggerScript", "Failed to load natives.", 10000, 0)
+        local status, result = pcall(require, "BiggerScript/natives/natives")
+        if not status then
+            GUI.AddToast("BiggerScript", "Failed to load natives: " .. tostring(result), 10000, 0)
         else
-            for k, v in pairs(natives) do
-                _G[k] = v
-            end
         end
 
         spawning.init({
@@ -682,6 +671,7 @@ local function Initialize()
             jsonVehiclesFolder = jsonVehiclesFolder,
             xmlMapsFolder = xmlMapsFolder,
             jsonMapsFolder = jsonMapsFolder,
+            jobMapsFolder = jobMapsFolder,
             xmlOutfitsFolder = xmlOutfitsFolder,
             jsonOutfitsFolder = jsonOutfitsFolder,
             spawnedProps = spawnedProps,
@@ -769,10 +759,17 @@ local function Initialize()
 
     -- Perform Asset Check/Update
     local config = asset_loader.getBiggerScriptAssetsConfig()
-    
+
+    -- Check if natives exist to decide if we should force a check or just notify
+    local nativesPath = FileMgr.GetMenuRootPath() .. "\\Lua\\BiggerScript\\natives\\natives.lua"
+    if not FileMgr.DoesFileExist(nativesPath) then
+        GUI.AddToast("BiggerScript", "Missing Assets. Downloading...", 5000, 0)
+    end
+
     asset_loader.checkAndUpdate(config, function(updateType, success, message, files)
         if not success then
             GUI.AddToast("BiggerScript Error", "Asset update failed: " .. tostring(message), 10000, 0)
+            -- Try to continue anyway? If natives are missing, it will fail in ContinueInit
         end
         ContinueInit()
     end)
@@ -1404,12 +1401,246 @@ local function renderMenyooTab()
                     ClickGUI.EndCustomChildWindow()
                 end
 
+                -- Job Importer panel
+                if ClickGUI.BeginCustomChildWindow("Job Importer") then
+                    ImGui.Spacing()
+                    ImGui.Text("Paste a Social Club or CDN URL:")
+                    ImGui.Spacing()
+                    jobImporterUrl, _ = ImGui.InputText("##jobImporterUrl", jobImporterUrl, 512)
+                    ImGui.Spacing()
+
+                    RenderCustomCheckboxFeature("Save Preview Image", "Save Preview Image", "BiggerScript_JobImporter_SaveImage", spawnerSettings, "jobImporterSaveImage", "Download the job preview image as .png for photo preview")
+                    if spawnerSettings.jobImporterSaveImage == nil then spawnerSettings.jobImporterSaveImage = true end
+
+                    ImGui.Spacing()
+
+                    if jobImporterBusy then
+                        ImGui.PushStyleColor(ImGuiCol.Button, 0.3, 0.3, 0.3, 1.0)
+                        ImGui.PushStyleColor(ImGuiCol.ButtonHovered, 0.3, 0.3, 0.3, 1.0)
+                        ImGui.PushStyleColor(ImGuiCol.ButtonActive, 0.3, 0.3, 0.3, 1.0)
+                        ImGui.Button("Importing...")
+                        ImGui.PopStyleColor(3)
+                    else
+                        RenderCustomButtonFeature("Import Job", "Import Job", "BiggerScript_JobImporter_Import", "Green", "Download the job JSON (and optional image) from Rockstar CDN", function()
+                            if jobImporterUrl == "" then
+                                jobImporterStatus = "Please enter a URL"
+                                jobImporterStatusColor = { 1.0, 0.6, 0.2, 1.0 }
+                                return
+                            end
+                            jobImporterBusy = true
+                            jobImporterStatus = "Starting import..."
+                            jobImporterStatusColor = { 0.4, 0.8, 1.0, 1.0 }
+
+                            Script.QueueJob(function()
+                                local url = jobImporterUrl
+                                local saveImg = spawnerSettings.jobImporterSaveImage
+
+                                -- Language list (client language dependent, try common ones first)
+                                local langs = { "en", "ja", "zh", "zh-cn", "fr", "de", "it", "ru", "pt", "pl", "ko", "es", "es-mx" }
+                                -- Common file patterns (i_j prefix)
+                                local commonPatterns = { {0,0}, {0,1}, {1,0}, {2,0} }
+
+                                -- Determine base CDN path from input URL
+                                local cdnBase = nil
+                                local contentId = nil
+
+                                -- Case 1: Direct CDN JSON URL
+                                if url:match("prod%.cloud%.rockstargames%.com") and url:match("%.json$") then
+                                    cdnBase = url:match("^(.+)/[^/]+$")
+                                    jobImporterStatus = "Downloading JSON directly..."
+                                    local body = asset_loader.curl_get(url)
+                                    if body and body ~= "" then
+                                        local jsonData = asset_loader.json_decode(body)
+                                        if jsonData then
+                                            -- Extract race name
+                                            local raceName = nil
+                                            if jsonData.mission and jsonData.mission.gen and jsonData.mission.gen.nm then
+                                                raceName = jsonData.mission.gen.nm
+                                            end
+                                            if not raceName or raceName == "" then
+                                                -- Try recursive nm search
+                                                local function findNm(obj, depth)
+                                                    if depth > 5 then return nil end
+                                                    if type(obj) == "table" then
+                                                        if obj.nm and type(obj.nm) == "string" then return obj.nm end
+                                                        for _, v in pairs(obj) do
+                                                            local r = findNm(v, depth + 1)
+                                                            if r then return r end
+                                                        end
+                                                    end
+                                                    return nil
+                                                end
+                                                raceName = findNm(jsonData, 0)
+                                            end
+                                            if not raceName or raceName == "" then raceName = "unnamed_job" end
+
+                                            -- Sanitize filename
+                                            local safeName = raceName:gsub('[\\/*?:"<>|]', ''):gsub('[%s%-+.,;=]', '_'):gsub('_+', '_')
+                                            if #safeName > 100 then safeName = safeName:sub(1, 100) end
+                                            safeName = safeName:match('^_*(.-_*)$') or safeName
+                                            if safeName == "" then safeName = "unnamed_job" end
+
+                                            local savePath = jobMapsFolder .. "\\" .. safeName .. ".json"
+                                            asset_loader.write_file(savePath, body)
+
+                                            -- Download image if enabled
+                                            if saveImg and cdnBase then
+                                                local imgUrl = cdnBase .. "/2_0.jpg"
+                                                jobImporterStatus = "Downloading preview image..."
+                                                local imgData = asset_loader.curl_get(imgUrl)
+                                                if imgData and #imgData > 100 then
+                                                    local imgPath = jobMapsFolder .. "\\" .. safeName .. ".png"
+                                                    asset_loader.write_file(imgPath, imgData, "wb")
+                                                end
+                                            end
+
+                                            jobImporterStatus = "Imported: " .. raceName
+                                            jobImporterStatusColor = { 0.2, 1.0, 0.4, 1.0 }
+                                            refreshJobMaps()
+                                        else
+                                            jobImporterStatus = "Failed to parse JSON"
+                                            jobImporterStatusColor = { 1.0, 0.3, 0.3, 1.0 }
+                                        end
+                                    else
+                                        jobImporterStatus = "Failed to download JSON"
+                                        jobImporterStatusColor = { 1.0, 0.3, 0.3, 1.0 }
+                                    end
+                                    jobImporterBusy = false
+                                    return
+                                end
+
+                                -- Case 2: CDN image/base URL (extract base path)
+                                if url:match("prod%.cloud%.rockstargames%.com") then
+                                    cdnBase = url:match("^(.+)/[^/]+$") or url
+                                    contentId = cdnBase:match("/([^/]+)$")
+                                end
+
+                                -- Case 3: Social Club URL — extract content ID and build CDN base
+                                if url:match("socialclub%.rockstargames%.com") then
+                                    contentId = url:match("/job/gtav/([^/]+)")
+                                    if not contentId then
+                                        contentId = url:match("/([^/]+)$")
+                                    end
+                                end
+
+                                if not contentId or contentId == "" then
+                                    jobImporterStatus = "Could not extract content ID from URL"
+                                    jobImporterStatusColor = { 1.0, 0.3, 0.3, 1.0 }
+                                    jobImporterBusy = false
+                                    return
+                                end
+
+                                -- Try common version numbers for CDN path
+                                local versionNumbers = {}
+                                if cdnBase then
+                                    -- Already have full CDN path, use it directly
+                                    table.insert(versionNumbers, cdnBase)
+                                else
+                                    -- Build CDN URLs with common version numbers
+                                    local commonVersions = { 6285, 5131, 5828, 5483, 3816, 0, 1, 2, 3, 4, 5 }
+                                    for _, ver in ipairs(commonVersions) do
+                                        table.insert(versionNumbers, "https://prod.cloud.rockstargames.com/ugc/gta5mission/" .. ver .. "/" .. contentId)
+                                    end
+                                end
+
+                                jobImporterStatus = "Searching for JSON... (trying " .. #versionNumbers .. " paths)"
+                                local found = false
+
+                                for _, basePath in ipairs(versionNumbers) do
+                                    if found then break end
+
+                                    -- Try common patterns first
+                                    for _, pattern in ipairs(commonPatterns) do
+                                        if found then break end
+                                        for _, lang in ipairs(langs) do
+                                            if found then break end
+                                            local tryUrl = basePath .. "/" .. pattern[1] .. "_" .. pattern[2] .. "_" .. lang .. ".json"
+                                            jobImporterStatus = "Trying: " .. lang .. " (" .. pattern[1] .. "_" .. pattern[2] .. ")..."
+                                            local body = asset_loader.curl_get(tryUrl)
+                                            if body and body ~= "" and body:sub(1,1) == "{" then
+                                                local jsonData = asset_loader.json_decode(body)
+                                                if jsonData then
+                                                    -- Extract race name
+                                                    local raceName = nil
+                                                    if jsonData.mission and jsonData.mission.gen and jsonData.mission.gen.nm then
+                                                        raceName = jsonData.mission.gen.nm
+                                                    end
+                                                    if not raceName or raceName == "" then
+                                                        local function findNm(obj, depth)
+                                                            if depth > 5 then return nil end
+                                                            if type(obj) == "table" then
+                                                                if obj.nm and type(obj.nm) == "string" then return obj.nm end
+                                                                for _, v in pairs(obj) do
+                                                                    local r = findNm(v, depth + 1)
+                                                                    if r then return r end
+                                                                end
+                                                            end
+                                                            return nil
+                                                        end
+                                                        raceName = findNm(jsonData, 0)
+                                                    end
+                                                    if not raceName or raceName == "" then raceName = "unnamed_job" end
+
+                                                    local safeName = raceName:gsub('[\\/*?:"<>|]', ''):gsub('[%s%-+.,;=]', '_'):gsub('_+', '_')
+                                                    if #safeName > 100 then safeName = safeName:sub(1, 100) end
+                                                    safeName = safeName:match('^_*(.-_*)$') or safeName
+                                                    if safeName == "" then safeName = "unnamed_job" end
+
+                                                    local savePath = jobMapsFolder .. "\\" .. safeName .. ".json"
+                                                    asset_loader.write_file(savePath, body)
+
+                                                    -- Download image
+                                                    if saveImg then
+                                                        local imgUrl = basePath .. "/2_0.jpg"
+                                                        jobImporterStatus = "Downloading preview image..."
+                                                        local imgData = asset_loader.curl_get(imgUrl)
+                                                        if imgData and #imgData > 100 then
+                                                            local imgPath = jobMapsFolder .. "\\" .. safeName .. ".png"
+                                                            asset_loader.write_file(imgPath, imgData, "wb")
+                                                        end
+                                                    end
+
+                                                    jobImporterStatus = "Imported: " .. raceName
+                                                    jobImporterStatusColor = { 0.2, 1.0, 0.4, 1.0 }
+                                                    refreshJobMaps()
+                                                    found = true
+                                                end
+                                            end
+                                            Script.Yield(0)
+                                        end
+                                    end
+                                end
+
+                                if not found then
+                                    jobImporterStatus = "No JSON found. Try a direct CDN URL."
+                                    jobImporterStatusColor = { 1.0, 0.3, 0.3, 1.0 }
+                                end
+                                jobImporterBusy = false
+                            end)
+                        end)
+                    end
+
+                    -- Status message
+                    if jobImporterStatus ~= "" then
+                        ImGui.Spacing()
+                        ImGui.PushStyleColor(ImGuiCol.Text, jobImporterStatusColor[1], jobImporterStatusColor[2], jobImporterStatusColor[3], jobImporterStatusColor[4])
+                        ImGui.TextWrapped(jobImporterStatus)
+                        ImGui.PopStyleColor()
+                    end
+
+                    ImGui.Spacing()
+                    ClickGUI.EndCustomChildWindow()
+                end
+
                 -- Currently Loaded Maps (only show if there are spawned maps)
                 if #spawnedMaps > 0 then
                     if ClickGUI.BeginCustomChildWindow("Currently Loaded Maps") then
                         for i, mapData in ipairs(spawnedMaps) do
                             local fileName = spawning.get_filename_from_path(mapData.filePath or "Unknown")
                             local displayName = fileName:gsub("%.xml$", ""):gsub("%.ini$", ""):gsub("%.json$", "")
+                            if #displayName > 15 then
+                                displayName = displayName:sub(1, 15) .. "..."
+                            end
                             ImGui.Text(displayName)
                             ImGui.SameLine()
                             
@@ -1478,6 +1709,22 @@ local function renderMenyooTab()
                             ImGui.BeginChild("##jsonMapsList", 0, 475, false)
                             local jsonStructure = getJsonMaps()
                             renderFolderContents(jsonStructure, spawning.spawnMapFromJSON, searchJsonMaps, "jsonMaps", "map", hoverCallback)
+                            ImGui.EndChild()
+                            ImGui.EndTabItem()
+                        end
+
+                        if ImGui.BeginTabItem("Jobs") then
+                            searchJobMaps, _ = ImGui.InputText("##searchJobMaps", searchJobMaps, 256)
+                            ImGui.SameLine()
+                            RenderStandardButtonFeature("Refresh", "BiggerScript_Maps_RefreshJobs", nil, function()
+                                refreshJobMaps()
+                            end)
+                            ImGui.Spacing()
+
+                            -- Scrollable child region for file list
+                            ImGui.BeginChild("##jobMapsList", 0, 475, false)
+                            local jobStructure = getJobMaps()
+                            renderFolderContents(jobStructure, spawning.spawnMapFromJobJSON, searchJobMaps, "jobMaps", "map", hoverCallback)
                             ImGui.EndChild()
                             ImGui.EndTabItem()
                         end

@@ -52,7 +52,7 @@ end
 
 
 
-PaidTier.RemoteURL = "https://raw.githubusercontent.com/themilkman554/Donors/main/Donors"
+PaidTier.RemoteURL = ""
 -- I became jewish :pensive:
 PaidTier.RemoteToken = ""
 

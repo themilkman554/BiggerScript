@@ -7,10 +7,12 @@ local lastSpawnedVehiclePath = nil
 local xml_parser = require("BiggerScript/lib/parsers/xml_parser")
 local ini_parser = require("BiggerScript/lib/parsers/ini_parser")
 local json_parser = require("BiggerScript/lib/parsers/json_parser")
+local job_parser = require("BiggerScript/lib/parsers/job_parser")
 local spawn_core = require("BiggerScript/lib/spawn_core")
+local asset_loader = require("BiggerScript/lib/asset_loader")
 
 -- Context variables to be initialized by the main script
-local upsidedownmap_module, spawnerSettings, debug_print, spawnedVehicles, spawnedMaps, spawnedOutfits, previewEntities, currentPreviewFile, constructor_lib, parse_ini_file, get_xml_element_content, get_xml_element, to_boolean, safe_tonumber, trim, split_str, request_model_load, xmlVehiclesFolder, iniVehiclesFolder, jsonVehiclesFolder, xmlMapsFolder, jsonMapsFolder, xmlOutfitsFolder, jsonOutfitsFolder, previewRotation, spawnedProps, currentSelectedVehicleXml, currentSelectedVehicleIni, chrxVehiclesFolder, chrxOutfitsFolder
+local upsidedownmap_module, spawnerSettings, debug_print, spawnedVehicles, spawnedMaps, spawnedOutfits, previewEntities, currentPreviewFile, constructor_lib, parse_ini_file, get_xml_element_content, get_xml_element, to_boolean, safe_tonumber, trim, split_str, request_model_load, xmlVehiclesFolder, iniVehiclesFolder, jsonVehiclesFolder, xmlMapsFolder, jsonMapsFolder, jobMapsFolder, xmlOutfitsFolder, jsonOutfitsFolder, previewRotation, spawnedProps, currentSelectedVehicleXml, currentSelectedVehicleIni, chrxVehiclesFolder, chrxOutfitsFolder
 
 -- Preview Feature
 local previewRotation = { z = 0.0 }
@@ -64,6 +66,7 @@ function M.init(context)
     jsonVehiclesFolder = context.jsonVehiclesFolder
     xmlMapsFolder = context.xmlMapsFolder
     jsonMapsFolder = context.jsonMapsFolder
+    jobMapsFolder = context.jobMapsFolder
     xmlOutfitsFolder = context.xmlOutfitsFolder
     jsonOutfitsFolder = context.jsonOutfitsFolder
     spawnedProps = context.spawnedProps
@@ -104,6 +107,7 @@ function M.init(context)
     xml_parser.init(parserCtx)
     ini_parser.init(parserCtx)
     json_parser.init(parserCtx)
+    job_parser.init(parserCtx)
     
     -- Initialize spawn core with spawning context
     spawn_core.init({
@@ -418,9 +422,15 @@ local function parseFileMetadata(filePath, fileType)
             end
         end
     elseif ext == "json" then
-        local parsed = json_parser.parseMetadata(content, filePath, getModelNameFromHashForPreview)
-        if parsed then
-            for k, v in pairs(parsed) do metadata[k] = v end
+        -- Try Job/Transform format first (use robust parser for large files)
+        local parsedJob = job_parser.parseMetadata(content, filePath, asset_loader.json_decode)
+        if parsedJob then
+            for k, v in pairs(parsedJob) do metadata[k] = v end
+        else
+            local parsed = json_parser.parseMetadata(content, filePath, getModelNameFromHashForPreview)
+            if parsed then
+                for k, v in pairs(parsed) do metadata[k] = v end
+            end
         end
     end
     
@@ -3898,9 +3908,24 @@ function M.spawnMapFromJSON(filePath, isPreview)
         
         -- Spawn each entity at its absolute world position
         local spawnedEntities = {}
+        local totalNodes = #allNodes
+        local progressShown = { [25] = false, [50] = false, [75] = false }
         for i, node in ipairs(allNodes) do
             spawnMapChild(node, relocDelta, spawnedEntities)
-            spawn_core.showMapProgress(fileName, #spawnedEntities, #allNodes)
+            -- Show progress toasts at 25%, 50%, 75% for maps over 200 entities
+            if totalNodes > 200 then
+                local percentComplete = math.floor((#spawnedEntities / totalNodes) * 100)
+                if percentComplete >= 25 and not progressShown[25] then
+                    progressShown[25] = true
+                    GUI.AddToast("Spawning Map", "25% completed (" .. #spawnedEntities .. "/" .. totalNodes .. ")", 2000, 0)
+                elseif percentComplete >= 50 and not progressShown[50] then
+                    progressShown[50] = true
+                    GUI.AddToast("Spawning Map", "50% completed (" .. #spawnedEntities .. "/" .. totalNodes .. ")", 2000, 0)
+                elseif percentComplete >= 75 and not progressShown[75] then
+                    progressShown[75] = true
+                    GUI.AddToast("Spawning Map", "75% completed (" .. #spawnedEntities .. "/" .. totalNodes .. ")", 2000, 0)
+                end
+            end
         end
         
         -- Track spawned map
@@ -3953,6 +3978,7 @@ function M.spawnMapFromImpulseJSON(filePath, jsonData, isPreview)
         
         -- Spawn all entities
         local spawnedEntities = {}
+        local progressShown = { [25] = false, [50] = false, [75] = false }
         
         for i, entry in ipairs(jsonData) do
             local modelName = entry[1]
@@ -3970,7 +3996,20 @@ function M.spawnMapFromImpulseJSON(filePath, jsonData, isPreview)
                 M.debug_print("[Impulse JSON Map] Failed to spawn entity:", modelName, "(", modelHash, ")")
             end
             
-            spawn_core.showMapProgress(fileName, #spawnedEntities, totalEntities, 50)
+            -- Show progress toasts at 25%, 50%, 75% for maps over 200 entities
+            if totalEntities > 200 then
+                local percentComplete = math.floor((#spawnedEntities / totalEntities) * 100)
+                if percentComplete >= 25 and not progressShown[25] then
+                    progressShown[25] = true
+                    GUI.AddToast("Spawning Map", "25% completed (" .. #spawnedEntities .. "/" .. totalEntities .. ")", 2000, 0)
+                elseif percentComplete >= 50 and not progressShown[50] then
+                    progressShown[50] = true
+                    GUI.AddToast("Spawning Map", "50% completed (" .. #spawnedEntities .. "/" .. totalEntities .. ")", 2000, 0)
+                elseif percentComplete >= 75 and not progressShown[75] then
+                    progressShown[75] = true
+                    GUI.AddToast("Spawning Map", "75% completed (" .. #spawnedEntities .. "/" .. totalEntities .. ")", 2000, 0)
+                end
+            end
         end
         
         -- Track spawned map
@@ -4219,6 +4258,162 @@ function M.spawnOutfitFromCHRX(path, index)
     -- Spawn the outfit using the calculated index
     FeatureMgr.SetFeatureListIndex(2384691091, correctIndex)
     FeatureMgr.GetFeatureByName("Load Outfit"):TriggerCallback()
+end
+
+-- ============================================================================
+-- Job/Transform JSON Map Spawning
+-- Format: { mission: { prop: {model[], loc[], vRot[], head[], no}, dprop: {...}, veh: {...} } }
+-- ============================================================================
+function M.spawnMapFromJobJSON(filePath, isPreview)
+    Script.QueueJob(function()
+        if not FileMgr.DoesFileExist(filePath) then
+            M.debug_print("[Job Map Spawn] Error: file does not exist:", filePath)
+            GUI.AddToast("Spawn Error", "Job JSON file not found", 3000, 0)
+            return
+        end
+
+        local jsonContent = FileMgr.ReadFileContent(filePath)
+        if not jsonContent or jsonContent == "" then
+            M.debug_print("[Job Map Spawn] Error: Failed to read file:", filePath)
+            GUI.AddToast("Spawn Error", "Failed to read Job JSON file", 3000, 0)
+            return
+        end
+
+        -- Parse JSON using robust recursive descent parser (handles large 1MB+ files)
+        local jsonData = asset_loader.json_decode(jsonContent)
+        if not jsonData then
+            GUI.AddToast("Spawn Error", "Failed to parse Job JSON", 5000, 0)
+            return
+        end
+
+        -- Verify this is actually a Job format
+        if not job_parser.isJobFormat(jsonData) then
+            -- Fallback: try spawning as regular JSON map
+            M.debug_print("[Job Map Spawn] Not a Job format, falling back to regular JSON map")
+            M.spawnMapFromJSON(filePath, isPreview)
+            return
+        end
+
+        local fileName = M.get_filename_from_path(filePath)
+        local parsed = job_parser.parseJobEntities(jsonData)
+        local entities = parsed.entities
+        local refCoords = parsed.refCoords
+
+        if #entities == 0 then
+            GUI.AddToast("Spawn Error", "No spawnable entities found in Job JSON", 5000, 0)
+            return
+        end
+
+        M.debug_print("[Job Map Spawn] Spawning", fileName, "with", #entities, "entities")
+
+        -- Delete old maps
+        spawn_core.deleteOldMapIfEnabled()
+
+        -- Get player position
+        local playerPed = PLAYER.PLAYER_PED_ID()
+        local playerCoords = ENTITY.GET_ENTITY_COORDS(playerPed, false)
+
+        -- Determine relocation offset
+        local offset = spawn_core.calcSpawnOnMeOffset(refCoords)
+        if not spawnerSettings.spawnMapOnMe then
+            spawn_core.teleportPlayerIfEnabled(refCoords, false)
+        end
+
+        -- Spawn each entity
+        local spawnedEntities = {}
+        local totalEntities = #entities
+        local progressShown = { [25] = false, [50] = false, [75] = false }
+        for i, ent in ipairs(entities) do
+            local spawnPos = {
+                x = ent.pos.x + offset.x,
+                y = ent.pos.y + offset.y,
+                z = ent.pos.z + offset.z
+            }
+
+            -- Load model
+            local modelHash = M.safe_tonumber(ent.model, ent.model) or ent.model
+            M.request_model_load(modelHash)
+            local t0 = Time.GetEpoche()
+            while not STREAMING.HAS_MODEL_LOADED(modelHash) and Time.GetEpoche() - t0 < 1.0 do
+                Script.Yield(10)
+            end
+            if not STREAMING.HAS_MODEL_LOADED(modelHash) then
+                M.debug_print("[Job Map Spawn] Failed to load model:", tostring(modelHash))
+                goto continue
+            end
+
+            local entityHandle = spawn_core.spawnEntityByType(ent.entityType or "OBJECT", modelHash, spawnPos, ent.heading or 0)
+
+            if entityHandle and entityHandle ~= 0 then
+                ENTITY.SET_ENTITY_AS_MISSION_ENTITY(entityHandle, true, false)
+                ENTITY.SET_ENTITY_COORDS_NO_OFFSET(entityHandle, spawnPos.x, spawnPos.y, spawnPos.z, false, false, false)
+
+                -- Apply rotation: prefer vRot (full xyz rotation) over heading-only
+                if ent.rot then
+                    ENTITY.SET_ENTITY_ROTATION(entityHandle, ent.rot.x or 0, ent.rot.y or 0, ent.rot.z or 0, 2, true)
+                elseif ent.heading then
+                    ENTITY.SET_ENTITY_HEADING(entityHandle, ent.heading)
+                end
+
+                ENTITY.FREEZE_ENTITY_POSITION(entityHandle, true)
+                ENTITY.SET_ENTITY_LOD_DIST(entityHandle, 0xFFFF)
+
+                -- Apply texture variation (tint index) if present
+                if ent.tintIndex and ent.tintIndex >= 0 then
+                    OBJECT.SET_OBJECT_TINT_INDEX(entityHandle, ent.tintIndex)
+                end
+
+                -- Network the entity if enabled
+                if spawnerSettings.networkMapsV2Enabled then
+                    pcall(function()
+                        NETWORK.NETWORK_REGISTER_ENTITY_AS_NETWORKED(entityHandle)
+                        local netId = NETWORK.NETWORK_GET_NETWORK_ID_FROM_ENTITY(entityHandle)
+                        if netId and netId ~= 0 then
+                            NETWORK.SET_NETWORK_ID_EXISTS_ON_ALL_MACHINES(netId, true)
+                            NETWORK.SET_NETWORK_ID_CAN_MIGRATE(netId, true)
+                        end
+                    end)
+                end
+
+                table.insert(spawnedEntities, entityHandle)
+            end
+
+            -- Show progress toasts at 25%, 50%, 75% for maps over 200 entities
+            if totalEntities > 200 then
+                local percentComplete = math.floor((#spawnedEntities / totalEntities) * 100)
+                if percentComplete >= 25 and not progressShown[25] then
+                    progressShown[25] = true
+                    GUI.AddToast("Spawning Job Map", "25% completed (" .. #spawnedEntities .. "/" .. totalEntities .. ")", 2000, 0)
+                elseif percentComplete >= 50 and not progressShown[50] then
+                    progressShown[50] = true
+                    GUI.AddToast("Spawning Job Map", "50% completed (" .. #spawnedEntities .. "/" .. totalEntities .. ")", 2000, 0)
+                elseif percentComplete >= 75 and not progressShown[75] then
+                    progressShown[75] = true
+                    GUI.AddToast("Spawning Job Map", "75% completed (" .. #spawnedEntities .. "/" .. totalEntities .. ")", 2000, 0)
+                end
+            end
+
+            -- Yield periodically to avoid freezing
+            if i % 10 == 0 then
+                Script.Yield(0)
+            end
+
+            ::continue::
+        end
+
+        -- Track spawned map
+        local mapRecord = {
+            entities = spawnedEntities,
+            filePath = filePath,
+            markers = {},
+            refCoords = refCoords
+        }
+        table.insert(spawnedMaps, mapRecord)
+
+        local toastMsg = fileName .. " (" .. #spawnedEntities .. "/" .. #entities .. " entities)"
+        GUI.AddToast("Job Map Spawned", toastMsg, 5000, 0)
+        print("Job Map Spawned", toastMsg)
+    end)
 end
 
 return M
