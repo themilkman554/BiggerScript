@@ -701,23 +701,44 @@ function P.parseMetadata(content, filePath)
         metadata.vehicleCount = counts.vehicles
         metadata.pedCount = counts.peds
     else
-        local modelHash = getXmlElementContentLocal(content, "ModelHash")
+        local rootBlock = content
+        local hasVehicleRoot = content:find("<Vehicle[^>]*>") ~= nil
+        local hasSpoonerSection = content:find("<SpoonerAttachments") ~= nil
+        
+        if hasVehicleRoot or (hasSpoonerSection and content:find("<ModelHash>.-<SpoonerAttachments")) then
+            -- Root entity data is above <SpoonerAttachments>, extract only that portion
+            local beforeSpooner = content:match("^(.-)<SpoonerAttachments")
+            if beforeSpooner then
+                rootBlock = beforeSpooner
+            end
+        elseif hasSpoonerSection then
+            -- Pure SpoonerAttachments format: root entity is the first Attachment block
+            local spoonerSection = content:match("<SpoonerAttachments[^>]*>(.*)</SpoonerAttachments>")
+            if spoonerSection then
+                local firstAttachment = spoonerSection:match("<Attachment[^>]*>(.-)</Attachment>")
+                if firstAttachment then
+                    rootBlock = firstAttachment
+                end
+            end
+        end
+        
+        local modelHash = getXmlElementContentLocal(rootBlock, "ModelHash")
         if modelHash then
             metadata.modelHash = modelHash
         end
         
-        local hashName = getXmlElementContentLocal(content, "HashName")
+        local hashName = getXmlElementContentLocal(rootBlock, "HashName")
         local counts = countXmlAttachmentsByType(content)
         metadata.attachmentCount = counts.total
         metadata.objectCount = counts.objects
         metadata.vehicleCount = counts.vehicles
         metadata.pedCount = counts.peds
         
-        local typeStr = getXmlElementContentLocal(content, "Type")
+        local typeStr = getXmlElementContentLocal(rootBlock, "Type")
         if typeStr == "1" then
             metadata.itemType = "outfit"
             metadata.pedCount = metadata.pedCount + 1
-        elseif typeStr == "2" then
+        elseif typeStr == "2" or hasVehicleRoot then
             metadata.itemType = "vehicle"
             metadata.vehicleCount = metadata.vehicleCount + 1
         else

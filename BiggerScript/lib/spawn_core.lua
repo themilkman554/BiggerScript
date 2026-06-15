@@ -4,6 +4,29 @@
 -- ============================================================================
 local Core = {}
 
+local function FreemodeQueueJob(cb, ...)
+    local args = {...}
+    if NETWORK.NETWORK_IS_SESSION_STARTED() then
+        Script.ExecuteAsScript("freemode", function()
+            Script.QueueJob(cb, table.unpack(args))
+        end)
+    else
+        Script.QueueJob(cb, table.unpack(args))
+    end
+end
+
+local function FreemodeRegisterLooped(cb, ...)
+    local args = {...}
+    if NETWORK.NETWORK_IS_SESSION_STARTED() then
+        Script.ExecuteAsScript("freemode", function()
+            Script.RegisterLooped(cb, table.unpack(args))
+        end)
+    else
+        Script.RegisterLooped(cb, table.unpack(args))
+    end
+end
+
+
 -- References set via init()
 local M              -- spawning module (M) reference for calling format-specific helpers
 local spawnerSettings
@@ -236,7 +259,7 @@ function Core.enterVehicleIfEnabled(vehicleHandle, playerPed, isPreview, shouldH
         
         -- Monitor for vehicle exit to restore visibility
         local vehH, pedH = vehicleHandle, playerHandle
-        Script.QueueJob(function()
+        FreemodeQueueJob(function()
             while true do
                 Script.Yield(250)
                 if not ENTITY.DOES_ENTITY_EXIST(vehH) then
@@ -437,6 +460,18 @@ function Core.deleteOldMapIfEnabled()
             end
         end
         for k in pairs(spawnedMaps) do spawnedMaps[k] = nil end
+    end
+end
+
+
+function Core.clearAreaIfEnabled()
+    if spawnerSettings.clearAreaBeforeMapSpawn then
+        local clearFeature = FeatureMgr.GetFeatureByName("Clear Distance")
+        if clearFeature then
+            clearFeature:SetIntValue(1000)
+        end
+        FeatureMgr.TriggerFeatureCallback(53700821)
+        Script.Yield(500)
     end
 end
 

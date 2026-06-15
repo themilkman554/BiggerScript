@@ -1,4 +1,27 @@
 local M = {}
+
+local function FreemodeQueueJob(cb, ...)
+    local args = {...}
+    if NETWORK.NETWORK_IS_SESSION_STARTED() then
+        Script.ExecuteAsScript("freemode", function()
+            Script.QueueJob(cb, table.unpack(args))
+        end)
+    else
+        Script.QueueJob(cb, table.unpack(args))
+    end
+end
+
+local function FreemodeRegisterLooped(cb, ...)
+    local args = {...}
+    if NETWORK.NETWORK_IS_SESSION_STARTED() then
+        Script.ExecuteAsScript("freemode", function()
+            Script.RegisterLooped(cb, table.unpack(args))
+        end)
+    else
+        Script.RegisterLooped(cb, table.unpack(args))
+    end
+end
+
 local previewUpdateJob = nil
 local isPreviewUpdaterRunning = false
 local lastSpawnedVehiclePath = nil
@@ -171,7 +194,7 @@ local function loadPhotoTexture(pngPath)
     -- Mark as loading and start async load
     photoTextureCache[pngPath] = "loading"
     
-    Script.QueueJob(function()
+    FreemodeQueueJob(function()
         pcall(function()
             local safePath = pngPath:gsub("/", "\\")
             if FileMgr.DoesFileExist(safePath) then
@@ -703,7 +726,7 @@ function M.run_ptfx_task(entityHandle, task)
     if not task or not (task.EffectName and task.AssetName) then return end
     if not GRAPHICS then return end
     
-    Script.QueueJob(function()
+    FreemodeQueueJob(function()
         if task.Delay and task.Delay > 0 then Script.Yield(task.Delay) end
         
         if not ENTITY or not ENTITY.DOES_ENTITY_EXIST(entityHandle) then return end
@@ -746,7 +769,7 @@ function M.run_ptfx_task(entityHandle, task)
                 GRAPHICS.SET_PARTICLE_FX_LOOPED_SCALE(handle, scale)
                 
                 -- Refresh loop - keep effect alive with 150ms interval
-                Script.QueueJob(function()
+                FreemodeQueueJob(function()
                     while ENTITY.DOES_ENTITY_EXIST(entityHandle) do
                         Script.Yield(150)
                         if not ENTITY.DOES_ENTITY_EXIST(entityHandle) then break end
@@ -1321,7 +1344,7 @@ function M.spawn_attachments(parsedAttachments, parentHandleMap, fallbackCoords,
 end
 
 function M.clearPreview()
-    Script.QueueJob(function()
+    FreemodeQueueJob(function()
         for _, entity in ipairs(previewEntities) do
             if entity and ENTITY.DOES_ENTITY_EXIST(entity) then
                 constructor_lib.delete_entity(entity)
@@ -1376,7 +1399,7 @@ function M.managePreview(hoveredFile)
     end
 
     local fileToPreview = hoveredFile
-    Script.QueueJob(function()
+    FreemodeQueueJob(function()
         Script.Yield(1000)
 
         -- After delay, check if the user is still hovering over the same file.
@@ -1525,7 +1548,7 @@ end
 function M.startPreviewUpdater()
     if previewUpdateJob then return end
     isPreviewUpdaterRunning = true -- Set flag to true when starting
-    previewUpdateJob = Script.QueueJob(function()
+    previewUpdateJob = FreemodeQueueJob(function()
         while isPreviewUpdaterRunning do -- Loop while the flag is true
             if not GUI.IsOpen() then
                 M.clearPreview()
@@ -1645,7 +1668,7 @@ end
 
 function M.deleteVehicle(vehicleData)
     if not vehicleData then return end
-    Script.QueueJob(function()
+    FreemodeQueueJob(function()
         if vehicleData.attachments then
             for _, attachmentHandle in ipairs(vehicleData.attachments) do
                 if attachmentHandle and attachmentHandle ~= 0 then
@@ -1685,7 +1708,7 @@ end
 function M.deleteMapByIndex(index)
     if not spawnedMaps or not spawnedMaps[index] then return end
     local mapData = spawnedMaps[index]
-    Script.QueueJob(function()
+    FreemodeQueueJob(function()
         if mapData.entities then
             for _, entityHandle in ipairs(mapData.entities) do
                 if entityHandle and entityHandle ~= 0 then
@@ -1702,7 +1725,7 @@ end
 -- Put player into a vehicle (drive it)
 function M.driveVehicle(vehicleHandle)
     if not vehicleHandle or vehicleHandle == 0 then return end
-    Script.QueueJob(function()
+    FreemodeQueueJob(function()
         if not ENTITY.DOES_ENTITY_EXIST(vehicleHandle) then
             GUI.AddToast("Error", "Vehicle no longer exists", 3000, 0)
             return
@@ -1717,7 +1740,7 @@ end
 -- Teleport player to map reference coordinates
 function M.teleportToMapRefCoords(refCoords)
     if not refCoords then return end
-    Script.QueueJob(function()
+    FreemodeQueueJob(function()
         local playerPed = PLAYER.PLAYER_PED_ID()
         if playerPed and playerPed ~= 0 then
             ENTITY.SET_ENTITY_COORDS(playerPed, refCoords.x or 0, refCoords.y or 0, refCoords.z or 0, false, false, false, true)
@@ -1739,7 +1762,7 @@ function M.bringMapToPlayer(mapIndex)
         return
     end
     
-    Script.QueueJob(function()
+    FreemodeQueueJob(function()
         -- Delete all entities from this map
         if mapData.entities then
             for _, entityHandle in ipairs(mapData.entities) do
@@ -1771,7 +1794,7 @@ end
 end
 
 function M.deleteAllSpawnedVehicles()
-    Script.QueueJob(function()
+    FreemodeQueueJob(function()
         local vehiclesToDelete = {}
         for _, vehicleData in pairs(spawnedVehicles) do
             table.insert(vehiclesToDelete, vehicleData)
@@ -1807,7 +1830,7 @@ else
 end
 
 function M.deleteAllSpawnedMaps()
-    Script.QueueJob(function()
+    FreemodeQueueJob(function()
         local mapsToDelete = {}
         for _, mapData in pairs(spawnedMaps) do
             table.insert(mapsToDelete, mapData)
@@ -1828,7 +1851,7 @@ function M.deleteAllSpawnedMaps()
 end
 
 function M.deleteAllSpawnedOutfits()
-    Script.QueueJob(function()
+    FreemodeQueueJob(function()
         local outfitsToDelete = {}
         for _, outfitData in pairs(spawnedOutfits) do
             table.insert(outfitsToDelete, outfitData)
@@ -1857,7 +1880,7 @@ end
 
 function M.spawnVehicleFromINI(filePath, isPreview)
     isPreview = isPreview or false
-    Script.QueueJob(function()
+    FreemodeQueueJob(function()
         -- Pre-spawn checks
         local err = spawn_core.preSpawnChecks(filePath, isPreview, "INI")
         if err then return end
@@ -2037,7 +2060,7 @@ end
 
 function M.spawnVehicleFromXML(filePath, isPreview)
     isPreview = isPreview or false
-    Script.QueueJob(function()
+    FreemodeQueueJob(function()
         -- Pre-spawn checks
         local err = spawn_core.preSpawnChecks(filePath, isPreview, "XML")
         if err then return end
@@ -2218,7 +2241,7 @@ end
 function M.spawnMenyooAttackerFromXML(filePath, targetPlayerIndex, suppressToast)
     local originalInVehicle = spawnerSettings.inVehicle
     spawnerSettings.inVehicle = false
-    Script.QueueJob(function()
+    FreemodeQueueJob(function()
         if not filePath or not FileMgr.DoesFileExist(filePath) then spawnerSettings.inVehicle = originalInVehicle return end
         local xmlContent = FileMgr.ReadFileContent(filePath)
         if not xmlContent or xmlContent == "" then spawnerSettings.inVehicle = originalInVehicle return end
@@ -2257,7 +2280,7 @@ end
 function M.spawnGiftVehicleFromXML(filePath, targetPlayerIndex, suppressToast)
     local originalInVehicle = spawnerSettings.inVehicle
     spawnerSettings.inVehicle = false
-    Script.QueueJob(function()
+    FreemodeQueueJob(function()
         if not filePath or not FileMgr.DoesFileExist(filePath) then spawnerSettings.inVehicle = originalInVehicle return end
         local xmlContent = FileMgr.ReadFileContent(filePath)
         if not xmlContent or xmlContent == "" then spawnerSettings.inVehicle = originalInVehicle return end
@@ -2305,7 +2328,7 @@ function M.spawnGiftVehicleFromXML(filePath, targetPlayerIndex, suppressToast)
 end
 
 function M.applyVehicleAttachmentsFromXML(filePath, targetPlayerIndex, suppressToast)
-    Script.QueueJob(function()
+    FreemodeQueueJob(function()
         if not filePath or not FileMgr.DoesFileExist(filePath) then return end
         local xmlContent = FileMgr.ReadFileContent(filePath)
         if not xmlContent or xmlContent == "" then return end
@@ -2338,7 +2361,7 @@ end
 function M.spawnMenyooAttackerFromINI(filePath, targetPlayerIndex, suppressToast)
     local originalInVehicle = spawnerSettings.inVehicle
     spawnerSettings.inVehicle = false
-    Script.QueueJob(function()
+    FreemodeQueueJob(function()
         if not filePath or not FileMgr.DoesFileExist(filePath) then spawnerSettings.inVehicle = originalInVehicle return end
         local iniData = M.parse_ini_file(filePath)
         if not iniData then spawnerSettings.inVehicle = originalInVehicle return end
@@ -2379,7 +2402,7 @@ end
 function M.spawnGiftVehicleFromINI(filePath, targetPlayerIndex, suppressToast)
     local originalInVehicle = spawnerSettings.inVehicle
     spawnerSettings.inVehicle = false
-    Script.QueueJob(function()
+    FreemodeQueueJob(function()
         if not filePath or not FileMgr.DoesFileExist(filePath) then spawnerSettings.inVehicle = originalInVehicle return end
         local iniData = M.parse_ini_file(filePath)
         if not iniData then spawnerSettings.inVehicle = originalInVehicle return end
@@ -2411,7 +2434,7 @@ function M.spawnGiftVehicleFromINI(filePath, targetPlayerIndex, suppressToast)
 end
 
 function M.applyVehicleAttachmentsFromINI(filePath, targetPlayerIndex, suppressToast)
-    Script.QueueJob(function()
+    FreemodeQueueJob(function()
         if not filePath or not FileMgr.DoesFileExist(filePath) then return end
         local iniData = M.parse_ini_file(filePath)
         if not iniData then return end
@@ -2539,7 +2562,7 @@ end
 function M.spawnMenyooAttackerFromJSON(filePath, targetPlayerIndex, suppressToast)
     local originalInVehicle = spawnerSettings.inVehicle
     spawnerSettings.inVehicle = false
-    Script.QueueJob(function()
+    FreemodeQueueJob(function()
         if not filePath or not FileMgr.DoesFileExist(filePath) then spawnerSettings.inVehicle = originalInVehicle return end
         local jsonData = parseJSONForTargetOp(filePath)
         if not jsonData then spawnerSettings.inVehicle = originalInVehicle return end
@@ -2573,7 +2596,7 @@ end
 function M.spawnGiftVehicleFromJSON(filePath, targetPlayerIndex, suppressToast)
     local originalInVehicle = spawnerSettings.inVehicle
     spawnerSettings.inVehicle = false
-    Script.QueueJob(function()
+    FreemodeQueueJob(function()
         if not filePath or not FileMgr.DoesFileExist(filePath) then spawnerSettings.inVehicle = originalInVehicle return end
         local jsonData = parseJSONForTargetOp(filePath)
         if not jsonData then spawnerSettings.inVehicle = originalInVehicle return end
@@ -2601,7 +2624,7 @@ function M.spawnGiftVehicleFromJSON(filePath, targetPlayerIndex, suppressToast)
 end
 
 function M.applyVehicleAttachmentsFromJSON(filePath, targetPlayerIndex, suppressToast)
-    Script.QueueJob(function()
+    FreemodeQueueJob(function()
         if not filePath or not FileMgr.DoesFileExist(filePath) then return end
         local jsonData = parseJSONForTargetOp(filePath)
         if not jsonData then return end
@@ -2740,7 +2763,7 @@ function M.spawnMapV1Networked(filePath, placements)
 end
 
 function M.spawnMapFromXML(filePath, options)
-    Script.QueueJob(function()
+    FreemodeQueueJob(function()
         local opt = options or {}
         local checkSpawnOnMe = (opt.spawnMapOnMe ~= nil) and opt.spawnMapOnMe or spawnerSettings.spawnMapOnMe
         local checkTeleport = (opt.teleportToMap ~= nil) and opt.teleportToMap or spawnerSettings.teleportToMap
@@ -2762,6 +2785,7 @@ function M.spawnMapFromXML(filePath, options)
         if checkDeleteOld then
             M.deleteAllSpawnedMaps()
         end
+        spawn_core.clearAreaIfEnabled()
         local createdEntities = {}
         local spawnCount = 0
         local totalPlacements = #placements
@@ -2917,7 +2941,7 @@ function M.spawnMapFromXML(filePath, options)
         end
         
         if markers and #markers > 0 then
-            Script.QueueJob(function()
+            FreemodeQueueJob(function()
                 while true do
                     local isMapActive = false
                     for _, map in ipairs(spawnedMaps) do
@@ -2997,7 +3021,7 @@ end
 
 function M.spawnOutfitFromXML(filePath, isPreview)
     isPreview = isPreview or false
-    Script.QueueJob(function()
+    FreemodeQueueJob(function()
         -- Preview finalization shortcut
         if not isPreview and currentPreviewFile and currentPreviewFile.path == filePath and #previewEntities > 0 then
             local entitiesToFinalize = {}
@@ -3116,7 +3140,7 @@ end
 
 
 function M.deleteAllSpawnedProps()
-    Script.QueueJob(function()
+    FreemodeQueueJob(function()
         for i, propHandle in ipairs(spawnedProps) do
             if propHandle and ENTITY.DOES_ENTITY_EXIST(propHandle) then
                 constructor_lib.delete_entity(propHandle)
@@ -3129,7 +3153,7 @@ end
 
 -- JSON Vehicle Spawning Function
 function M.spawnVehicleFromJSON(filePath, isPreview)
-    Script.QueueJob(function()
+    FreemodeQueueJob(function()
         -- Pre-spawn checks
         local err = spawn_core.preSpawnChecks(filePath, isPreview, "JSON")
         if err then
@@ -3420,7 +3444,7 @@ function M.spawnParticleOnEntity(entityHandle, particleAttrs, offset, rotation)
     local b = particleAttrs.color and particleAttrs.color.b or 1.0
     local a = particleAttrs.color and particleAttrs.color.a or 1.0
     
-    Script.QueueJob(function()
+    FreemodeQueueJob(function()
         if not ENTITY.DOES_ENTITY_EXIST(entityHandle) then return end
         if not ensure_ptfx_asset_loaded(assetName) then return end
         
@@ -3434,7 +3458,7 @@ function M.spawnParticleOnEntity(entityHandle, particleAttrs, offset, rotation)
             GRAPHICS.SET_PARTICLE_FX_LOOPED_SCALE(handle, scale)
             
             -- Refresh loop
-            Script.QueueJob(function()
+            FreemodeQueueJob(function()
                 while ENTITY.DOES_ENTITY_EXIST(entityHandle) do
                     Script.Yield(150)
                     if not ENTITY.DOES_ENTITY_EXIST(entityHandle) then break end
@@ -3746,7 +3770,7 @@ end
 
 -- JSON Map Spawning Function
 function M.spawnMapFromJSON(filePath, isPreview)
-    Script.QueueJob(function()
+    FreemodeQueueJob(function()
         if not FileMgr.DoesFileExist(filePath) then
             M.debug_print("[JSON Map Spawn Debug] Error: JSON file does not exist:", filePath)
             GUI.AddToast("Spawn Error", "JSON file not found", 3000, 0)
@@ -3778,6 +3802,7 @@ function M.spawnMapFromJSON(filePath, isPreview)
         
         -- Delete old maps
         spawn_core.deleteOldMapIfEnabled()
+        spawn_core.clearAreaIfEnabled()
         
         -- Get player position for reference
         local playerPed = PLAYER.PLAYER_PED_ID()
@@ -3946,7 +3971,7 @@ end
 -- Impulse/JamezGamez Array-of-Arrays JSON Map Spawning Function
 -- Format: [ ["modelName", hash, x, y, z, rotX, rotY, rotZ, refX?, refY?, refZ?], ... ]
 function M.spawnMapFromImpulseJSON(filePath, jsonData, isPreview)
-    Script.QueueJob(function()
+    FreemodeQueueJob(function()
         local fileName = M.get_filename_from_path(filePath)
         local totalEntities = #jsonData
         
@@ -3954,6 +3979,7 @@ function M.spawnMapFromImpulseJSON(filePath, jsonData, isPreview)
         
         -- Delete old maps
         spawn_core.deleteOldMapIfEnabled()
+        spawn_core.clearAreaIfEnabled()
         
         -- Get player position for reference
         local playerPed = PLAYER.PLAYER_PED_ID()
@@ -4037,7 +4063,7 @@ end
 function M.spawnOutfitFromJSON(filePath, isPreview)
     isPreview = isPreview or false
     
-    Script.QueueJob(function()
+    FreemodeQueueJob(function()
         if not FileMgr.DoesFileExist(filePath) then
             M.debug_print("[JSON Outfit Spawn Debug] Error: JSON file does not exist:", filePath)
             GUI.AddToast("Spawn Error", "JSON file not found", 3000, 0)
@@ -4265,7 +4291,7 @@ end
 -- Format: { mission: { prop: {model[], loc[], vRot[], head[], no}, dprop: {...}, veh: {...} } }
 -- ============================================================================
 function M.spawnMapFromJobJSON(filePath, isPreview)
-    Script.QueueJob(function()
+    FreemodeQueueJob(function()
         if not FileMgr.DoesFileExist(filePath) then
             M.debug_print("[Job Map Spawn] Error: file does not exist:", filePath)
             GUI.AddToast("Spawn Error", "Job JSON file not found", 3000, 0)
@@ -4308,6 +4334,7 @@ function M.spawnMapFromJobJSON(filePath, isPreview)
 
         -- Delete old maps
         spawn_core.deleteOldMapIfEnabled()
+        spawn_core.clearAreaIfEnabled()
 
         -- Get player position
         local playerPed = PLAYER.PLAYER_PED_ID()
